@@ -1,23 +1,28 @@
 name: Markdown Lint
 
-# このファイルを各リポジトリの .github/workflows/md-lint.yml として配置する．
-# OWNER を自分の GitHub ユーザー名（例: tomio2480）に置き換えること．
-# バージョン固定を推奨する場合は @main を @v1 等のタグに変更する．
+# 対象リポジトリの .github/workflows/md-lint.yml として配置する caller workflow．
+# 以下 1 箇所のみ利用者が書き換える：
+#   - `OWNER` を利用する github-workflows のオーナー名に置き換える．
+#     （tomio2480 を直接利用するなら OWNER → tomio2480．自分でフォークした場合は自分のユーザー名）
+#   - バージョンを固定したい場合は @v1 を特定バージョン（例 @v1.0.0）に変更する．
+#
+# 設定ファイル（.markdownlint-cli2.yaml / .textlintrc.json / prh.yml）は
+# 呼び出し側に存在すればそれが優先される．無ければ中央の標準設定が使われる．
 
 on:
   pull_request:
     paths:
       - "**/*.md"
-  push:
-    branches:
-      - main
-    paths:
-      - "**/*.md"
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   lint:
-    uses: OWNER/github-workflows/.github/workflows/markdown-lint.yml@main
-    # 必要に応じて inputs を上書き
+    uses: OWNER/github-workflows/.github/workflows/markdown-lint.yml@v1
+    # 必要に応じて inputs で上書き可能．詳細は中央リポジトリの README を参照．
     # with:
     #   node-version: "22"
     #   markdown-glob: "docs/**/*.md"
+    #   filter-mode: "nofilter"  # 既存ファイル全体を指摘したい場合
