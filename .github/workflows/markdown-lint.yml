@@ -154,7 +154,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
           level: ${{ inputs.level }}
-          fail_on_error: ${{ inputs.fail-on-error }}
+          # fail_on_error は v0.26.0 で deprecated．boolean 入力を fail_level の文字列にマップする
+          fail_level: ${{ inputs.fail-on-error && 'error' || 'none' }}
           filter_mode: ${{ inputs.filter-mode }}
           markdownlint_flags: "--config ${{ steps.cfg.outputs.mdlint }} \"${{ inputs.markdown-glob }}\" \"#node_modules\""
 
@@ -164,18 +165,22 @@ jobs:
         with:
           reviewdog_version: latest
 
-      - name: Install textlint and rule packages
+      - name: Install textlint and rule packages (isolated in tmpdir)
         # tsuyoshicho/action-textlint は textlint_package 入力を持たず caller の
         # package.json に依存するため，drop-in 設計では使用できない．
-        # 本ステップで必要な一式を --no-save で取得し，直後のステップで textlint を直接呼ぶ．
+        # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
+        id: textlint_install
         shell: bash
         run: |
           set -euo pipefail
-          npm install --no-save --no-package-lock \
+          TMP="$(mktemp -d)"
+          (cd "${TMP}" && npm install --no-save --no-package-lock \
             textlint \
             textlint-rule-preset-ja-technical-writing \
             textlint-rule-preset-ja-spacing \
-            textlint-rule-prh
+            textlint-rule-prh)
+          echo "bin=${TMP}/node_modules/.bin" >> "${GITHUB_OUTPUT}"
+          echo "Installed under: ${TMP}"
 
       - name: Run textlint with reviewdog
         shell: bash
@@ -186,10 +191,13 @@ jobs:
           RD_LEVEL: ${{ inputs.level }}
           RD_FILTER_MODE: ${{ inputs.filter-mode }}
           RD_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+          TEXTLINT_BIN: ${{ steps.textlint_install.outputs.bin }}
         run: |
           set -euo pipefail
+          # tmpdir に install した textlint を PATH 先頭で使う．caller の node_modules は参照しない．
+          export PATH="${TEXTLINT_BIN}:${PATH}"
           # textlint は非ゼロ終了で指摘を出すため `|| true` で吸収し，checkstyle 出力を reviewdog に渡す
-          npx --no-install textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml || true
+          textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml || true
           reviewdog \
             -f=checkstyle \
             -name="textlint" \
