@@ -2,25 +2,24 @@
 
 ## 要約
 
-`github-workflows` リポジトリを新規作成し，本パッケージの内容を初回コミットするまでの手順をまとめる．人手でも Claude Code でも実行できる形で記述する．
+`tomio2480/github-workflows`（またはフォーク）を新規に立ち上げるときのオーナー向け手順．すでに立ち上げ済みの既存中央リポジトリを運用する場合は [docs/architecture.md](architecture.md) と [docs/security.md](security.md) を参照．
 
 ## 目次
 
 - 🔧 前提条件
-- 1️⃣ リモートリポジトリの作成
-- 2️⃣ ローカルクローンと初期コミット
-- 3️⃣ 動作確認
-- 4️⃣ 次のステップ
+- 1️⃣ 中央リポジトリを作成
+- 2️⃣ 初期ファイルを配置
+- 3️⃣ セキュリティ関連の GitHub 設定
+- 4️⃣ v1 タグを打つ
+- 5️⃣ 動作確認（ダミー caller で）
 
 ## 🔧 前提条件
 
-- GitHub アカウント（ `tomio2480` 等）にログイン済み
-- `gh` CLI がインストール済み・認証済み（ `gh auth status` で確認）
+- `gh` CLI が認証済み
 - `git` が利用可能
+- オーナー権限を持つ GitHub アカウント
 
-## 1️⃣ リモートリポジトリの作成
-
-`gh` CLI でリポジトリを作成する．ライセンスは MIT を選択し，README は初回コミットで含めるため `--add-readme` は付けない．
+## 1️⃣ 中央リポジトリを作成
 
 ```bash
 gh repo create github-workflows \
@@ -29,49 +28,52 @@ gh repo create github-workflows \
   --description "Reusable GitHub Actions workflows and shared config templates"
 ```
 
-プライベート運用にしたい場合は `--public` を `--private` に変更する．ただし再利用可能ワークフローを private repo から呼び出すには GitHub Actions の設定が必要になるため，基本的には public を推奨する．
+public ライセンスを明示する．非公開運用したい場合は `--private`（ただし caller 側からの参照は同一アカウントか GitHub Enterprise 設定が必要）．
 
-## 2️⃣ ローカルクローンと初期コミット
+## 2️⃣ 初期ファイルを配置
 
-```bash
-# 作業ディレクトリへ移動
-cd ~/your-workspace
+本リポジトリをフォーク元として使う場合は `gh repo fork` が最速．新規に立てる場合は [パッケージ](https://github.com/tomio2480/markdown-lint-package) 相当の 13 ファイルを配置する．
 
-# 作成したリポジトリをクローン
-gh repo clone tomio2480/github-workflows
-cd github-workflows
+配置対象：
 
-# 本パッケージの github-workflows-repo/ 以下をコピー
-# （展開済みの markdown-lint-package/ が ~/Downloads/ にあると仮定）
-cp -r ~/Downloads/markdown-lint-package/github-workflows-repo/. ./
+- `.github/workflows/markdown-lint.yml`
+- `.github/dependabot.yml`
+- `templates/` 配下の 5 ファイル
+- `docs/` 配下の 7 ファイル
+- `README.md` / `LICENSE` / `CLAUDE.md`
 
-# コピー結果を確認
-git status
-```
+## 3️⃣ セキュリティ関連の GitHub 設定
 
-コピー対象に `LICENSE` が含まれているかを確認する． `gh repo create --license mit` で既にリモートに `LICENSE` が作成されている場合は，ローカルの `LICENSE` で上書きしないよう注意する（ `git pull` で取得してからマージするのが安全）．
+必ず [docs/security.md](security.md) を読んで以下を実施する．
 
-## 3️⃣ 動作確認
+- Settings → Actions → General → 「Require approval for all outside collaborators」
+- Settings → Actions → General → Workflow permissions 「Read repository contents」
+- Settings → Actions → General → Allow Actions to create PRs → **OFF**
+- Settings → Branches → Branch protection on `main`
+- Settings → Security → Dependabot alerts / security updates → **ON**
 
-最初のコミットを作成するが， **push は指示があるまで行わない** （ Skill のルール）．
+## 4️⃣ v1 タグを打つ
 
-```bash
-git add .
-git commit -m "Initial commit: add markdown-lint reusable workflow and templates"
-
-# 差分を確認
-git log --oneline -5
-git show --stat HEAD
-```
-
-内容を確認したうえで，ユーザーから push 指示があれば：
+main ブランチが整ったら `v1` タグを打つ．caller は `@v1` で参照する．
 
 ```bash
-git push origin main
+gh release create v1 \
+  --target main \
+  --title "v1" \
+  --notes "Initial stable release."
 ```
 
-## 4️⃣ 次のステップ
+以降，破壊的でない変更は `v1` を動かさず main を更新してよい．ただし `@v1` が自動追随するので，明示的に動かす場合は `git tag -f v1 && git push -f origin v1`（オーナー操作・要注意）．
 
-- 最初の 1 リポジトリでの試験運用： `docs/onboarding-new-repo.md` または `docs/onboarding-existing-repo.md` を参照
-- Claude Skills への規律反映： `docs-quality` Skill を参照
-- 辞書の育成： `docs/dictionary-maintenance.md` を参照
+破壊的変更の場合は `v2` を新たに切る（[CLAUDE.md](../CLAUDE.md) 参照）．
+
+## 5️⃣ 動作確認（ダミー caller で）
+
+任意のテストリポジトリを用意し，[docs/onboarding-new-repo.md](onboarding-new-repo.md) に従って caller workflow を配置．PR を作って reviewdog コメントが付くことを確認する．
+
+確認ポイント：
+
+- `Checkout central configs` ステップで自分のリポジトリ名・ref が正しく検出されているか
+- `Resolve config file paths` で期待どおりのパスが出力されているか
+- reviewdog の markdownlint・textlint コメントが PR に投稿されているか
+- CI ステータスが緑で終わっているか（`fail_on_error: false` のため）
