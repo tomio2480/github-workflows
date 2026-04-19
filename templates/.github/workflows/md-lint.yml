@@ -26,7 +26,8 @@ jobs:
   lint:
     uses: OWNER/github-workflows/.github/workflows/markdown-lint.yml@main
     # 必要に応じて inputs で上書き可能．詳細は中央リポジトリの README を参照．
+    # reusable workflow 側の既定は node-version "24"（Active LTS）．
     # with:
-    #   node-version: "22"
-    #   markdown-glob: "docs/**/*.md"
-    #   filter-mode: "nofilter"  # 既存ファイル全体を指摘したい場合
+    #   node-version: "22"              # Maintenance LTS に下げる例
+    #   markdown-glob: "docs/**/*.md"   # 対象ディレクトリを絞る例
+    #   filter-mode: "nofilter"         # 既存ファイル全体を指摘したい場合

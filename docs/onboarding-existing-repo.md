@@ -117,7 +117,7 @@ curl -sSL \
 
 ## 5️⃣ コミットと PR
 
-variation 量が多いので **設定導入** と **既存ファイル修正** をコミット分離すると reviewer にやさしい．
+変更量が多いので **設定導入** と **既存ファイル修正** をコミット分離すると reviewer にやさしい．
 
 ```bash
 git add .github/workflows/md-lint.yml
