@@ -1,0 +1,47 @@
+name: Markdown Lint (reusable)
+
+# 呼び出し側リポジトリから workflow_call で呼び出される再利用可能ワークフロー．
+# 最小権限（contents: read）で動作する．
+# 呼び出し側に .markdownlint-cli2.yaml / .textlintrc.json / prh.yml が存在することを前提とする．
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js のバージョン"
+        type: string
+        default: "20"
+      markdown-glob:
+        description: "lint 対象の glob パターン"
+        type: string
+        default: "**/*.md"
+
+jobs:
+  lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install lint tools
+        run: |
+          npm install --no-save \
+            markdownlint-cli2 \
+            textlint \
+            textlint-rule-preset-ja-technical-writing \
+            textlint-rule-preset-ja-spacing \
+            textlint-rule-prh
+
+      - name: Run markdownlint-cli2
+        run: npx markdownlint-cli2 "${{ inputs.markdown-glob }}" "#node_modules"
+
+      - name: Run textlint
+        run: npx textlint "${{ inputs.markdown-glob }}"

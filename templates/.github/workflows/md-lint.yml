@@ -1,0 +1,23 @@
+name: Markdown Lint
+
+# このファイルを各リポジトリの .github/workflows/md-lint.yml として配置する．
+# OWNER を自分の GitHub ユーザー名（例: tomio2480）に置き換えること．
+# バージョン固定を推奨する場合は @main を @v1 等のタグに変更する．
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.md"
+
+jobs:
+  lint:
+    uses: OWNER/github-workflows/.github/workflows/markdown-lint.yml@main
+    # 必要に応じて inputs を上書き
+    # with:
+    #   node-version: "22"
+    #   markdown-glob: "docs/**/*.md"

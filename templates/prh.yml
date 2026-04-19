@@ -1,0 +1,75 @@
+# prh（proofreading helper）辞書
+# 表記ゆれを統一するためのルールを記述する．
+# 気づいたゆれは随時このファイルに追加し，辞書を育てる．
+version: 1
+
+rules:
+  # プラットフォーム・サービス名
+  - expected: GitHub
+    patterns:
+      - Github
+      - github
+      - GITHUB
+
+  - expected: GitLab
+    patterns:
+      - Gitlab
+      - gitlab
+
+  - expected: JavaScript
+    patterns:
+      - Javascript
+      - javascript
+      - JAVASCRIPT
+      - JS
+    prh:
+      - specs:
+          - from: JS
+            to: JavaScript
+
+  - expected: TypeScript
+    patterns:
+      - Typescript
+      - typescript
+      - TYPESCRIPT
+
+  - expected: Node.js
+    patterns:
+      - /[Nn]ode\.JS/
+      - NodeJS
+      - nodejs
+
+  - expected: Markdown
+    patterns:
+      - markdown
+      - MARKDOWN
+      - マークダウン
+
+  - expected: Pull Request
+    patterns:
+      - pull request
+      - pullrequest
+      - プルリクエスト
+      - プルリク
+
+  # 技術系頻出単語
+  - expected: サーバー
+    patterns:
+      - サーバ
+
+  - expected: ユーザー
+    patterns:
+      - ユーザ
+
+  - expected: コンピューター
+    patterns:
+      - コンピュータ
+
+  # 文末表現（省略形を正式名へ）
+  - expected: できる
+    patterns:
+      - 出来る
+
+  - expected: ください
+    patterns:
+      - 下さい

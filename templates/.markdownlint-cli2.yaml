@@ -1,0 +1,37 @@
+# markdownlint-cli2 の標準設定
+# 各リポジトリのルートにコピーして使用する．
+# 個別カスタマイズが必要なリポジトリは，必要なルールのみを上書きする．
+
+config:
+  # すべてのルールをデフォルトで有効化
+  default: true
+
+  # MD013: line-length
+  # 行長は textlint の sentence-length に委ねるため無効化
+  MD013: false
+
+  # MD033: no-inline-html
+  # はてなブログ互換のため HTML タグを許可
+  MD033: false
+
+  # MD041: first-line-heading
+  # 最初の見出しが H1 でなくても許容（README 以外のドキュメント用）
+  MD041: false
+
+  # MD024: no-duplicate-heading
+  # 同一ツリー内での重複は禁止，兄弟ノードでの重複は許可
+  MD024:
+    siblings_only: true
+
+# lint 対象パターン
+globs:
+  - "**/*.md"
+
+# lint 対象外パターン
+ignores:
+  - "node_modules"
+  - ".git"
+  - "dist"
+  - "build"
+  - "coverage"
+  - "CHANGELOG.md"

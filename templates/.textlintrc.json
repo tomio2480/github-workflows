@@ -1,0 +1,50 @@
+{
+  "_comment": "textlint の標準設定．各リポジトリにコピーして使用する．",
+  "rules": {
+    "preset-ja-technical-writing": {
+      "sentence-length": {
+        "max": 100
+      },
+      "max-kanji-continuous-len": {
+        "max": 6
+      },
+      "no-mix-dearu-desumasu": {
+        "preferInHeader": "",
+        "preferInBody": "である",
+        "preferInList": "である",
+        "strict": false
+      },
+      "ja-no-mixed-period": {
+        "periodMark": "．"
+      },
+      "no-doubled-joshi": {
+        "min_interval": 1
+      },
+      "no-doubled-conjunctive-particle-ga": true,
+      "no-doubled-conjunction": true,
+      "no-dropping-the-ra": true,
+      "no-exclamation-question-mark": false
+    },
+    "preset-ja-spacing": {
+      "ja-space-around-code": {
+        "before": true,
+        "after": true
+      },
+      "ja-space-around-link": {
+        "before": "always",
+        "after": "always"
+      },
+      "ja-space-between-half-and-full-width": {
+        "space": "always",
+        "exceptPunctuation": true
+      },
+      "ja-no-space-between-full-width": true
+    },
+    "prh": {
+      "rulePaths": ["./prh.yml"]
+    }
+  },
+  "filters": {
+    "comments": true
+  }
+}
