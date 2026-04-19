@@ -83,7 +83,7 @@ for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml lefthook.yml; do
   curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
 done
 
-npx lefthook install
+npx -y lefthook install
 ```
 
 ### 非 Node.js プロジェクト

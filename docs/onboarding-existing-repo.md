@@ -47,7 +47,7 @@ npm install --no-save \
   textlint-rule-prh
 
 npx -y markdownlint-cli2 "**/*.md" "#node_modules" 2>&1 | tee markdownlint-report.txt
-npx textlint "**/*.md" --ignore "node_modules/**" 2>&1 | tee textlint-report.txt
+npx -y textlint "**/*.md" --ignore "node_modules/**" 2>&1 | tee textlint-report.txt
 ```
 
 指摘を以下 3 分類でトリアージする．
@@ -99,7 +99,7 @@ done
   textlint-rule-prh
 
 npx -y markdownlint-cli2 --fix "**/*.md" "#node_modules" || true
-npx textlint --fix "**/*.md" --ignore "node_modules/**" || true
+npx -y textlint --fix "**/*.md" --ignore "node_modules/**" || true
 
 git diff --stat
 ```
