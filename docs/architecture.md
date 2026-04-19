@@ -120,7 +120,7 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 
 1. caller の `.github/workflows/md-lint.yml` が `pull_request` などで起動し，job の `uses:` で本 reusable を呼び出す（`workflow_call` は reusable 側のトリガー）
 2. reusable 側の job 内で使う `GITHUB_TOKEN` は **caller のジョブトークン**（本リポジトリのトークンではない）．reviewdog が PR コメントを投稿する先は caller の PR
-3. reusable 側の `permissions: contents: read, pull-requests: write` は caller から継承される．caller 側で `permissions:` を明記しないと reviewdog がコメント投稿権限を得られず失敗する
+3. reusable 側の `permissions: contents: read, pull-requests: write` は caller から継承される．caller 側で `permissions:` を明記しないと reviewdog がコメント投稿権限を得られず失敗する．また **外部フォークからの PR では GitHub の制限により `GITHUB_TOKEN` が read-only になり，reviewdog は inline コメントを投稿できない**（本プロジェクトは安全性の観点で `pull_request_target` を使わない方針のため．詳細は [docs/security.md](security.md) 参照）
 4. reviewdog action は内部で `github-pr-review` reporter を使い，PR number とトークンから REST/GraphQL で review comment を投稿する
 
 ## 🧪 トラブルシューティング
@@ -130,6 +130,7 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 | 症状 | 原因 | 対処 |
 |---|---|---|
 | reviewdog がコメントを投稿しない | caller 側の `permissions: pull-requests: write` がない | caller workflow に `permissions` ブロックを追加 |
+| 外部フォークからの PR だけ reviewdog が投稿しない | GitHub の fork PR セキュリティ制限で `GITHUB_TOKEN` が read-only | 仕様．`pull_request_target` は供給網リスクから採用しない方針のため対処しない．base repo にブランチを切って PR を出し直せば投稿される |
 | 設定ファイルが見つからない旨のエラー | override ファイル名の typo | `.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml` の正確な名前を確認 |
 | 既存ファイルで PR が指摘で埋まる | `filter-mode` が `nofilter` になっている | デフォルト `added` に戻すか caller 側で明示 |
 | third-party action が動かない | アクションのリポジトリ削除や実行環境（Node.js バージョン等）の互換性欠如 | Dependabot PR を確認して最新 SHA に更新 |

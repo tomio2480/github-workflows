@@ -28,7 +28,7 @@
 
 既存ファイル全体を lint して指摘を一覧化する．
 
-**注意**：この時点で caller repo には中央設定ファイル（`.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml`）が無いため，`npx -y` コマンドは各ツールのデフォルト設定で動作する．中央設定の結果と一致させたい場合は，事前に中央テンプレートを取得してから lint を走らせる．
+**注意**：この時点で caller repo には中央設定ファイル（`.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml`）が無いため，`npx -y` コマンドは各ツールのデフォルト設定で動作する．中央設定の結果と一致させたい場合は，事前に中央テンプレートを取得してから lint を走らせる．また textlint は `.textlintrc.json` で指定されたプリセット・プラグインがローカルの `node_modules` に存在している必要があるため，事前に `npm install --no-save` で取得しておく．
 
 ```bash
 # OWNER は tomio2480 または自分のユーザー名
@@ -39,8 +39,15 @@ curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/temp
 curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.textlintrc.json" -o .textlintrc.json
 curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/prh.yml" -o prh.yml
 
+# textlint のプリセット・プラグインをローカルに用意
+npm install --no-save \
+  textlint \
+  textlint-rule-preset-ja-technical-writing \
+  textlint-rule-preset-ja-spacing \
+  textlint-rule-prh
+
 npx -y markdownlint-cli2 "**/*.md" "#node_modules" 2>&1 | tee markdownlint-report.txt
-npx -y textlint "**/*.md" 2>&1 | tee textlint-report.txt
+npx textlint "**/*.md" --ignore "node_modules/**" 2>&1 | tee textlint-report.txt
 ```
 
 指摘を以下 3 分類でトリアージする．
@@ -84,8 +91,15 @@ for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml; do
   [ -f "$f" ] || curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
 done
 
+# textlint のプリセット・プラグインがローカルに無ければ取得（2️⃣ で済んでいればスキップ）
+[ -d node_modules/textlint-rule-preset-ja-technical-writing ] || npm install --no-save \
+  textlint \
+  textlint-rule-preset-ja-technical-writing \
+  textlint-rule-preset-ja-spacing \
+  textlint-rule-prh
+
 npx -y markdownlint-cli2 --fix "**/*.md" "#node_modules" || true
-npx -y textlint --fix "**/*.md" || true
+npx textlint --fix "**/*.md" --ignore "node_modules/**" || true
 
 git diff --stat
 ```
