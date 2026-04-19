@@ -1,20 +1,42 @@
 name: Markdown Lint (reusable)
 
 # 呼び出し側リポジトリから workflow_call で呼び出される再利用可能ワークフロー．
-# 最小権限（contents: read）で動作する．
-# 呼び出し側に .markdownlint-cli2.yaml / .textlintrc.json / prh.yml が存在することを前提とする．
+# reviewdog で PR にインラインコメントを投稿する Bot 型レビューを提供する．
+#
+# 設計のポイント：
+#   - 呼び出し側に設定ファイルが無ければ本リポジトリの templates/ を使う
+#   - 呼び出し側に同名ファイルがあればそちらを優先する（ファイル全置換方式の override）
+#   - 本リポジトリがどこにあるか（オーナー名・ref）は github.workflow_ref から自動検出
+#     するためフォークしても再利用可能ワークフロー本体の変更は不要
+#   - third-party action は commit SHA でピンして供給網攻撃を防ぐ
 
 on:
   workflow_call:
     inputs:
       node-version:
-        description: "Node.js のバージョン"
+        description: "利用する Node.js のバージョン（デフォルトは Active LTS）"
         type: string
-        default: "20"
+        default: "24"
       markdown-glob:
         description: "lint 対象の glob パターン"
         type: string
         default: "**/*.md"
+      central-ref:
+        description: "設定取得用に checkout する本リポジトリの ref．未指定なら github.workflow_ref から検出"
+        type: string
+        default: ""
+      filter-mode:
+        description: "reviewdog のフィルタモード（added / diff_context / file / nofilter）"
+        type: string
+        default: "added"
+      level:
+        description: "reviewdog のレベル（info / warning / error）"
+        type: string
+        default: "warning"
+      fail-on-error:
+        description: "lint エラー時に job を失敗させるか．false なら CI は緑のまま PR にコメントのみ"
+        type: boolean
+        default: false
 
 jobs:
   lint:
@@ -22,26 +44,108 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: write
     steps:
-      - name: Checkout
+      - name: Checkout caller repository
         uses: actions/checkout@v4
+
+      - name: Detect self repository and ref
+        id: self
+        shell: bash
+        run: |
+          set -euo pipefail
+          # github.workflow_ref の形式: OWNER/REPO/PATH@REF
+          # 例: tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
+          WORKFLOW_REF="${{ github.workflow_ref }}"
+          SELF_REPO="$(echo "${WORKFLOW_REF}" | awk -F'@' '{print $1}' | awk -F'/' '{print $1"/"$2}')"
+          DETECTED_REF="$(echo "${WORKFLOW_REF}" | awk -F'@' '{print $2}')"
+          # 入力で上書きされていればそちらを採用
+          INPUT_REF="${{ inputs.central-ref }}"
+          if [ -n "${INPUT_REF}" ]; then
+            USE_REF="${INPUT_REF}"
+          else
+            USE_REF="${DETECTED_REF}"
+          fi
+          echo "repo=${SELF_REPO}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${USE_REF}" >> "${GITHUB_OUTPUT}"
+          echo "Detected self repo: ${SELF_REPO}"
+          echo "Using ref: ${USE_REF}"
+
+      - name: Checkout central configs
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .central-workflows
+
+      - name: Resolve config file paths
+        id: cfg
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolve() {
+            local name="$1"
+            if [ -f "${name}" ]; then
+              echo "${name}"
+            else
+              echo ".central-workflows/templates/${name}"
+            fi
+          }
+          MDLINT_CFG="$(resolve .markdownlint-cli2.yaml)"
+          TEXTLINT_CFG="$(resolve .textlintrc.json)"
+          PRH_CFG="$(resolve prh.yml)"
+          echo "mdlint=${MDLINT_CFG}" >> "${GITHUB_OUTPUT}"
+          echo "textlint=${TEXTLINT_CFG}" >> "${GITHUB_OUTPUT}"
+          echo "prh=${PRH_CFG}" >> "${GITHUB_OUTPUT}"
+          echo "markdownlint config: ${MDLINT_CFG}"
+          echo "textlint config:     ${TEXTLINT_CFG}"
+          echo "prh dictionary:      ${PRH_CFG}"
+
+      - name: Generate runtime textlint config with resolved prh path
+        id: textlint_runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          # textlint config 内の rulesConfig.prh.rulePaths を解決済みの prh.yml パスに差し替える．
+          # jq があれば jq で，無ければ Python で処理する．
+          SRC="${{ steps.cfg.outputs.textlint }}"
+          PRH="${{ steps.cfg.outputs.prh }}"
+          DEST=".textlintrc.runtime.json"
+          python - "$SRC" "$PRH" "$DEST" <<'PYEOF'
+          import json, sys, pathlib
+          src, prh, dest = sys.argv[1], sys.argv[2], sys.argv[3]
+          cfg = json.loads(pathlib.Path(src).read_text(encoding="utf-8"))
+          cfg.setdefault("rules", {}).setdefault("prh", {})["rulePaths"] = [prh]
+          pathlib.Path(dest).write_text(
+              json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+          )
+          PYEOF
+          echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Install lint tools
-        run: |
-          npm install --no-save \
-            markdownlint-cli2 \
-            textlint \
-            textlint-rule-preset-ja-technical-writing \
-            textlint-rule-preset-ja-spacing \
-            textlint-rule-prh
+      - name: Run markdownlint with reviewdog
+        # reviewdog/action-markdownlint v0.26.2
+        uses: reviewdog/action-markdownlint@3667398db9118d7e78f7a63d10e26ce454ba5f58
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: ${{ inputs.level }}
+          fail_on_error: ${{ inputs.fail-on-error }}
+          filter_mode: ${{ inputs.filter-mode }}
+          markdownlint_flags: "--config ${{ steps.cfg.outputs.mdlint }} \"${{ inputs.markdown-glob }}\" \"#node_modules\""
 
-      - name: Run markdownlint-cli2
-        run: npx markdownlint-cli2 "${{ inputs.markdown-glob }}" "#node_modules"
-
-      - name: Run textlint
-        run: npx textlint "${{ inputs.markdown-glob }}"
+      - name: Run textlint with reviewdog
+        # tsuyoshicho/action-textlint v3.11.2
+        uses: tsuyoshicho/action-textlint@ace6abb4fd6736f30f2319c7e21b7adf4e93dc46
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: ${{ inputs.level }}
+          fail_on_error: ${{ inputs.fail-on-error }}
+          filter_mode: ${{ inputs.filter-mode }}
+          textlint_flags: "--config ${{ steps.textlint_runtime.outputs.config }} \"${{ inputs.markdown-glob }}\""
+          textlint_package: "textlint textlint-rule-preset-ja-technical-writing textlint-rule-preset-ja-spacing textlint-rule-prh"
