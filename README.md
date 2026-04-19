@@ -109,7 +109,7 @@ curl -sSL \
 1. PR を作成すると Actions が走る
 2. Actions は本リポジトリを checkout して設定を読み，caller repo の Markdown を lint する
 3. 問題が見つかった行に，reviewdog が **PR レビューコメント** として自動投稿する（`filter-mode: added` のため，PR で追加・変更された行のみ）
-4. CI ステータスは常に成功（マージをブロックしない）．指摘はあくまで提案
+4. lint 指摘だけでは CI を失敗させない（マージをブロックしない）．checkout・設定解決・setup 等の実行エラーは通常どおり失敗する．指摘はあくまで提案
 
 ## 🤖 AI エージェント向け Quick Start
 

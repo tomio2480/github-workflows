@@ -32,7 +32,7 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 
 ## 2️⃣ 初期ファイルを配置
 
-本リポジトリをフォーク元として使う場合は `gh repo fork` が最速．新規に立てる場合は [パッケージ](https://github.com/tomio2480/markdown-lint-package) 相当の 13 ファイルを配置する．
+本リポジトリをフォーク元として使う場合は `gh repo fork` が最速．新規に立てる場合は [パッケージ](https://github.com/tomio2480/markdown-lint-package) 相当の一式（現行リポジトリ構成に合わせて配置する）を用意する．
 
 配置対象：
 

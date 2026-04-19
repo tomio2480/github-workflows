@@ -36,7 +36,7 @@
   │ 8. tsuyoshicho/action-textlint → PR レビューコメント
   ▼
 PR の該当行に inline コメントが付く
-CI ステータスは常に緑（fail_on_error: false）
+lint 指摘では job を失敗させない（fail_on_error: false）．checkout・設定解決・setup 等の実行エラーは通常どおり失敗する
 ```
 
 上図の `OWNER` は利用する中央リポジトリのオーナーに置換する．tomio2480 を直接利用する場合は `tomio2480`，フォーク運用では自分の GitHub ユーザー名．`@main` は既定で最新を追随する参照．pinning は `@v1` や `@v1.0.0` へ差し替えて opt-in する．
@@ -107,7 +107,7 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 |---|---|---|
 | `reporter` | `github-pr-review` | PR レビューコメントとして投稿．要 `pull-requests: write` |
 | `level` | `warning` | PR 上では目立つが check 失敗扱いにはしない |
-| `fail_on_error` | `false` | CI を常に緑にする．Bot 型運用の核 |
+| `fail_on_error` | `false` | lint 指摘では job を失敗させない．checkout や設定解決などの実行エラーは通常どおり失敗 |
 | `filter_mode` | `added` | PR で追加・変更された行にのみコメント．既存ファイル一斉指摘を防ぐ |
 
 `filter-mode` を `nofilter` にすれば既存ファイルの全指摘が PR に流れる．棚卸し用の一時的設定として caller 側で上書き可能．
