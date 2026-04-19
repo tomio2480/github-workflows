@@ -104,6 +104,8 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 
 `reporter` を `github-check` に切り替えれば PR でないイベント（push など）でも lint 結果を check として表示できるが，本リポジトリのデフォルトは `github-pr-review` のみ対応．push 起動で lint したい場合は caller 側で `on: push` トリガーを追加し，本 reusable workflow を改修するか caller 内で処理を書くことになる．
 
+`github-check` reporter を使う場合は caller workflow の `permissions` に **`checks: write` を追加** する必要がある．デフォルトの `github-pr-review` では `pull-requests: write` のみでよいが，check 作成権限は別枠のため付け忘れると権限エラーで失敗する．
+
 ## 🔀 caller → reusable → reviewdog のデータフロー
 
 1. caller の `.github/workflows/md-lint.yml` が `workflow_call` で本 reusable を呼び出す
@@ -120,5 +122,5 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 | reviewdog がコメントを投稿しない | caller 側の `permissions: pull-requests: write` がない | caller workflow に `permissions` ブロックを追加 |
 | 設定ファイルが見つからない旨のエラー | override ファイル名の typo | `.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml` の正確な名前を確認 |
 | 既存ファイルで PR が指摘で埋まる | `filter-mode` が `nofilter` になっている | デフォルト `added` に戻すか caller 側で明示 |
-| third-party action が動かない | SHA が古くアーカイブされた | Dependabot PR を確認して最新 SHA に更新 |
+| third-party action が動かない | アクションのリポジトリ削除や実行環境（Node.js バージョン等）の互換性欠如 | Dependabot PR を確認して最新 SHA に更新 |
 | self-lint が動かない | 本リポジトリ自体では reusable を呼び出していない | 必要なら別 caller workflow を本リポジトリに追加する |

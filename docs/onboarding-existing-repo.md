@@ -83,8 +83,11 @@ git diff --stat
 override 用の `.textlintrc.json` を作り，しきい値を緩める．
 
 ```bash
+# OWNER は tomio2480 または自分のユーザー名（onboarding-new-repo.md の設定と揃える）
+OWNER=tomio2480
+
 curl -sSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.textlintrc.json" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/v1/templates/.textlintrc.json" \
   > .textlintrc.json
 ```
 

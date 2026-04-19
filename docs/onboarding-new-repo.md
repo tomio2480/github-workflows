@@ -41,7 +41,7 @@ mkdir -p .github/workflows
 OWNER=tomio2480
 
 curl -sSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/v1/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   > .github/workflows/md-lint.yml
 
@@ -78,7 +78,7 @@ npm install -D lefthook \
 
 # 中央の lefthook.yml をコピー
 curl -sSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/lefthook.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/v1/templates/lefthook.yml" \
   > lefthook.yml
 
 npx lefthook install

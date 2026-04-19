@@ -78,7 +78,7 @@ github-workflows/
 ```bash
 mkdir -p .github/workflows
 curl -sSL \
-  https://raw.githubusercontent.com/tomio2480/github-workflows/main/templates/.github/workflows/md-lint.yml \
+  https://raw.githubusercontent.com/tomio2480/github-workflows/v1/templates/.github/workflows/md-lint.yml \
   | sed 's|OWNER/github-workflows|tomio2480/github-workflows|' \
   > .github/workflows/md-lint.yml
 ```
@@ -98,7 +98,7 @@ gh release create v1 --repo YOUR_USERNAME/github-workflows --target main \
 # 3. 対象リポジトリでは OWNER を自分の名前に置換して caller を配置
 mkdir -p .github/workflows
 curl -sSL \
-  https://raw.githubusercontent.com/YOUR_USERNAME/github-workflows/main/templates/.github/workflows/md-lint.yml \
+  https://raw.githubusercontent.com/YOUR_USERNAME/github-workflows/v1/templates/.github/workflows/md-lint.yml \
   | sed 's|OWNER/github-workflows|YOUR_USERNAME/github-workflows|' \
   > .github/workflows/md-lint.yml
 ```

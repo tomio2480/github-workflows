@@ -48,7 +48,7 @@ repo 固有の辞書を中央から分離したい場合．
 ```bash
 # 対象 repo のルートで
 curl -sSL \
-  "https://raw.githubusercontent.com/tomio2480/github-workflows/main/templates/prh.yml" \
+  "https://raw.githubusercontent.com/tomio2480/github-workflows/v1/templates/prh.yml" \
   > prh.yml
 ```
 

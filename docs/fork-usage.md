@@ -56,7 +56,7 @@ mkdir -p .github/workflows
 OWNER=YOUR_USERNAME
 
 curl -sSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/v1/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   > .github/workflows/md-lint.yml
 
