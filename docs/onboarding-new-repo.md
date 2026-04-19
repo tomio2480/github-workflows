@@ -40,7 +40,7 @@ mkdir -p .github/workflows
 # OWNER は tomio2480 または自分のユーザー名
 OWNER=tomio2480
 
-curl -sSL \
+curl -fsSL \
   "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   > .github/workflows/md-lint.yml
@@ -80,7 +80,7 @@ npm install -D lefthook \
 
 # 中央の設定ファイルと lefthook.yml を一括取得
 for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml lefthook.yml; do
-  curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
+  curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
 done
 
 npx -y lefthook install
@@ -92,7 +92,7 @@ npx -y lefthook install
 
 ```bash
 for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml lefthook.yml; do
-  curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
+  curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
 done
 
 lefthook install

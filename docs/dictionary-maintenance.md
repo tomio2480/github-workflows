@@ -53,7 +53,7 @@ repo 固有の辞書を中央から分離したい場合．
 OWNER=tomio2480
 
 # 対象 repo のルートで
-curl -sSL \
+curl -fsSL \
   "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/prh.yml" \
   > prh.yml
 ```

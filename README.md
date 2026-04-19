@@ -76,13 +76,14 @@ github-workflows/
 
 ### パターン (A)：tomio2480/github-workflows を直接参照
 
-対象リポジトリのルートで以下を実行する．
+対象リポジトリのルートで以下を実行する．`OWNER` を 1 箇所だけ設定すれば URL と caller ファイル内部の両方に反映される．
 
 ```bash
+OWNER=tomio2480
 mkdir -p .github/workflows
-curl -sSL \
-  https://raw.githubusercontent.com/tomio2480/github-workflows/main/templates/.github/workflows/md-lint.yml \
-  | sed 's|OWNER/github-workflows|tomio2480/github-workflows|' \
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   > .github/workflows/md-lint.yml
 ```
 
@@ -95,10 +96,11 @@ curl -sSL \
 gh repo fork tomio2480/github-workflows --clone=false
 
 # 2. 対象リポジトリでは OWNER を自分の名前に置換して caller を配置
+OWNER=YOUR_USERNAME  # 自分の GitHub ユーザー名に置き換える
 mkdir -p .github/workflows
-curl -sSL \
-  https://raw.githubusercontent.com/YOUR_USERNAME/github-workflows/main/templates/.github/workflows/md-lint.yml \
-  | sed 's|OWNER/github-workflows|YOUR_USERNAME/github-workflows|' \
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   > .github/workflows/md-lint.yml
 ```
 
