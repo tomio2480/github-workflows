@@ -75,7 +75,15 @@ textlint の場合：
 
 自動修正可能な指摘をまず潰す．
 
+**重要**：`--fix` はファイルを実際に書き換えるため，中央設定が手元に無い状態で実行するとツールのデフォルトルールで修正されてしまい，CI（Bot）と整合しない変更が大量に入る可能性がある．2️⃣ で中央 config を取得していない場合は事前に取得しておくこと．
+
 ```bash
+# 2️⃣ で未取得なら先に取得（既に取得済みならスキップ）
+OWNER=tomio2480
+for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml; do
+  [ -f "$f" ] || curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
+done
+
 npx -y markdownlint-cli2 --fix "**/*.md" "#node_modules" || true
 npx -y textlint --fix "**/*.md" || true
 
