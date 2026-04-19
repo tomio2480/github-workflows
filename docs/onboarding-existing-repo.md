@@ -46,8 +46,15 @@ npm install --no-save \
   textlint-rule-preset-ja-spacing \
   textlint-rule-prh
 
+# textlint には --ignore オプションが無い（--ignore-path のみ）．
+# cwd の .textlintignore をデフォルトで読むため，node_modules 除外用のファイルを作成する．
+# 既に .textlintignore がある場合はそれを尊重する．
+[ -f .textlintignore ] || cat > .textlintignore <<'EOF'
+node_modules/**
+EOF
+
 npx -y markdownlint-cli2 "**/*.md" "#node_modules" 2>&1 | tee markdownlint-report.txt
-npx -y textlint "**/*.md" --ignore "node_modules/**" 2>&1 | tee textlint-report.txt
+npx -y textlint "**/*.md" 2>&1 | tee textlint-report.txt
 ```
 
 指摘を以下 3 分類でトリアージする．
@@ -98,8 +105,13 @@ done
   textlint-rule-preset-ja-spacing \
   textlint-rule-prh
 
+# .textlintignore が無ければ作成（2️⃣ で作成済みならスキップ）．textlint には --ignore オプションが無いためファイル経由で除外する．
+[ -f .textlintignore ] || cat > .textlintignore <<'EOF'
+node_modules/**
+EOF
+
 npx -y markdownlint-cli2 --fix "**/*.md" "#node_modules" || true
-npx -y textlint --fix "**/*.md" --ignore "node_modules/**" || true
+npx -y textlint --fix "**/*.md" || true
 
 git diff --stat
 ```
@@ -149,11 +161,11 @@ git commit -m "chore: introduce markdown lint caller workflow"
 git add "**/*.md"
 git commit -m "style: apply markdown lint autofix to existing docs"
 
-# override した場合（作成した override ファイルだけを指定．存在しないものは除く）
-# 例：textlintrc のみ調整したなら `git add .textlintrc.json`
-for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml; do
-  [ -f "$f" ] && git add "$f"
-done
+# override として実際に編集・採用するファイルだけを個別に git add する
+# ※ 2️⃣ / 3️⃣ で curl したデフォルト設定や作成した .textlintignore は
+#   「Bot と同じ結果をローカルで見る」ための一時ファイル．
+#   override として採用しないものは意図せずコミットしないよう，削除するか .gitignore に追加する．
+git add .textlintrc.json   # 実際に override として採用するファイルの例
 git commit -m "chore: add per-repo markdown lint overrides"
 
 # push・PR 作成はユーザー確認のうえ実施
