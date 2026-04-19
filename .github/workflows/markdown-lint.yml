@@ -47,7 +47,8 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout caller repository
-        uses: actions/checkout@v4
+        # actions/checkout v4.3.0
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Detect self repository and ref
         id: self
@@ -72,7 +73,8 @@ jobs:
           echo "Using ref: ${USE_REF}"
 
       - name: Checkout central configs
-        uses: actions/checkout@v4
+        # actions/checkout v4.3.0
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           repository: ${{ steps.self.outputs.repo }}
           ref: ${{ steps.self.outputs.ref }}
@@ -106,8 +108,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # textlint config 内の rulesConfig.prh.rulePaths を解決済みの prh.yml パスに差し替える．
-          # jq があれば jq で，無ければ Python で処理する．
+          # textlint config 内の rules.prh.rulePaths を解決済みの prh.yml の絶対パスに差し替える．
+          # caller が prh を意図的に無効化（false）または未定義にしている場合はそちらを尊重する．
           SRC="${{ steps.cfg.outputs.textlint }}"
           PRH="${{ steps.cfg.outputs.prh }}"
           DEST=".textlintrc.runtime.json"
@@ -115,7 +117,17 @@ jobs:
           import json, sys, pathlib
           src, prh, dest = sys.argv[1], sys.argv[2], sys.argv[3]
           cfg = json.loads(pathlib.Path(src).read_text(encoding="utf-8"))
-          cfg.setdefault("rules", {}).setdefault("prh", {})["rulePaths"] = [prh]
+          rules = cfg.get("rules", {})
+          if not isinstance(rules, dict):
+              raise TypeError("textlint config 'rules' must be an object")
+          prh_rule = rules.get("prh")
+          if isinstance(prh_rule, dict):
+              prh_rule["rulePaths"] = [str(pathlib.Path(prh).resolve())]
+          elif prh_rule is None or prh_rule is False:
+              # caller が prh を未定義または false（無効化）にしている場合はそのまま尊重する
+              pass
+          else:
+              raise TypeError("textlint config 'rules.prh' must be an object or false")
           pathlib.Path(dest).write_text(
               json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
           )
@@ -123,7 +135,8 @@ jobs:
           echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        # actions/setup-node v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ inputs.node-version }}
 
