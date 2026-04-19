@@ -52,9 +52,11 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 - Settings → Branches → Branch protection on `main`
 - Settings → Security → Dependabot alerts / security updates → **ON**
 
-## 4️⃣ v1 タグを打つ
+## 4️⃣ v1 タグを打つ（任意）
 
-main ブランチが整ったら `v1` タグを打つ．caller は `@v1` で参照する．
+caller テンプレートの既定は `@main` なので，main に commit を積むと次回 PR からすべての `@main` 利用者に反映される．v1 タグは **pinning したい利用者（`@v1` / `@v1.0.0` 参照）向けの opt-in 機能** であり，運用に必須ではない．
+
+安定点（milestone）で pinning 用途に残したい場合は以下のように打つ．
 
 ```bash
 gh release create v1 \
@@ -63,9 +65,15 @@ gh release create v1 \
   --notes "Initial stable release."
 ```
 
-以降，破壊的でない変更は `v1` を動かさず main を更新してよい．ただし `@v1` が自動追随するので，明示的に動かす場合は `git tag -f v1 && git push -f origin v1`（オーナー操作・要注意）．
+`@v1` 参照の利用者に新しい内容を反映させるには `v1` タグを明示的に移動する必要がある．タグは Git 上では特定の commit SHA を指し，main 更新で自動追随しない．
 
-破壊的変更の場合は `v2` を新たに切る（[CLAUDE.md](../CLAUDE.md) 参照）．
+```bash
+# v1 タグを main の最新へ進める（要注意・オーナー操作）
+git tag -f v1 main
+git push -f origin v1
+```
+
+タグ移動の前に **影響範囲の確認** と **stakeholder（`@v1` 利用 caller のオーナー）への事前通知** を行うこと．破壊的変更の場合は `v1` を動かさず `v2` を新たに切る（[CLAUDE.md](../CLAUDE.md) 参照）．
 
 ## 5️⃣ 動作確認（ダミー caller で）
 

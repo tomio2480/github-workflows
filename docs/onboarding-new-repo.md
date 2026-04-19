@@ -41,7 +41,7 @@ mkdir -p .github/workflows
 OWNER=tomio2480
 
 curl -sSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/v1/templates/.github/workflows/md-lint.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   > .github/workflows/md-lint.yml
 
@@ -78,7 +78,7 @@ npm install -D lefthook \
 
 # 中央の lefthook.yml をコピー
 curl -sSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/v1/templates/lefthook.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/lefthook.yml" \
   > lefthook.yml
 
 npx lefthook install
@@ -90,12 +90,14 @@ npx lefthook install
 
 ## 4️⃣ コミットと PR
 
-```bash
-git add .github/workflows/md-lint.yml
-# 任意で追加したもの
-git add lefthook.yml package.json package-lock.json
+基本の caller workflow は [2️⃣ 初回 PR で動作確認](#2%EF%B8%8F⃣-初回-pr-で動作確認) の時点で既にコミット済み．lefthook などを追加した場合のみ，以下を追加コミットする．
 
-git commit -m "chore: introduce markdown lint (reusable workflow caller)"
+```bash
+# 任意：ローカル hook を追加した場合だけ実行（未追加ならこの節をスキップ）
+for f in lefthook.yml package.json package-lock.json; do
+  [ -f "$f" ] && git add "$f"
+done
+git commit -m "chore: add local markdown lint hook"
 
 # push・PR 作成はユーザー確認のうえ実施
 ```

@@ -28,7 +28,17 @@
 
 既存ファイル全体を lint して指摘を一覧化する．
 
+**注意**：この時点で caller repo には中央設定ファイル（`.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml`）が無いため，`npx -y` コマンドは各ツールのデフォルト設定で動作する．中央設定の結果と一致させたい場合は，事前に中央テンプレートを取得してから lint を走らせる．
+
 ```bash
+# OWNER は tomio2480 または自分のユーザー名
+OWNER=tomio2480
+
+# 任意：Bot と同じ結果を見たい場合は中央設定を取得してから lint
+curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.markdownlint-cli2.yaml" -o .markdownlint-cli2.yaml
+curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.textlintrc.json" -o .textlintrc.json
+curl -sSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/prh.yml" -o prh.yml
+
 npx -y markdownlint-cli2 "**/*.md" "#node_modules" 2>&1 | tee markdownlint-report.txt
 npx -y textlint "**/*.md" 2>&1 | tee textlint-report.txt
 ```
@@ -87,7 +97,7 @@ override 用の `.textlintrc.json` を作り，しきい値を緩める．
 OWNER=tomio2480
 
 curl -sSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/v1/templates/.textlintrc.json" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.textlintrc.json" \
   > .textlintrc.json
 ```
 
@@ -117,8 +127,11 @@ git commit -m "chore: introduce markdown lint caller workflow"
 git add "**/*.md"
 git commit -m "style: apply markdown lint autofix to existing docs"
 
-# override した場合
-git add .markdownlint-cli2.yaml .textlintrc.json prh.yml
+# override した場合（作成した override ファイルだけを指定．存在しないものは除く）
+# 例：textlintrc のみ調整したなら `git add .textlintrc.json`
+for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml; do
+  [ -f "$f" ] && git add "$f"
+done
 git commit -m "chore: add per-repo markdown lint overrides"
 
 # push・PR 作成はユーザー確認のうえ実施

@@ -2,7 +2,7 @@
 
 ## 要約
 
-Markdown を書くすべてのリポジトリに，PR にコメントする Bot 型の lint レビューを最小設定で導入するための中央リポジトリである．対象リポジトリは **1 ファイル** の caller workflow を置くだけで運用に乗り，中央の辞書・ルール更新が自動的に波及する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．
+Markdown を書くすべてのリポジトリに，PR にコメントする Bot 型の lint レビューを最小設定で導入するための中央リポジトリである．対象リポジトリは **1 ファイル** の caller workflow を置くだけで運用に乗る．caller workflow は既定で `@main` を参照するため，中央の辞書・ルール更新は `@main` 利用者へ次回 PR から即反映される．破壊的変更を避けたい利用者は `@v1`（系列最新）や `@v1.0.0`（不変）に差し替えて固定できる．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．
 
 ## 目次
 
@@ -66,10 +66,13 @@ github-workflows/
 
 | 観点 | (A) tomio2480 を直接参照 | (B) フォークして独立運用 |
 |---|---|---|
-| 追加作業 | 対象 repo に 1 ファイル配置 | フォーク＋タグ付け＋1 ファイル配置 |
+| 追加作業 | 対象 repo に 1 ファイル配置 | フォーク＋1 ファイル配置（`v1` タグは opt-in） |
 | ルール変更の自由度 | 自分の repo 内で override のみ | 中央設定そのものを編集可能 |
-| アップデート | 自動（`@v1` 参照） | 自分でフォーク先へ同期 |
+| アップデート（`@main`） | 中央 main へのマージで次回 PR から即反映 | 自分でフォーク先に上流同期すると反映 |
+| アップデート（`@v1` / `@v1.0.0`） | 中央が `v1` タグを移動したときのみ反映 | 自分のフォーク側で `v1` を移動したときのみ反映 |
 | おすすめ対象 | Tomio さん本人 / ルールに異存がない利用者 | 組織運用 / ルールを独自カスタムしたい利用者 |
+
+参照先（`@` 以降）は caller workflow で選ぶ．既定の `@main` は最新を追随し，破壊的変更を避けたい場合は `@v1`（系列最新）・`@v1.0.0`（不変）に差し替えて固定する．
 
 ### パターン (A)：tomio2480/github-workflows を直接参照
 
@@ -78,7 +81,7 @@ github-workflows/
 ```bash
 mkdir -p .github/workflows
 curl -sSL \
-  https://raw.githubusercontent.com/tomio2480/github-workflows/v1/templates/.github/workflows/md-lint.yml \
+  https://raw.githubusercontent.com/tomio2480/github-workflows/main/templates/.github/workflows/md-lint.yml \
   | sed 's|OWNER/github-workflows|tomio2480/github-workflows|' \
   > .github/workflows/md-lint.yml
 ```
@@ -91,19 +94,15 @@ curl -sSL \
 # 1. フォーク
 gh repo fork tomio2480/github-workflows --clone=false
 
-# 2. 自分の github-workflows に v1 タグを付ける（fork 直後は main のみ存在）
-gh release create v1 --repo YOUR_USERNAME/github-workflows --target main \
-  --title "v1" --notes "Initial fork"
-
-# 3. 対象リポジトリでは OWNER を自分の名前に置換して caller を配置
+# 2. 対象リポジトリでは OWNER を自分の名前に置換して caller を配置
 mkdir -p .github/workflows
 curl -sSL \
-  https://raw.githubusercontent.com/YOUR_USERNAME/github-workflows/v1/templates/.github/workflows/md-lint.yml \
+  https://raw.githubusercontent.com/YOUR_USERNAME/github-workflows/main/templates/.github/workflows/md-lint.yml \
   | sed 's|OWNER/github-workflows|YOUR_USERNAME/github-workflows|' \
   > .github/workflows/md-lint.yml
 ```
 
-以後は自分のフォークを主軸に辞書やルールを育てていく．詳細は [docs/fork-usage.md](docs/fork-usage.md) を参照．
+以後は自分のフォークを主軸に辞書やルールを育てていく．caller が `@main` を参照していれば自動で反映される．pinning したい利用者向けに `v1` / `v1.0.0` タグを打つのは任意．詳細は [docs/fork-usage.md](docs/fork-usage.md) を参照．
 
 ### 導入後の挙動
 
@@ -158,8 +157,8 @@ curl -sSL \
 | レイヤー | 何をするか | いつ |
 |---|---|---|
 | 開発者 | `.md` を編集して push | 任意のタイミング |
-| lefthook（任意・ローカル） | `git push` を手元で fook して lint．NG なら push ブロック | `git push` 直前 |
-| GitHub Actions（caller） | push や PR に反応してジョブを起動 | PR 作成・更新時 |
+| lefthook（任意・ローカル） | `git push` を手元で hook して lint．NG なら push ブロック | `git push` 直前 |
+| GitHub Actions（caller） | PR に反応してジョブを起動（テンプレート既定は `pull_request` のみ） | PR 作成・更新時 |
 | 再利用可能ワークフロー（中央） | caller と中央の設定から lint を実行，reviewdog で inline コメント | caller ジョブ内 |
 | 中央リポジトリ | ルール・辞書・ワークフローの source of truth | 常に |
 

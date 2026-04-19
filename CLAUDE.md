@@ -16,8 +16,7 @@
 ## 📋 このリポジトリの性質
 
 - 複数リポジトリから `workflow_call` で呼び出される再利用可能ワークフローを管理する
-- `.github/workflows/*.yml` への変更は，`@v1`・`@main` 等で参照している **すべての caller に即波及** する
-- `templates/` の変更は，新規導入時にコピーされるテンプレートを変えるが既存 caller にも **設定解決経由で** 反映される（中央デフォルトとしても使われるため）
+- caller テンプレートの既定は `@main`．`.github/workflows/*.yml` への変更や `templates/` の変更は `@main` 参照の caller に **次回 PR から自動反映** される．`@v1` / `@v1.0.0` pinning 利用者は対象タグを移動するまで反映されない
 - reviewdog で PR inline コメントを投稿するため，caller 側に `pull-requests: write` 権限が必要
 - 公開（public）運用される．外部からのフォーク PR は原則マージしない
 
@@ -33,7 +32,8 @@
 
 ### テンプレート・設定ファイルの変更
 
-- `templates/prh.yml` などは中央デフォルトとして即 caller に反映される．破壊的追加（既存 caller で誤検出が増える恐れ）は注意
+- `templates/prh.yml` などは `@main` 参照の caller に次回 PR から反映される．破壊的追加（既存 caller で誤検出が増える恐れ）は注意
+- `@v1` / `@v1.0.0` pinning 利用者に反映したい場合は，影響確認と stakeholder 通知を行ったうえでタグを移動
 - 設定構造そのものの変更は `v2` 相当として扱う
 - 変更は `docs/` の手順にも反映する．とくに [docs/architecture.md](docs/architecture.md) と [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md) の記述が古くならないこと
 

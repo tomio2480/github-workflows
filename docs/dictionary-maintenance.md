@@ -2,7 +2,7 @@
 
 ## 要約
 
-表記ゆれ辞書 `prh.yml` は **中央リポジトリで一括管理** する．すべての対象リポジトリは中央の辞書を参照するため，辞書に追記が入れば全 repo の次回 PR から自動で反映される．個別リポジトリで辞書を独自運用したい場合のみ repo ローカルに `prh.yml` を置く（override）．
+表記ゆれ辞書 `prh.yml` は **中央リポジトリで一括管理** する．caller が `@main`（既定）を参照していれば，中央へのマージ時点で次回 PR から新辞書が効く．pinning 利用者（`@v1` / `@v1.0.0`）は対象タグが移動されるまで反映されない．個別リポジトリで辞書を独自運用したい場合のみ repo ローカルに `prh.yml` を置く（override）．
 
 ## 目次
 
@@ -23,8 +23,11 @@
 ## 1️⃣ 中央辞書への追記フロー
 
 ```bash
+# OWNER は中央リポジトリのオーナー（fork 運用では自分のユーザー名）
+OWNER=tomio2480
+
 # 中央リポジトリをクローン（または既にあれば pull）
-gh repo clone tomio2480/github-workflows
+gh repo clone "${OWNER}/github-workflows"
 cd github-workflows
 
 # ブランチを切って prh.yml を編集
@@ -39,16 +42,19 @@ git commit -m "dict: add XXX entry"
 
 Draft PR で `filter-mode: nofilter` で実際に lint を流し，辞書の想定通りの挙動を確認してから Ready にする．
 
-マージされると `v1` 参照のすべての caller が次回 PR から新辞書を使う．
+マージされると `@main` 参照の caller には次回 PR から新辞書が適用される．`@v1` / `@v1.0.0` pinning 利用者には反映されないため，pinning 利用者向けに反映したい場合は別途タグを移動する必要がある（後述）．
 
 ## 2️⃣ per-repo の辞書 override
 
 repo 固有の辞書を中央から分離したい場合．
 
 ```bash
+# OWNER は中央リポジトリのオーナー（fork 運用では自分のユーザー名）
+OWNER=tomio2480
+
 # 対象 repo のルートで
 curl -sSL \
-  "https://raw.githubusercontent.com/tomio2480/github-workflows/v1/templates/prh.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/prh.yml" \
   > prh.yml
 ```
 
@@ -84,14 +90,28 @@ rules:
 
 ## 4️⃣ バージョニングと影響範囲
 
-中央 `prh.yml` の変更は `v1` タグを動かさずとも全 caller に波及する（caller が `@v1` で参照しているため）．
+表 2: 参照方式と反映タイミング
 
-表 2: 変更種別ごとの扱い
+| caller の参照先 | 辞書変更が反映されるタイミング |
+|---|---|
+| `@main`（既定） | 中央 main へのマージで次回 PR から即反映 |
+| `@v1` | 中央が `v1` タグを移動したときのみ反映 |
+| `@v1.0.0` | 原則反映されない（固定） |
+
+pinning 利用者（`@v1` / `@v1.0.0`）への反映が必要な変更を入れた場合はタグ運用を検討する．
+
+```bash
+# v1 参照の利用者に最新 main を反映したい場合（要注意・事前通知必須）
+git tag -f v1 main
+git push -f origin v1
+```
+
+表 3: 変更種別ごとの扱い
 
 | 変更種別 | タグ運用 |
 |---|---|
-| 辞書エントリ追加 | `v1` のまま．追記は非破壊なので全 caller に即反映 |
-| 辞書エントリ削除・変更 | 原則 `v1` のまま．ただし既存 caller で意図しない指摘が消える可能性あり．影響大なら `v2` 切り出しも検討 |
-| prh 設定の構造変更 | `v2` など新メジャー |
+| 辞書エントリ追加 | `@main` 利用者には即反映．pinning 利用者に反映したい場合のみ `v1` を移動 |
+| 辞書エントリ削除・変更 | `@main` 利用者の指摘が意図せず変わるため事前に影響確認．`v1` 移動は慎重に |
+| prh 設定の構造変更 | `v2` など新メジャーを切る．`v1` はそのまま維持 |
 
 破壊的変更の場合は CLAUDE.md のタグ運用規律に従う．

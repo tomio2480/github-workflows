@@ -23,7 +23,7 @@
   ▼
 対象リポジトリ（caller）
   │ .github/workflows/md-lint.yml が on: pull_request で起動
-  │ uses: OWNER/github-workflows/.github/workflows/markdown-lint.yml@v1
+  │ uses: OWNER/github-workflows/.github/workflows/markdown-lint.yml@main
   ▼
 再利用可能ワークフロー（本リポジトリ）
   │ 1. caller repo を checkout
@@ -39,6 +39,16 @@ PR の該当行に inline コメントが付く
 CI ステータスは常に緑（fail_on_error: false）
 ```
 
+上図の `OWNER` は利用する中央リポジトリのオーナーに置換する．tomio2480 を直接利用する場合は `tomio2480`，フォーク運用では自分の GitHub ユーザー名．`@main` は既定で最新を追随する参照．pinning は `@v1` や `@v1.0.0` へ差し替えて opt-in する．
+
+表 1: 参照方式ごとの挙動
+
+| 参照形式 | 挙動 | 推奨用途 |
+|---|---|---|
+| `@main` | main の最新 commit を参照．中央の辞書・ルール更新が次回 PR から即反映 | 既定．個人／軽量運用 |
+| `@v1` | `v1` タグが指す commit．中央が明示的に移動した時のみ反映 | 破壊的変更を避けたい利用者 |
+| `@v1.0.0` | 不変．特定 commit 固定 | 完全再現性が必要な CI |
+
 ## 🔍 自己検出のしくみ（`github.workflow_ref`）
 
 reusable workflow から自リポジトリを checkout するとき，オーナー名やブランチをハードコードすると「フォーク利用者がワークフロー本体を書き換える」必要が出る．これを避けるため，GitHub Actions が提供する `github.workflow_ref` コンテキストから自分の場所を動的に取得する．
@@ -51,7 +61,7 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 
 `@` 手前をスラッシュで分解すると `OWNER/REPO/PATH`，`@` 以降が ref になる．ワークフロー内の `Detect self repository and ref` ステップで以下を取得する．
 
-表 1: 自己検出で得られる値
+表 2: 自己検出で得られる値
 
 | 変数 | 値の例 | 用途 |
 |---|---|---|
@@ -66,7 +76,7 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 
 `Resolve config file paths` ステップは以下のロジックで config パスを決める．
 
-表 2: 解決対象ファイルと解決ロジック
+表 3: 解決対象ファイルと解決ロジック
 
 | ファイル | 解決順序 |
 |---|---|
@@ -91,7 +101,7 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 
 ## 🐶 reviewdog の挙動
 
-表 3: reviewdog の主要パラメータ
+表 4: reviewdog の主要パラメータ
 
 | パラメータ | デフォルト | 意図 |
 |---|---|---|
@@ -108,14 +118,14 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 
 ## 🔀 caller → reusable → reviewdog のデータフロー
 
-1. caller の `.github/workflows/md-lint.yml` が `workflow_call` で本 reusable を呼び出す
+1. caller の `.github/workflows/md-lint.yml` が `pull_request` などで起動し，job の `uses:` で本 reusable を呼び出す（`workflow_call` は reusable 側のトリガー）
 2. reusable 側の job 内で使う `GITHUB_TOKEN` は **caller のジョブトークン**（本リポジトリのトークンではない）．reviewdog が PR コメントを投稿する先は caller の PR
 3. reusable 側の `permissions: contents: read, pull-requests: write` は caller から継承される．caller 側で `permissions:` を明記しないと reviewdog がコメント投稿権限を得られず失敗する
 4. reviewdog action は内部で `github-pr-review` reporter を使い，PR number とトークンから REST/GraphQL で review comment を投稿する
 
 ## 🧪 トラブルシューティング
 
-表 4: よくある失敗と対処
+表 5: よくある失敗と対処
 
 | 症状 | 原因 | 対処 |
 |---|---|---|

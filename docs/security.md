@@ -86,7 +86,11 @@
 
 - 外部からの PR は **原則マージしない**．typo 修正の名目でも `.github/workflows/` や `dependabot.yml` が変わっていないか確認
 - third-party action の SHA は Dependabot PR を通してのみ更新．手動書き換えは避ける
-- `v1` タグは原則動かさない．動かす必要があるとき（脆弱性パッチなど）は事前に CHANGELOG で周知
+- `v1` などの共有タグを動かすときは以下を事前に行う：
+  - 影響する caller repository の一覧化と影響範囲評価
+  - 各 caller のオーナー（stakeholder）への事前通知と通知期間の確保
+  - タグ移動時刻と `CHANGELOG` への明示的な記録
+  - 問題時のロールバック手順（旧 commit SHA を控えておく）
 - 破壊的変更は `v2`，`v3` として新タグを切り，旧タグは残す
 - リポジトリの可視性を private に切り替えたい場合は caller の参照可能性に影響するため注意
 
