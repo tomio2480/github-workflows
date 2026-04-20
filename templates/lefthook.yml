@@ -1,7 +1,7 @@
 # lefthook 設定
 # pre-push 時に変更対象の Markdown ファイルに lint をかける．
-# インストール: npm install -D lefthook && npx lefthook install
-# 手動実行:     npx lefthook run pre-push
+# インストール: npm install -D lefthook && npx -y lefthook install
+# 手動実行:     npx -y lefthook run pre-push
 
 pre-push:
   parallel: true
@@ -9,13 +9,13 @@ pre-push:
     markdownlint:
       glob: "*.md"
       # {push_files} は push 対象（リモートとの差分）ファイルに展開される
-      run: npx markdownlint-cli2 {push_files}
+      run: npx -y markdownlint-cli2 {push_files}
       skip:
         - merge
         - rebase
     textlint:
       glob: "*.md"
-      run: npx textlint {push_files}
+      run: npx -y textlint {push_files}
       skip:
         - merge
         - rebase
@@ -26,7 +26,7 @@ pre-push:
 #   commands:
 #     markdownlint:
 #       glob: "*.md"
-#       run: npx markdownlint-cli2 {staged_files}
+#       run: npx -y markdownlint-cli2 {staged_files}
 #     textlint:
 #       glob: "*.md"
-#       run: npx textlint {staged_files}
+#       run: npx -y textlint {staged_files}
