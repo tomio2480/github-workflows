@@ -48,13 +48,13 @@ curl -fsSL \
 cat .github/workflows/md-lint.yml
 ```
 
-出力を目視確認する．`uses: OWNER/github-workflows/...` が `uses: tomio2480/github-workflows/...` などに置換されていればよい．
+出力を目視確認する．`uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2` の `OWNER` 部分が `tomio2480` などに置換されていればよい．`<SHA>` 部分は手動で利用したい github-workflows の commit SHA に置き換える．最新の v2 release commit は `gh release view v2 --repo ${OWNER}/github-workflows --json targetCommitish` で確認できる．
 
 ## 2️⃣ 初回 PR で動作確認
 
 ```bash
 git add .github/workflows/md-lint.yml
-git commit -m "Introduce markdown lint via github-workflows reusable workflow"
+git commit -m "Introduce markdown lint via github-workflows composite action"
 # push はユーザー確認後に実施
 # git push -u origin feature/introduce-markdown-lint
 # gh pr create --draft --title "Introduce markdown lint" --body "..."

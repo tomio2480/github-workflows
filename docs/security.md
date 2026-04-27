@@ -28,8 +28,8 @@
 | 2 | Fork からの PR で Actions が自動実行され，悪意ワークフローが走る | 低（初回承認必須） | 外部コラボ承認必須設定を有効化．リポジトリに `on: pull_request` のワークフローを追加する場合は必ず承認ポリシーを確認 |
 | 3 | 悪意の PR を誤ってマージ | 人的リスク | 依存・ワークフロー変更は精査．typo 修正 PR でも workflow と dependencies の変更がないかを確認 |
 | 4 | third-party action が侵害される | 実在 | full commit SHA でピン．Dependabot で更新追跡 |
-| 5 | Secrets 漏洩 | 不成立 | `secrets: inherit` 不使用．`GITHUB_TOKEN` のみ |
-| 6 | `v1` タグの改竄 | 低（オーナーのみ書き込み可） | アカウントの 2FA と保護 |
+| 5 | Secrets 漏洩 | 不成立 | `secrets: inherit` 不使用．caller から `inputs.github-token` で `GITHUB_TOKEN` を明示渡し |
+| 6 | 共有タグ（`v2` など）の改竄 | 低（オーナーのみ書き込み可） | アカウントの 2FA と保護 |
 | 7 | npm 供給網汚染（markdownlint-cli2 等） | 残存リスク | action 内部で管理．個別対策困難．受容 |
 | 8 | 社会工学攻撃（typo 修正を装う） | 低〜中 | 外部 PR は原則マージしない |
 | 9 | caller 側から見た破壊的変更 | 運用ミス | タグ運用（[CLAUDE.md](../CLAUDE.md)） |
@@ -39,9 +39,9 @@
 ## 🛡 設計による防御
 
 - `pull_request_target` 不使用
-- `secrets: inherit` 不使用（必要な secret は個別明示）
+- `secrets: inherit` 不使用．composite action の場合 `secrets.*` は自動継承されないため `inputs.github-token` で明示的に受け取る．caller 側で `${{ secrets.GITHUB_TOKEN }}` を明示的に渡す責務
 - third-party action は full commit SHA で参照
-- `permissions:` は必要最小限（`contents: read` + `pull-requests: write`）を明示
+- `permissions:` は caller 側で必要最小限（`contents: read` + `pull-requests: write`）を明示．composite では caller の job 権限が直接効く
 - Dependabot で週次アップデート PR．SHA ピンは Dependabot 対応
 
 ## ⚙️ 必須の GitHub リポジトリ設定
@@ -84,14 +84,14 @@
 
 ## 🧪 運用ルール
 
-- 外部からの PR は **原則マージしない**．typo 修正の名目でも `.github/workflows/` や `dependabot.yml` が変わっていないか確認
+- 外部からの PR は **原則マージしない**．typo 修正の名目でも `.github/workflows/` ・ `.github/actions/` ・ `dependabot.yml` が変わっていないか確認
 - third-party action の SHA は Dependabot PR を通してのみ更新．手動書き換えは避ける
-- `v1` などの共有タグを動かすときは以下を事前に行う：
+- `v2` などの共有タグを動かすときは以下を事前に行う：
   - 影響する caller repository の一覧化と影響範囲評価
   - 各 caller のオーナー（stakeholder）への事前通知と通知期間の確保
   - タグ移動時刻と `CHANGELOG` への明示的な記録
   - 問題時のロールバック手順（旧 commit SHA を控えておく）
-- 破壊的変更は `v2`，`v3` として新タグを切り，旧タグは残す
+- 破壊的変更は `v3`，`v4` として新タグを切り，旧タグは残す（v1 は self-detection bug により動作しないため復活させない）
 - リポジトリの可視性を private に切り替えたい場合は caller の参照可能性に影響するため注意
 
 ## 📚 参考資料

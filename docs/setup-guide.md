@@ -10,8 +10,9 @@
 - 1️⃣ 中央リポジトリを作成
 - 2️⃣ 初期ファイルを配置
 - 3️⃣ セキュリティ関連の GitHub 設定
-- 4️⃣ v1 タグを打つ
-- 5️⃣ 動作確認（ダミー caller で）
+- 4️⃣ ローカルテスト（pytest / bats）
+- 5️⃣ v2 タグを打つ
+- 6️⃣ 動作確認（ダミー caller で）
 
 ## 🔧 前提条件
 
@@ -36,11 +37,14 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 
 配置対象：
 
-- `.github/workflows/markdown-lint.yml`
+- `.github/actions/markdown-lint/action.yml`（composite action 本体）
+- `.github/workflows/test-self-lint.yml`（単体／統合テスト CI）
 - `.github/dependabot.yml`
+- `scripts/` 配下のスクリプト 2 本（`generate-textlint-runtime.py` / `resolve-config-path.sh`）
+- `tests/` 配下（`python/` / `bash/` / `fixtures/markdown/`）
 - `templates/` 配下の 5 ファイル
 - `docs/` 配下の 7 ファイル
-- `README.md` / `LICENSE` / `CLAUDE.md`
+- `README.md` / `LICENSE` / `CLAUDE.md` / `.gitignore`
 
 ## 3️⃣ セキュリティ関連の GitHub 設定
 
@@ -52,36 +56,47 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 - Settings → Branches → Branch protection on `main`
 - Settings → Security → Dependabot alerts / security updates → **ON**
 
-## 4️⃣ v1 タグを打つ（任意）
+## 4️⃣ ローカルテスト（pytest / bats）
 
-caller テンプレートの既定は `@main` なので，main に commit を積むと次回 PR からすべての `@main` 利用者に反映される．v1 タグは **pinning したい利用者（`@v1` / `@v1.0.0` 参照）向けの opt-in 機能** であり，運用に必須ではない．
-
-安定点（milestone）で pinning 用途に残したい場合は以下のように打つ．
+`scripts/` 配下のロジックを変更したら，まずローカルで単体テストを通す．
 
 ```bash
-gh release create v1 \
+# Python: pytest 5 ケース
+python -m pip install -r tests/python/requirements.txt
+python -m pytest tests/python -v
+
+# Bash: bats 3 ケース．bats は npm 経由が手軽
+npm install --no-save bats
+npx bats tests/bash
+```
+
+GitHub Actions 上でも `.github/workflows/test-self-lint.yml` の `unit-python` / `unit-bash` job が同じ単体テストを，`integration-action` job が composite action の統合テストを走らせる．ローカルが緑でも CI が真の判定．
+
+## 5️⃣ v2 タグを打つ（任意）
+
+caller テンプレートの既定は SHA pin + バージョンコメント（ `@<SHA> # v2` ）．main に commit を積むと SHA pin 利用者には Dependabot 経由で更新 PR が起票される．`@main` 直接参照の利用者には次回 PR から即時反映される．
+
+安定点（milestone）でタグを残したい場合は以下のように打つ．
+
+```bash
+gh release create v2 \
   --target main \
-  --title "v1" \
-  --notes "Initial stable release."
+  --title "v2" \
+  --notes "Initial stable release as composite action."
 ```
 
-`@v1` 参照の利用者に新しい内容を反映させるには `v1` タグを明示的に移動する必要がある．タグは Git 上では特定の commit SHA を指し，main 更新で自動追随しない．
+`@<SHA> # v2` 参照の利用者は SHA pin で固定されているので，タグを移動しても自動で SHA は変わらない．Dependabot の更新 PR を経由する．パッチ追随を opt-in したい場合は `v2.x.y` のような追加タグを別 commit に切る運用が安全．
 
-```bash
-# v1 タグを main の最新へ進める（要注意・オーナー操作）
-git tag -f v1 main
-git push -f origin v1
-```
+> [!WARNING]
+> `v1` タグは reusable workflow 形式で self-detection bug により動作しません．新規セットアップで `v1` を打ち直してはいけません．composite action 形式の v2 以降を採用してください．
 
-タグ移動の前に **影響範囲の確認** と **stakeholder（`@v1` 利用 caller のオーナー）への事前通知** を行うこと．破壊的変更の場合は `v1` を動かさず `v2` を新たに切る（[CLAUDE.md](../CLAUDE.md) 参照）．
-
-## 5️⃣ 動作確認（ダミー caller で）
+## 6️⃣ 動作確認（ダミー caller で）
 
 任意のテストリポジトリを用意し，[docs/onboarding-new-repo.md](onboarding-new-repo.md) に従って caller workflow を配置．PR を作って reviewdog コメントが付くことを確認する．
 
 確認ポイント：
 
-- `Checkout central configs` ステップで自分のリポジトリ名・ref が正しく検出されているか
-- `Resolve config file paths` で期待どおりのパスが出力されているか
+- `Resolve config file paths` ステップで `${GITHUB_ACTION_PATH}/../../../templates/` 配下のパスが解決されているか
+- `Generate runtime textlint config with resolved prh path` で `.textlintrc.runtime.json` が生成されているか
 - reviewdog の markdownlint・textlint コメントが PR に投稿されているか
 - CI ステータスが緑で終わっているか（`fail_on_error: false` のため）

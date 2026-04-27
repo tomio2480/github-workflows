@@ -1,6 +1,6 @@
 version: 2
 
-# GitHub Actions の依存（reusable workflow 内の third-party action）を週次で更新する．
+# GitHub Actions の依存（composite action 内の third-party action）を週次で更新する．
 # SHA ピンしているアクションも Dependabot が自動で PR を起票する．
 #
 # 更新 PR は手動レビューのうえマージする．第三者アクションの挙動変化に注意．

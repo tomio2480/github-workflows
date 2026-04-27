@@ -2,7 +2,7 @@
 
 ## 要約
 
-このリポジトリで Claude Code / Claude Desktop 等の AI エージェントが作業するときの規律．通常の開発規律（`code-quality` / `github-dev` / `docs-quality` Skill）に加え，中央リポジトリとして多数の caller に影響を与える性質に由来するルールをまとめる．`reviewdog` による Bot 型 PR レビューを提供するため，公開運用時のセキュリティ配慮も必須．
+このリポジトリで Claude Code / Claude Desktop 等の AI エージェントが作業するときの規律．通常の開発規律（`code-quality` / `github-dev` / `docs-quality` Skill）に加え，中央リポジトリとして多数の caller に影響を与える性質に由来するルールをまとめる．`reviewdog` による Bot 型 PR レビューを提供するため，公開運用時のセキュリティ配慮も必須．本リポジトリは composite action として配布する形式（v2 以降）．v1 は self-detection bug により動作しません．
 
 ## 目次
 
@@ -15,26 +15,28 @@
 
 ## 📋 このリポジトリの性質
 
-- 複数リポジトリから `workflow_call` で呼び出される再利用可能ワークフローを管理する
-- caller テンプレートの既定は `@main`．`.github/workflows/*.yml` への変更や `templates/` の変更は `@main` 参照の caller に **次回 PR から自動反映** される．`@v1` / `@v1.0.0` pinning 利用者は対象タグを移動するまで反映されない
-- reviewdog で PR inline コメントを投稿するため，caller 側に `pull-requests: write` 権限が必要
+- 複数リポジトリから `uses:` で呼び出される composite action を管理する（v2 以降）
+- caller テンプレートの既定は SHA pin + バージョンコメント（ `@<SHA> # v2` ）．`.github/actions/markdown-lint/action.yml` や `templates/` の変更は SHA pin 利用者に対し Dependabot 経由で更新 PR が起票される．`@main` 直接参照は Dependabot の追随対象外
+- v1 タグ（reusable workflow 形式）は self-detection bug により動作しない．残置はするがリリースノートで非推奨を明示している
+- reviewdog で PR inline コメントを投稿するため，caller 側に `pull-requests: write` 権限と `github-token` input への明示的な渡しが必要
 - 公開（public）運用される．外部からのフォーク PR は原則マージしない
 
 ## 🚨 変更時の注意
 
-### 再利用可能ワークフローの変更
+### composite action の変更
 
-- **破壊的変更は原則タグ付けで管理する**（例：`v1` / `v2`）
-- **呼び出し側が `@v1` / `@main` で参照している前提** を忘れない．意図しない影響を与えない
+- **破壊的変更は原則タグ付けで管理する**（例：`v2` / `v3`）
+- **呼び出し側が SHA pin（ `@<SHA> # v2` ）または `@main` で参照している前提** を忘れない．意図しない影響を与えない
 - 権限は `contents: read` + `pull-requests: write` を基本とし，必要な場合のみ明示的に拡張する
-- `github.workflow_ref` による自己検出ロジックを破壊しないこと（フォーク利用者の動作を壊す）
+- `$GITHUB_ACTION_PATH` ベースの自己検出ロジックを破壊しないこと（caller checkout に依存しない設計）
+- inputs の互換性を変える場合は major version cut を伴う
 - third-party action の参照は **full commit SHA でピン**．タグ参照（`@v1`）への書き換えは供給網リスクを上げるため行わない
 
 ### テンプレート・設定ファイルの変更
 
-- `templates/prh.yml` などは `@main` 参照の caller に次回 PR から反映される．破壊的追加（既存 caller で誤検出が増える恐れ）は注意
-- `@v1` / `@v1.0.0` pinning 利用者に反映したい場合は，影響確認と stakeholder 通知を行ったうえでタグを移動
-- 設定構造そのものの変更は `v2` 相当として扱う
+- `templates/prh.yml` などの中央デフォルト設定は，`@main` 直接参照の caller では即時反映される．SHA pin 利用者には Dependabot 更新 PR を経由して伝わる．破壊的追加（既存 caller で誤検出が増える恐れ）は注意
+- パッチ追随を opt-in する利用者向けに `v2.x.y` タグを切る場合は，影響確認と stakeholder 通知を行う
+- 設定構造そのものの変更（既存 inputs の意味変更や required 化）は次の major version 相当として扱う
 - 変更は `docs/` の手順にも反映する．とくに [docs/architecture.md](docs/architecture.md) と [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md) の記述が古くならないこと
 
 ### ドキュメントの変更
@@ -57,12 +59,13 @@
 
 - `git push` は指示があるまで絶対に行わない
 - Pull Request は **必ず Draft** で作成する
-- ワークフローの変更は `act` 等でローカル検証，またはテスト用リポジトリから呼び出して動作確認する
-- コミットは論理単位で分ける（ワークフロー変更／テンプレ変更／ドキュメント更新 など）
+- ワークフローおよび composite action の変更は `act` 等でローカル検証，またはテスト用リポジトリから呼び出して動作確認する．本リポジトリには [.github/workflows/test-self-lint.yml](.github/workflows/test-self-lint.yml) で composite action の単体／統合テストが組まれている
+- `scripts/` 配下に新規ロジックを追加する場合は `tests/` で test-first で書く．Red → Green → Refactor の順を守る
+- コミットは論理単位で分ける（テスト追加／実装／テンプレ変更／ドキュメント更新 など）
 
 ## 🔀 フォーク利用と OWNER プレースホルダー
 
-- reusable workflow 本体は **オーナー名をハードコードしない**．`github.workflow_ref` から自己検出する設計
+- composite action 本体は **オーナー名をハードコードしない**．`$GITHUB_ACTION_PATH` から自リポジトリのチェックアウト先絶対パスを取得し，そこから中央 templates へ相対参照する設計
 - `templates/.github/workflows/md-lint.yml` には `OWNER/github-workflows` プレースホルダーを残す．`tomio2480` 直接利用者もフォーク利用者も同じテンプレを使える
 - ドキュメントやコメントで例として `tomio2480` を使うのは OK．ただし「フォーク利用時はここを自分のユーザー名に」と必ず注意書きする
 
