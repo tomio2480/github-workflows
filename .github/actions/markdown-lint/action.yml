@@ -132,12 +132,18 @@ runs:
         # textlint が rule package を caller の cwd から解決できないため NODE_PATH を tmpdir に向ける．
         export NODE_PATH="${TEXTLINT_MODULES}:${NODE_PATH:-}"
         # textlint は非ゼロ終了で指摘を出すため `|| true` で吸収し，checkstyle 出力を reviewdog に渡す
-        textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml 2> textlint-stderr.log || true
+        textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml 2> textlint-stderr.log
+        TEXTLINT_EXIT=$?
         if [ -s textlint-stderr.log ]; then
-          echo "::group::textlint stderr"
+          echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"
           cat textlint-stderr.log
           echo "::endgroup::"
         fi
+        REPORT_SIZE=$(wc -c < textlint-report.xml || echo 0)
+        echo "::group::textlint-report.xml (size=${REPORT_SIZE} bytes, exit=${TEXTLINT_EXIT})"
+        cat textlint-report.xml
+        echo
+        echo "::endgroup::"
         # 空 / EOF 等で reviewdog parse error にならないよう，最小限の checkstyle ガードを入れる
         if [ ! -s textlint-report.xml ]; then
           echo '<?xml version="1.0" encoding="UTF-8"?><checkstyle version="4.3"></checkstyle>' > textlint-report.xml
