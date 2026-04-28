@@ -127,14 +127,30 @@ runs:
         TEXTLINT_MODULES: ${{ steps.textlint_install.outputs.modules }}
       run: |
         set -uo pipefail
-        # tmpdir に install した textlint を PATH 先頭で使う．caller の node_modules は参照しない．
-        export PATH="${TEXTLINT_BIN}:${PATH}"
-        # textlint が rule package を caller の cwd から解決できないため NODE_PATH を tmpdir に向ける．
-        export NODE_PATH="${TEXTLINT_MODULES}:${NODE_PATH:-}"
+        # caller の cwd（リポジトリルート）を保持．report 出力先として使う
+        CALLER_CWD="$(pwd)"
+        TEXTLINT_CONFIG_ABS="$(realpath "${TEXTLINT_CONFIG}")"
+        # bash の globstar を使って caller cwd 上で MARKDOWN_GLOB を絶対パスに展開する．
+        # textlint を tmpdir 内で実行する以上，相対パスのまま渡すと caller のファイルが見つからない．
+        shopt -s globstar nullglob
+        abs_files=()
+        for f in ${MARKDOWN_GLOB}; do
+          abs_files+=("$(realpath "$f")")
+        done
+        shopt -u globstar nullglob
         # textlint は指摘を見つけると非ゼロ終了する．GitHub Actions の bash は -e 付きで起動するため
         # 終了コードは `|| TEXTLINT_EXIT=$?` で捕捉し，後続の reviewdog に渡せるようにする
         TEXTLINT_EXIT=0
-        textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml 2> textlint-stderr.log || TEXTLINT_EXIT=$?
+        if [ ${#abs_files[@]} -eq 0 ]; then
+          echo "::warning::No Markdown files matched ${MARKDOWN_GLOB}"
+          : > textlint-report.xml
+          : > textlint-stderr.log
+        else
+          # tmpdir の親で実行することで textlint の require が tmpdir/node_modules を解決する
+          (cd "${TEXTLINT_MODULES}/.." && \
+            "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG_ABS}" "${abs_files[@]}" \
+            > "${CALLER_CWD}/textlint-report.xml" 2> "${CALLER_CWD}/textlint-stderr.log") || TEXTLINT_EXIT=$?
+        fi
         if [ -s textlint-stderr.log ]; then
           echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"
           cat textlint-stderr.log
