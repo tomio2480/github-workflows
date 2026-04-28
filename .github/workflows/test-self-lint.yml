@@ -1,0 +1,76 @@
+name: Self test (composite action)
+
+# composite action の TDD 検証用 CI workflow．
+#
+# 3 jobs:
+#   - unit-python: scripts/generate-textlint-runtime.py の pytest
+#   - unit-bash: scripts/resolve-config-path.sh の bats
+#   - integration-action: ./.github/actions/markdown-lint を fixture に対して走らせる
+#
+# integration-action は reviewdog で PR inline コメントを投稿するため pull_request のみで動く．
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  unit-python:
+    name: Python script unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # actions/checkout v4.3.0
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Python
+        # actions/setup-python v6.2.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.x"
+
+      - name: Install pytest
+        run: pip install -r tests/python/requirements.txt
+
+      - name: Run pytest
+        run: python -m pytest tests/python -v
+
+  unit-bash:
+    name: Bash script unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # actions/checkout v4.3.0
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Run bats
+        run: bats tests/bash
+
+  integration-action:
+    name: Composite action integration on fixtures
+    runs-on: ubuntu-latest
+    needs:
+      - unit-python
+      - unit-bash
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        # actions/checkout v4.3.0
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Run composite action against fixtures
+        uses: ./.github/actions/markdown-lint
+        with:
+          markdown-glob: "tests/fixtures/markdown/**/*.md"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-error: "false"

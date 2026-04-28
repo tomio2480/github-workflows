@@ -1,0 +1,175 @@
+name: "Markdown Lint (composite action)"
+description: "reviewdog で markdownlint と textlint を caller 側 PR に inline コメントとして投稿する composite action"
+
+# 設計のポイント:
+#   - $GITHUB_ACTION_PATH 経由で action 自身のチェックアウト先絶対パスを取り，中央 templates へ
+#     アクセスする．`actions/checkout` での自リポジトリ二重取得は不要．
+#   - 呼び出し側に設定ファイル（.markdownlint-cli2.yaml / .textlintrc.json / prh.yml）があれば
+#     そちらを優先する．無ければ中央 templates の同名ファイルを使う．
+#   - third-party action は full commit SHA でピンする．
+#   - reviewdog の PR レビュー投稿には GITHUB_TOKEN が必要なため caller から `github-token`
+#     input で明示的に受け取る．composite では secrets.* が使えないため．
+
+inputs:
+  node-version:
+    description: "利用する Node.js のバージョン（デフォルトは Active LTS）"
+    default: "24"
+  markdown-glob:
+    description: "lint 対象の glob パターン"
+    default: "**/*.md"
+  filter-mode:
+    description: "reviewdog のフィルタモード（added / diff_context / file / nofilter）"
+    default: "added"
+  level:
+    description: "reviewdog のレベル（info / warning / error）"
+    default: "warning"
+  fail-on-error:
+    description: "lint 指摘で job を失敗させるか．false なら指摘では失敗しない（checkout/setup 等の実行エラーは通常どおり失敗）"
+    default: "false"
+  github-token:
+    description: "reviewdog が PR レビューコメント投稿に使う GitHub token．caller 側で secrets.GITHUB_TOKEN を with で渡す"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve config file paths
+      id: cfg
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        # action_path = .../.github/actions/markdown-lint
+        # repo root   = action_path/../../..
+        # templates   = repo root/templates
+        REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
+        TEMPLATES="${REPO_ROOT}/templates"
+        RESOLVE="${REPO_ROOT}/scripts/resolve-config-path.sh"
+
+        MDLINT_CFG="$(bash "${RESOLVE}" .markdownlint-cli2.yaml "${TEMPLATES}")"
+        TEXTLINT_CFG="$(bash "${RESOLVE}" .textlintrc.json "${TEMPLATES}")"
+        PRH_CFG="$(bash "${RESOLVE}" prh.yml "${TEMPLATES}")"
+
+        echo "mdlint=${MDLINT_CFG}" >> "${GITHUB_OUTPUT}"
+        echo "textlint=${TEXTLINT_CFG}" >> "${GITHUB_OUTPUT}"
+        echo "prh=${PRH_CFG}" >> "${GITHUB_OUTPUT}"
+        echo "markdownlint config: ${MDLINT_CFG}"
+        echo "textlint config:     ${TEXTLINT_CFG}"
+        echo "prh dictionary:      ${PRH_CFG}"
+
+    - name: Generate runtime textlint config with resolved prh path
+      id: textlint_runtime
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SRC: ${{ steps.cfg.outputs.textlint }}
+        PRH: ${{ steps.cfg.outputs.prh }}
+      run: |
+        set -euo pipefail
+        REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
+        # caller cwd に依存せず確実に共有できる RUNNER_TEMP 配下に絶対パスで書き出す．
+        DEST="${RUNNER_TEMP}/textlintrc.runtime.json"
+        python3 "${REPO_ROOT}/scripts/generate-textlint-runtime.py" "${SRC}" "${PRH}" "${DEST}"
+        echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
+
+    - name: Setup Node.js
+      # actions/setup-node v4.4.0
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Run markdownlint with reviewdog
+      # reviewdog/action-markdownlint v0.26.2
+      uses: reviewdog/action-markdownlint@3667398db9118d7e78f7a63d10e26ce454ba5f58
+      with:
+        github_token: ${{ inputs.github-token }}
+        reporter: github-pr-review
+        level: ${{ inputs.level }}
+        # fail_on_error は v0.26.0 で deprecated．boolean 入力を fail_level の文字列にマップする．
+        # fail-on-error=true のとき，`level` 以上の指摘で job を失敗させる．
+        fail_level: ${{ inputs.fail-on-error == 'true' && inputs.level || 'none' }}
+        filter_mode: ${{ inputs.filter-mode }}
+        markdownlint_flags: '--config ${{ steps.cfg.outputs.mdlint }} "${{ inputs.markdown-glob }}" "#node_modules"'
+
+    - name: Setup reviewdog
+      # reviewdog/action-setup v1.5.0
+      uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f
+      with:
+        # reviewdog 本体は再現性のため tag を固定．Dependabot の対象外なため version up は別 issue で扱う．
+        reviewdog_version: v0.21.0
+
+    - name: Install textlint and rule packages (isolated in tmpdir)
+      # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
+      #
+      # textlint は v14 系に固定する．textlint v15 は preset 側に ESM/exports field を要求する
+      # ため，現状 CommonJS の textlint-rule-preset-ja-technical-writing v12 系と組み合わせると
+      # rule が読み込まれず "No rules found" 状態になる．preset 側の対応を待つ間 v14 系で運用する．
+      #
+      # textlint-filter-rule-comments は中央 .textlintrc.json の filters.comments: true に対応する
+      # 必須依存．これが install されていないと @textlint/config-loader の loadFilterRules で
+      # ReferenceError が発生し，TextlintrcLoader.js が ok:false を受けて空 rule で fallback する．
+      # 結果として rules セクションも含めて全 rule が silent に破棄され "No rules found" になる．
+      id: textlint_install
+      shell: bash
+      run: |
+        set -euo pipefail
+        TMP="$(mktemp -d)"
+        (cd "${TMP}" && npm install --no-save --no-package-lock \
+          'textlint@^14' \
+          textlint-rule-preset-ja-technical-writing \
+          textlint-rule-preset-ja-spacing \
+          textlint-rule-prh \
+          textlint-filter-rule-comments)
+        echo "bin=${TMP}/node_modules/.bin" >> "${GITHUB_OUTPUT}"
+        echo "modules=${TMP}/node_modules" >> "${GITHUB_OUTPUT}"
+        echo "Installed under: ${TMP}"
+
+    - name: Run textlint with reviewdog
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
+        TEXTLINT_CONFIG: ${{ steps.textlint_runtime.outputs.config }}
+        MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
+        RD_LEVEL: ${{ inputs.level }}
+        RD_FILTER_MODE: ${{ inputs.filter-mode }}
+        RD_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        TEXTLINT_BIN: ${{ steps.textlint_install.outputs.bin }}
+        TEXTLINT_MODULES: ${{ steps.textlint_install.outputs.modules }}
+      run: |
+        set -uo pipefail
+        # NODE_PATH に tmpdir/node_modules を加えて，textlint の require が rule package を
+        # CommonJS 解決経路で引けるようにする．caller の既存 node_modules があってもそちらを
+        # 優先する仕様のため上書き汚染しない．
+        export NODE_PATH="${TEXTLINT_MODULES}:${NODE_PATH:-}"
+        # textlint は指摘を見つけると非ゼロ終了する．GitHub Actions の bash は -e 付きで起動するため
+        # 終了コードは `|| TEXTLINT_EXIT=$?` で捕捉し，後続の reviewdog に渡せるようにする．
+        TEXTLINT_EXIT=0
+        "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" \
+          > textlint-report.xml 2> textlint-stderr.log || TEXTLINT_EXIT=$?
+        if [ -s textlint-stderr.log ]; then
+          echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"
+          cat textlint-stderr.log
+          echo "::endgroup::"
+        fi
+        # 「実行失敗」と「指摘なし」を区別する．
+        # textlint は指摘ありで非ゼロ終了するが，その場合は checkstyle XML に findings が書かれている．
+        # 一方 rule 解決失敗等の execution error では report が空のまま非ゼロ終了するため，
+        # `exit != 0 かつ report が空` のケースだけ step 自体を失敗扱いにする．
+        if [ "${TEXTLINT_EXIT}" -ne 0 ] && [ ! -s textlint-report.xml ]; then
+          echo "::error::textlint exited with ${TEXTLINT_EXIT} and produced no report; treating as execution failure"
+          exit "${TEXTLINT_EXIT}"
+        fi
+        # 「指摘なし」のケース（exit=0 かつ report が空）では reviewdog parse error 回避のため
+        # 最小限の空 checkstyle XML を補う．
+        if [ ! -s textlint-report.xml ]; then
+          echo '<?xml version="1.0" encoding="UTF-8"?><checkstyle version="4.3"></checkstyle>' > textlint-report.xml
+        fi
+        reviewdog \
+          -f=checkstyle \
+          -name="textlint" \
+          -reporter=github-pr-review \
+          -level="${RD_LEVEL}" \
+          -fail-on-error="${RD_FAIL_ON_ERROR}" \
+          -filter-mode="${RD_FILTER_MODE}" \
+          < textlint-report.xml

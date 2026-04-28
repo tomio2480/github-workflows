@@ -2,15 +2,16 @@
 
 ## 要約
 
-本リポジトリの再利用可能ワークフローが，caller リポジトリ・中央リポジトリ・reviewdog とどのように連携して PR に inline コメントを付けているかを説明する．自己検出による OWNER 非依存，設定ファイルの解決順序，および override のしくみを明らかにする．
+本リポジトリの composite action（v2 以降）が，caller リポジトリ・中央リポジトリ・reviewdog とどのように連携して PR に inline コメントを付けているかを説明する．`$GITHUB_ACTION_PATH` を起点とする自己検出による OWNER 非依存，設定ファイルの解決順序，override のしくみ，テスト戦略を明らかにする．
 
 ## 目次
 
 - 🗺 全体の流れ
-- 🔍 自己検出のしくみ（`github.workflow_ref`）
+- 🔍 自己検出のしくみ（`$GITHUB_ACTION_PATH`）
 - 📁 設定ファイルの解決順序
 - 🐶 reviewdog の挙動
-- 🔀 caller → reusable → reviewdog のデータフロー
+- 🔀 caller → composite action → reviewdog のデータフロー
+- 🧪 テスト戦略
 - 🧪 トラブルシューティング
 
 ## 🗺 全体の流れ
@@ -23,54 +24,56 @@
   ▼
 対象リポジトリ（caller）
   │ .github/workflows/md-lint.yml が on: pull_request で起動
-  │ uses: OWNER/github-workflows/.github/workflows/markdown-lint.yml@main
+  │ 1. actions/checkout で caller 自身を checkout
+  │ 2. uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2
   ▼
-再利用可能ワークフロー（本リポジトリ）
-  │ 1. caller repo を checkout
-  │ 2. github.workflow_ref を解析して SELF_REPO / SELF_REF を抽出
-  │ 3. SELF_REPO を .central-workflows/ へ checkout
-  │ 4. caller に config があれば優先，なければ中央の templates/ を使う
-  │ 5. textlint 用 runtime config を生成（prh のパスを解決）
-  │ 6. Node.js setup
-  │ 7. reviewdog/action-markdownlint → PR レビューコメント
-  │ 8. tsuyoshicho/action-textlint → PR レビューコメント
+composite action（本リポジトリ）
+  │ 1. $GITHUB_ACTION_PATH から中央 templates の絶対パスを解決
+  │ 2. caller root に config があれば優先，無ければ中央 templates/ を採用
+  │ 3. scripts/generate-textlint-runtime.py で prh の絶対パスを埋め込んだ
+  │    .textlintrc.runtime.json を生成
+  │ 4. Node.js setup
+  │ 5. reviewdog/action-markdownlint → PR レビューコメント
+  │ 6. textlint を tmpdir に install して実行 → reviewdog で PR レビューコメント
   ▼
 PR の該当行に inline コメントが付く
-lint 指摘では job を失敗させない（fail_on_error: false）．checkout・設定解決・setup 等の実行エラーは通常どおり失敗する
+lint 指摘では job を失敗させない（fail_on_error: false）．設定解決・setup 等の実行エラーは通常どおり失敗する
 ```
 
-上図の `OWNER` は利用する中央リポジトリのオーナーに置換する．tomio2480 を直接利用する場合は `tomio2480`，フォーク運用では自分の GitHub ユーザー名．`@main` は既定で最新を追随する参照．pinning は `@v1` や `@v1.0.0` へ差し替えて opt-in する．
+上図の `OWNER` は利用する中央リポジトリのオーナーに置換する．tomio2480 を直接利用する場合は `tomio2480`，フォーク運用では自分の GitHub ユーザー名．`<SHA>` は利用したい commit．バージョンコメント `# v2` を併記すると Dependabot が SHA とバージョンを自動追随する．
 
 表 1: 参照方式ごとの挙動
 
 | 参照形式 | 挙動 | 推奨用途 |
 |---|---|---|
-| `@main` | main の最新 commit を参照．中央の辞書・ルール更新が次回 PR から即反映 | 既定．個人／軽量運用 |
-| `@v1` | `v1` タグが指す commit．中央が明示的に移動した時のみ反映 | 破壊的変更を避けたい利用者 |
-| `@v1.0.0` | 不変．特定 commit 固定 | 完全再現性が必要な CI |
+| `@<SHA> # v2` | 指定 SHA を参照．Dependabot が SHA とバージョンを更新 PR で起票 | 既定．推奨 |
+| `@main` | main の最新 commit を参照．中央の辞書・ルール更新が次回 PR から即反映．Dependabot 追随なし | 即時反映を優先する個人運用 |
+| `@<SHA> # v2.0.0` | 不変．パッチ追随も止めて完全固定 | 完全再現性が必要な CI |
+| `@v1` / `@v1.0.0` | self-detection bug により動作しない（v1 系は reusable workflow 形式） | 利用しない |
 
-## 🔍 自己検出のしくみ（`github.workflow_ref`）
+## 🔍 自己検出のしくみ（`$GITHUB_ACTION_PATH`）
 
-reusable workflow から自リポジトリを checkout するとき，オーナー名やブランチをハードコードすると「フォーク利用者がワークフロー本体を書き換える」必要が出る．これを避けるため，GitHub Actions が提供する `github.workflow_ref` コンテキストから自分の場所を動的に取得する．
+composite action から中央 templates にアクセスするとき，オーナー名やブランチをハードコードすると「フォーク利用者が action 本体を書き換える」必要が出る．これを避けるため，GitHub Actions が composite action に提供する `github.action_path`（環境変数 `$GITHUB_ACTION_PATH`）から自分のチェックアウト先絶対パスを取り，そこからの相対参照で中央 templates にアクセスする．
 
-`github.workflow_ref` の値例：
+`$GITHUB_ACTION_PATH` の値例（runner 上）：
 
+```text
+/home/runner/work/_actions/tomio2480/github-workflows/<sha>/.github/actions/markdown-lint
 ```
-tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
-```
 
-`@` 手前をスラッシュで分解すると `OWNER/REPO/PATH`，`@` 以降が ref になる．ワークフロー内の `Detect self repository and ref` ステップで以下を取得する．
+action.yml は `.github/actions/markdown-lint/` に置かれているため，`${GITHUB_ACTION_PATH}/../../../` がリポジトリルート，さらに `templates/` を結合すれば中央 templates ディレクトリが得られる．
 
 表 2: 自己検出で得られる値
 
 | 変数 | 値の例 | 用途 |
 |---|---|---|
-| `SELF_REPO` | `tomio2480/github-workflows` | 設定 checkout の `repository:` |
-| `SELF_REF` | `refs/heads/main` / `refs/tags/v1` | 設定 checkout の `ref:` |
+| `$GITHUB_ACTION_PATH` | `/.../tomio2480/github-workflows/<sha>/.github/actions/markdown-lint` | リポジトリルート起点 |
+| `${GITHUB_ACTION_PATH}/../../../templates` | 同上 + `templates/` | 中央 templates 絶対パス |
+| `${GITHUB_ACTION_PATH}/../../../scripts` | 同上 + `scripts/` | 抽出済みスクリプトの絶対パス |
 
-`inputs.central-ref` で明示的に上書きもできる（テストや過去バージョンを意図的に参照したい場合）．
+`actions/checkout` での中央 repo の二重取得は不要．caller workflow 側で 1 度だけ caller repo を checkout すれば，composite action は GitHub Actions が自動展開した自リポジトリ全体にアクセスできる．
 
-これにより **フォーク運用者は reusable workflow 本体を触らなくてよい**．`alice/github-workflows` から呼び出されれば `alice/github-workflows` の設定が，`bob/github-workflows@v2` から呼び出されれば `bob/github-workflows@v2` の設定が自動で使われる．
+これにより **フォーク運用者は composite action 本体を触らなくてよい**．`alice/github-workflows@<sha>` から呼び出されれば `alice/github-workflows` の templates が，`bob/github-workflows@<sha>` から呼び出されれば `bob/github-workflows` の templates が自動で使われる．
 
 ## 📁 設定ファイルの解決順序
 
@@ -112,26 +115,41 @@ tomio2480/github-workflows/.github/workflows/markdown-lint.yml@refs/heads/main
 
 `filter-mode` を `nofilter` にすれば既存ファイルの全指摘が PR に流れる．棚卸し用の一時的設定として caller 側で上書き可能．
 
-`reporter` を `github-check` に切り替えれば PR でないイベント（push など）でも lint 結果を check として表示できるが，本リポジトリのデフォルトは `github-pr-review` のみ対応．push 起動で lint したい場合は caller 側で `on: push` トリガーを追加し，本 reusable workflow を改修するか caller 内で処理を書くことになる．
+`reporter` を `github-check` に切り替えれば PR でないイベント（push など）でも lint 結果を check として表示できるが，本リポジトリのデフォルトは `github-pr-review` のみ対応．push 起動で lint したい場合は caller 側で `on: push` トリガーを追加し，本 composite action を改修するか caller 内で処理を書くことになる．
 
 `github-check` reporter を使う場合は caller workflow の `permissions` に **`checks: write` を追加** する必要がある．デフォルトの `github-pr-review` では `pull-requests: write` のみでよいが，check 作成権限は別枠のため付け忘れると権限エラーで失敗する．
 
-## 🔀 caller → reusable → reviewdog のデータフロー
+## 🔀 caller → composite action → reviewdog のデータフロー
 
-1. caller の `.github/workflows/md-lint.yml` が `pull_request` などで起動し，job の `uses:` で本 reusable を呼び出す（`workflow_call` は reusable 側のトリガー）
-2. reusable 側の job 内で使う `GITHUB_TOKEN` は **caller のジョブトークン**（本リポジトリのトークンではない）．reviewdog が PR コメントを投稿する先は caller の PR
-3. reusable 側の `permissions: contents: read, pull-requests: write` は caller から継承される．caller 側で `permissions:` を明記しないと reviewdog がコメント投稿権限を得られず失敗する．また **外部フォークからの PR では GitHub の制限により `GITHUB_TOKEN` が read-only になり，reviewdog は inline コメントを投稿できない**（本プロジェクトは安全性の観点で `pull_request_target` を使わない方針のため．詳細は [docs/security.md](security.md) 参照）
+1. caller の `.github/workflows/md-lint.yml` が `pull_request` などで起動し，job 内の step で本 composite action を `uses:` で呼び出す
+2. composite action 内で使う GitHub token は **caller が `inputs.github-token` 経由で明示的に渡したトークン**（通常は `${{ secrets.GITHUB_TOKEN }}` ）．composite action では `secrets.*` の自動継承が効かないため input で受け渡す必要がある．reviewdog が PR コメントを投稿する先は caller の PR
+3. caller workflow 側に `permissions: contents: read, pull-requests: write` を明記しないと reviewdog がコメント投稿権限を得られず失敗する．また **外部フォークからの PR では GitHub の制限により `GITHUB_TOKEN` が read-only になり，reviewdog は inline コメントを投稿できない**（本プロジェクトは安全性の観点で `pull_request_target` を使わない方針のため．詳細は [docs/security.md](security.md) 参照）
 4. reviewdog action は内部で `github-pr-review` reporter を使い，PR number とトークンから REST/GraphQL で review comment を投稿する
+
+## 🧪 テスト戦略
+
+本リポジトリは composite action の品質保証として 3 層のテストを持つ．
+
+表 5: テスト 3 層
+
+| 層 | 対象 | 道具 | 配置 | 実行 |
+|---|---|---|---|---|
+| 単体 | `scripts/` の Python / Bash ロジック | pytest / bats-core | `tests/python/` / `tests/bash/` | ローカル `pytest` / `bats`，CI の `unit-python` / `unit-bash` job |
+| 統合 | composite action の step 連携 | `./.github/actions/markdown-lint` の local 参照 | `tests/fixtures/markdown/` + `.github/workflows/test-self-lint.yml` の `integration-action` job | CI で PR 起動時 |
+| E2E | composite action から reviewdog 投稿まで | canary repo（picoruby-tea5767 等）からの実 PR | caller 側 | リリース前の手動確認 |
+
+`scripts/` 配下にロジックを追加する際は test-first（Red → Green → Refactor）を守る．テストを通すためにテストを緩めない．
 
 ## 🧪 トラブルシューティング
 
-表 5: よくある失敗と対処
+表 6: よくある失敗と対処
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| reviewdog がコメントを投稿しない | caller 側の `permissions: pull-requests: write` がない | caller workflow に `permissions` ブロックを追加 |
+| reviewdog がコメントを投稿しない | caller 側の `permissions: pull-requests: write` がない，または `github-token` input を渡し忘れ | caller workflow に `permissions` ブロックを追加し，`with: github-token: ${{ secrets.GITHUB_TOKEN }}` を渡す |
 | 外部フォークからの PR だけ reviewdog が投稿しない | GitHub の fork PR セキュリティ制限で `GITHUB_TOKEN` が read-only | 仕様．`pull_request_target` は供給網リスクから採用しない方針のため対処しない．base repo にブランチを切って PR を出し直せば投稿される |
 | 設定ファイルが見つからない旨のエラー | override ファイル名の typo | `.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml` の正確な名前を確認 |
+| `@v1` を pin した caller が `FileNotFoundError` で落ちる | v1 系（reusable workflow 形式）は self-detection bug により動作しない | v2 以降の composite action 形式へ移行する．caller を `@<SHA> # v2` 形式に書き換える |
 | 既存ファイルで PR が指摘で埋まる | `filter-mode` が `nofilter` になっている | デフォルト `added` に戻すか caller 側で明示 |
 | third-party action が動かない | アクションのリポジトリ削除や実行環境（Node.js バージョン等）の互換性欠如 | Dependabot PR を確認して最新 SHA に更新 |
-| self-lint が動かない | 本リポジトリ自体では reusable を呼び出していない | 必要なら別 caller workflow を本リポジトリに追加する |
+| 統合テストが落ちる | `scripts/` の単体テストが先に落ちている可能性 | まず `pytest tests/python` と `bats tests/bash` を確認 |

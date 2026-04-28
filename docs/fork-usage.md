@@ -2,13 +2,16 @@
 
 ## 要約
 
-`tomio2480/github-workflows` を自分のアカウントへフォークして運用するための手順．フォーク後に reusable workflow 本体（`.github/workflows/markdown-lint.yml`）を書き換える必要はない．自己検出ロジックにより，どのオーナーから呼び出されても自動的に正しい設定が読み込まれる．利用者が触るのは caller workflow の `OWNER` プレースホルダー置換と `v1` タグ管理のみ．
+`tomio2480/github-workflows` を自分のアカウントへフォークして運用するための手順．フォーク後に composite action 本体（`.github/actions/markdown-lint/action.yml`）を書き換える必要はない．`$GITHUB_ACTION_PATH` ベースの自己検出ロジックにより，どのオーナーから呼び出されても自動的に正しい設定が読み込まれる．利用者が触るのは caller workflow の `OWNER` プレースホルダー置換と SHA pin（または `v2` タグ）管理のみ．
+
+> [!IMPORTANT]
+> 本ドキュメント中の例で示している `tomio2480/github-workflows` はそのままコピペせず，フォーク利用時は **`OWNER` 部分を必ず自分の GitHub ユーザー名に置き換えてください** ．caller workflow（`templates/.github/workflows/md-lint.yml`）の `uses:` に出てくる `OWNER` プレースホルダーが置換対象です．
 
 ## 目次
 
 - 🎯 フォーク運用に向いているケース
 - 1️⃣ フォークを作成
-- 2️⃣ v1 タグを打つ
+- 2️⃣ v2 タグを打つ
 - 3️⃣ 対象 repo の caller で自分のフォークを参照
 - 4️⃣ 上流（tomio2480）との同期
 - 5️⃣ 辞書・ルールの独自カスタム
@@ -33,20 +36,23 @@ gh repo fork tomio2480/github-workflows --clone=false
 
 UI から行う場合は GitHub の `https://github.com/tomio2480/github-workflows` で Fork ボタン．
 
-## 2️⃣ v1 タグを打つ（任意）
+## 2️⃣ v2 タグを打つ（任意）
 
-caller テンプレートの既定は `@main` なので，フォーク直後からそのまま運用可能．タグは **pinning 利用者（`@v1` / `@v1.0.0`）向けの opt-in** なので，必要になったタイミングで打てばよい．
+caller テンプレートの既定は SHA pin + バージョンコメント（ `@<SHA> # v2` ）．フォーク直後でも commit SHA さえ控えれば即運用可能．タグは Dependabot の major version 追随や release notes 管理を簡単にしたい場合に opt-in で打つ．
 
 ```bash
-# pinning 利用者が出たら（安定点での milestone として）
-gh release create v1 \
+# 安定点での milestone として（推奨）
+gh release create v2 \
   --repo YOUR_USERNAME/github-workflows \
   --target main \
-  --title "v1" \
-  --notes "Forked from tomio2480/github-workflows"
+  --title "v2" \
+  --notes "Forked from tomio2480/github-workflows v2 (composite action)"
 ```
 
-`@main` 参照の caller は main 更新に自動で追随するため，タグを打たなくても最新ルールは届く．破壊的変更をする場合は `@main` 利用者にも影響するので事前に周知し，pinning 利用者を増やしたいときのみ `v1` タグを用意する．さらに破壊的変更を重ねる場合は `v2` を新規に切って `v1` は旧状態で残す．
+`@main` 参照の caller は main 更新に自動で追随するため，タグを打たなくても最新ルールは届く．破壊的変更（inputs 互換性の変更など）をする場合は `@main` 利用者にも影響するので事前に周知し，pinning 利用者を増やしたいときのみ `v2` タグを用意する．さらに破壊的変更を重ねる場合は `v3` を新規に切って `v2` は旧状態で残す．
+
+> [!WARNING]
+> 上流の `v1` タグ（reusable workflow 形式）は self-detection bug により動作しません．フォークしても `v1` タグを引き継いだり打ち直したりしないでください．composite action 形式の v2 以降を採用してください．
 
 ## 3️⃣ 対象 repo の caller で自分のフォークを参照
 
@@ -64,11 +70,11 @@ curl -fsSL \
 cat .github/workflows/md-lint.yml
 ```
 
-`uses: YOUR_USERNAME/github-workflows/.github/workflows/markdown-lint.yml@main` になっていればよい．pinning したい repo だけ `@main` を `@v1` や `@v1.0.0` に書き換える．
+テンプレートの `uses:` 行は `OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2` 形式で出力される．`OWNER` を `YOUR_USERNAME` に，`<SHA>` をフォーク先の commit SHA に置換すれば caller として完成．即時反映を優先したい repo だけ `@<SHA>` 部分を `@main` に書き換える．
 
 ## 4️⃣ 上流（tomio2480）との同期
 
-上流の更新（reusable workflow 改修・辞書追加など）を取り込むときの手順．
+上流の更新（composite action 改修・辞書追加など）を取り込むときの手順．
 
 main への直接 push はしない．独自変更の有無にかかわらず **同期ブランチ + Draft PR** で取り込む．
 
@@ -89,19 +95,19 @@ git merge upstream/main
 # gh pr create --draft --title "Sync upstream main" --body "..."
 ```
 
-main にマージされると `@main` 参照の caller には次回 PR から新しい内容が反映される．
+main にマージされると `@main` 参照の caller には次回 PR から新しい内容が反映される．SHA pin 利用者は Dependabot の更新 PR を経由して取り込むため自動的に追随する．
 
 ```bash
-# pinning 利用者（@v1）にも反映したい場合（要注意・事前通知必須）
-git tag -f v1 main
-git push -f origin v1
+# pinning 利用者（@v2 のような major tag）にも反映したい場合（要注意・事前通知必須）
+git tag -f v2 main
+git push -f origin v2
 ```
 
-`-f` と `--force` はオーナー操作．pinning 利用している caller の影響範囲を確認し，stakeholder（caller repo のオーナー）に事前通知したうえで実施する．
+`-f` と `--force` はオーナー操作．pinning 利用している caller の影響範囲を確認し，stakeholder（caller repo のオーナー）に事前通知したうえで実施する．パッチ追随を opt-in したい場合は `v2.x.y` のような追加タグを別 commit に切る運用が安全．
 
 ## 5️⃣ 辞書・ルールの独自カスタム
 
-フォーク先で `templates/prh.yml` 等を自由に編集すればよい．caller は変更なしで，`@main` 参照なら次回 PR から新辞書が効く．`@v1` / `@v1.0.0` pinning 利用者向けには別途タグ移動が必要．
+フォーク先で `templates/prh.yml` 等を自由に編集すればよい．caller は変更なしで，`@main` 参照なら次回 PR から新辞書が効く．SHA pin 利用者には Dependabot の更新 PR で伝わる．
 
 表 1: 主なカスタム箇所
 
@@ -110,9 +116,9 @@ git push -f origin v1
 | `templates/prh.yml` | 組織固有の用語・プロダクト名の表記ゆれ |
 | `templates/.textlintrc.json` | `sentence-length.max`，`preferInBody` など組織の文体方針 |
 | `templates/.markdownlint-cli2.yaml` | 組織として許容したい記法 |
-| `.github/workflows/markdown-lint.yml` | reviewdog の reporter / filter mode のデフォルト変更 |
+| `.github/actions/markdown-lint/action.yml` | reviewdog の reporter / filter mode のデフォルト変更や step 追加 |
 
-破壊的変更（既存 caller で急に指摘が増えるなど）を入れるときは新メジャータグ（`v2`）を切り，caller 側で `@v2` へ切り替えてもらう運用にする．
+破壊的変更（既存 caller で急に指摘が増える，inputs の互換性が変わるなど）を入れるときは新メジャータグ（`v3`）を切り，caller 側で `@<新 SHA> # v3` へ切り替えてもらう運用にする．
 
 ## 📚 参考
 
