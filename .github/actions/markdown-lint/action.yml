@@ -27,7 +27,7 @@ inputs:
     description: "lint 指摘で job を失敗させるか．false なら指摘では失敗しない（checkout/setup 等の実行エラーは通常どおり失敗）"
     default: "false"
   github-token:
-    description: "reviewdog が PR レビューコメント投稿に使う GitHub token．通常は ${{ secrets.GITHUB_TOKEN }} を渡す"
+    description: "reviewdog が PR レビューコメント投稿に使う GitHub token．caller 側で secrets.GITHUB_TOKEN を with で渡す"
     required: true
 
 runs:
