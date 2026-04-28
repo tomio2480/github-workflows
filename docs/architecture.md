@@ -19,7 +19,7 @@
 
 図 1: PR 作成から PR コメントまでの流れ（データ flow）
 
-```
+```text
 開発者
   │ git push + Pull Request 作成
   ▼
