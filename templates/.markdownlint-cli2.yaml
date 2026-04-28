@@ -35,3 +35,7 @@ ignores:
   - "build"
   - "coverage"
   - "CHANGELOG.md"
+  # 故意に違反を含むテスト fixture．caller 側 PR レビューにノイズが乗るのを防ぐ．
+  # `ignores` は CLI で明示 glob を渡しても適用されるため，自己統合テスト等で
+  # fixture を lint したい場合は caller root に override config を置くこと．
+  - "tests/fixtures/"

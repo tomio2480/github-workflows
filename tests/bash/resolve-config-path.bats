@@ -49,3 +49,25 @@ setup() {
   [ "${status}" -eq 0 ]
   [ "${output}" = "${CENTRAL_DIR}/prh.yml" ]
 }
+
+# .textlintignore も同じ resolve ロジックで扱える（generic basename）
+@test "resolves .textlintignore with caller-first fallback to central" {
+  cd "${CALLER_ROOT}"
+  : > "${CALLER_ROOT}/.textlintignore"
+  : > "${CENTRAL_DIR}/.textlintignore"
+
+  run bash "${SCRIPT}" .textlintignore "${CENTRAL_DIR}"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = ".textlintignore" ]
+}
+
+@test "resolves .textlintignore from central when caller has none" {
+  cd "${CALLER_ROOT}"
+  : > "${CENTRAL_DIR}/.textlintignore"
+
+  run bash "${SCRIPT}" .textlintignore "${CENTRAL_DIR}"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "${CENTRAL_DIR}/.textlintignore" ]
+}

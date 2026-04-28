@@ -1,0 +1,6 @@
+# textlint の ignore 設定．各リポジトリのルートにコピーまたは fallback で使用する．
+# `--ignore-path` で textlint に明示的に渡す．
+# 故意に違反を含むテスト fixture を caller 側 PR レビューから除外する．
+# textlint の ignore パターンは glob 解釈で `tests/fixtures/` 単体ではディレクトリを
+# 一致させないため，配下まで含めるよう `**` を付ける．
+tests/fixtures/**
