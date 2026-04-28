@@ -103,13 +103,17 @@ runs:
       # tsuyoshicho/action-textlint は textlint_package 入力を持たず caller の
       # package.json に依存するため，drop-in 設計では使用できない．
       # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
+      #
+      # textlint は v14 系に固定する．textlint v15 は preset 側に ESM/exports field を要求する
+      # ため，現状 CommonJS の textlint-rule-preset-ja-technical-writing v12 系と組み合わせると
+      # rule が読み込まれず "No rules found" 状態になる．preset 側の対応を待つ間 v14 系で運用する．
       id: textlint_install
       shell: bash
       run: |
         set -euo pipefail
         TMP="$(mktemp -d)"
         (cd "${TMP}" && npm install --no-save --no-package-lock \
-          textlint \
+          'textlint@^14' \
           textlint-rule-preset-ja-technical-writing \
           textlint-rule-preset-ja-spacing \
           textlint-rule-prh)
