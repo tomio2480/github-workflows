@@ -124,11 +124,26 @@ runs:
         RD_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
         TEXTLINT_BIN: ${{ steps.textlint_install.outputs.bin }}
       run: |
-        set -euo pipefail
+        set -uo pipefail
         # tmpdir に install した textlint を PATH 先頭で使う．caller の node_modules は参照しない．
         export PATH="${TEXTLINT_BIN}:${PATH}"
+        echo "::debug::TEXTLINT_BIN=${TEXTLINT_BIN}"
+        echo "::debug::TEXTLINT_CONFIG=${TEXTLINT_CONFIG}"
+        echo "::debug::MARKDOWN_GLOB=${MARKDOWN_GLOB}"
+        echo "::debug::CWD=$(pwd)"
         # textlint は非ゼロ終了で指摘を出すため `|| true` で吸収し，checkstyle 出力を reviewdog に渡す
-        textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml || true
+        textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml 2> textlint-stderr.log || true
+        echo "::group::textlint stderr"
+        cat textlint-stderr.log || true
+        echo "::endgroup::"
+        echo "::group::textlint-report.xml (size: $(wc -c < textlint-report.xml) bytes)"
+        cat textlint-report.xml || true
+        echo "::endgroup::"
+        # 空 / EOF 等で reviewdog parse error にならないよう，最小限の checkstyle ガードを入れる
+        if [ ! -s textlint-report.xml ]; then
+          echo '<?xml version="1.0" encoding="UTF-8"?><checkstyle version="4.3"></checkstyle>' > textlint-report.xml
+          echo "::warning::textlint produced empty output; substituting empty checkstyle to avoid reviewdog parse error"
+        fi
         reviewdog \
           -f=checkstyle \
           -name="textlint" \
