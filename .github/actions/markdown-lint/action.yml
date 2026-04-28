@@ -136,23 +136,15 @@ runs:
         TEXTLINT_MODULES: ${{ steps.textlint_install.outputs.modules }}
       run: |
         set -uo pipefail
-        # caller cwd に node_modules への symlink を一時的に張って，textlint の require が
-        # tmpdir の rule package を CommonJS 標準の解決経路で見つけられるようにする．
-        # 既存 node_modules があれば尊重し，作成した symlink のみ最後に削除する．
-        CALLER_CWD="$(pwd)"
-        NODE_MODULES_LINK_CREATED=0
-        if [ ! -e "${CALLER_CWD}/node_modules" ]; then
-          ln -s "${TEXTLINT_MODULES}" "${CALLER_CWD}/node_modules"
-          NODE_MODULES_LINK_CREATED=1
-        fi
+        # NODE_PATH に tmpdir/node_modules を加えて，textlint の require が rule package を
+        # CommonJS 解決経路で引けるようにする．caller の既存 node_modules があってもそちらを
+        # 優先する仕様のため上書き汚染しない．
+        export NODE_PATH="${TEXTLINT_MODULES}:${NODE_PATH:-}"
         # textlint は指摘を見つけると非ゼロ終了する．GitHub Actions の bash は -e 付きで起動するため
         # 終了コードは `|| TEXTLINT_EXIT=$?` で捕捉し，後続の reviewdog に渡せるようにする．
         TEXTLINT_EXIT=0
         "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" \
           > textlint-report.xml 2> textlint-stderr.log || TEXTLINT_EXIT=$?
-        if [ "${NODE_MODULES_LINK_CREATED}" = "1" ]; then
-          rm -f "${CALLER_CWD}/node_modules"
-        fi
         if [ -s textlint-stderr.log ]; then
           echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"
           cat textlint-stderr.log
