@@ -68,11 +68,9 @@ runs:
       run: |
         set -euo pipefail
         REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
-        # caller cwd 配下に生成すると後段 step との cwd 共有が前提になり脆い．
-        # 確実に共有できる RUNNER_TEMP に絶対パスで書き出す．
+        # caller cwd に依存せず確実に共有できる RUNNER_TEMP 配下に絶対パスで書き出す．
         DEST="${RUNNER_TEMP}/textlintrc.runtime.json"
         python3 "${REPO_ROOT}/scripts/generate-textlint-runtime.py" "${SRC}" "${PRH}" "${DEST}"
-        ls -la "${DEST}"
         echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
     - name: Setup Node.js
@@ -100,13 +98,16 @@ runs:
         reviewdog_version: latest
 
     - name: Install textlint and rule packages (isolated in tmpdir)
-      # tsuyoshicho/action-textlint は textlint_package 入力を持たず caller の
-      # package.json に依存するため，drop-in 設計では使用できない．
       # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
       #
       # textlint は v14 系に固定する．textlint v15 は preset 側に ESM/exports field を要求する
       # ため，現状 CommonJS の textlint-rule-preset-ja-technical-writing v12 系と組み合わせると
       # rule が読み込まれず "No rules found" 状態になる．preset 側の対応を待つ間 v14 系で運用する．
+      #
+      # textlint-filter-rule-comments は中央 .textlintrc.json の filters.comments: true に対応する
+      # 必須依存．これが install されていないと @textlint/config-loader の loadFilterRules で
+      # ReferenceError が発生し，TextlintrcLoader.js が ok:false を受けて空 rule で fallback する．
+      # 結果として rules セクションも含めて全 rule が silent に破棄され "No rules found" になる．
       id: textlint_install
       shell: bash
       run: |
@@ -116,7 +117,8 @@ runs:
           'textlint@^14' \
           textlint-rule-preset-ja-technical-writing \
           textlint-rule-preset-ja-spacing \
-          textlint-rule-prh)
+          textlint-rule-prh \
+          textlint-filter-rule-comments)
         echo "bin=${TMP}/node_modules/.bin" >> "${GITHUB_OUTPUT}"
         echo "modules=${TMP}/node_modules" >> "${GITHUB_OUTPUT}"
         echo "Installed under: ${TMP}"
@@ -134,67 +136,28 @@ runs:
         TEXTLINT_MODULES: ${{ steps.textlint_install.outputs.modules }}
       run: |
         set -uo pipefail
-        # caller の cwd（リポジトリルート）を保持．report 出力先として使う
+        # caller cwd に node_modules への symlink を一時的に張って，textlint の require が
+        # tmpdir の rule package を CommonJS 標準の解決経路で見つけられるようにする．
+        # 既存 node_modules があれば尊重し，作成した symlink のみ最後に削除する．
         CALLER_CWD="$(pwd)"
-        TEXTLINT_CONFIG_ABS="$(realpath "${TEXTLINT_CONFIG}")"
-        # bash の globstar を使って caller cwd 上で MARKDOWN_GLOB を絶対パスに展開する．
-        # textlint を tmpdir 内で実行する以上，相対パスのまま渡すと caller のファイルが見つからない．
-        shopt -s globstar nullglob
-        abs_files=()
-        for f in ${MARKDOWN_GLOB}; do
-          abs_files+=("$(realpath "$f")")
-        done
-        shopt -u globstar nullglob
+        NODE_MODULES_LINK_CREATED=0
+        if [ ! -e "${CALLER_CWD}/node_modules" ]; then
+          ln -s "${TEXTLINT_MODULES}" "${CALLER_CWD}/node_modules"
+          NODE_MODULES_LINK_CREATED=1
+        fi
         # textlint は指摘を見つけると非ゼロ終了する．GitHub Actions の bash は -e 付きで起動するため
-        # 終了コードは `|| TEXTLINT_EXIT=$?` で捕捉し，後続の reviewdog に渡せるようにする
+        # 終了コードは `|| TEXTLINT_EXIT=$?` で捕捉し，後続の reviewdog に渡せるようにする．
         TEXTLINT_EXIT=0
-        if [ ${#abs_files[@]} -eq 0 ]; then
-          echo "::warning::No Markdown files matched ${MARKDOWN_GLOB}"
-          : > textlint-report.xml
-          : > textlint-stderr.log
-        else
-          echo "::group::textlint diagnostic"
-          echo "abs_files count: ${#abs_files[@]}"
-          for f in "${abs_files[@]}"; do echo "  $f"; done
-          echo "TEXTLINT_CONFIG_ABS=${TEXTLINT_CONFIG_ABS}"
-          echo "TEXTLINT_MODULES=${TEXTLINT_MODULES}"
-          echo "textlint version:"
-          (cd "${TEXTLINT_MODULES}/.." && "${TEXTLINT_BIN}/textlint" --version) || true
-          echo "textlint --print-config:"
-          "${TEXTLINT_BIN}/textlint" --rules-base-directory "${TEXTLINT_MODULES}" --config "${TEXTLINT_CONFIG_ABS}" --print-config 2>&1 | head -40 || true
-          echo "config file content:"
-          cat "${TEXTLINT_CONFIG_ABS}" | head -60
-          echo "node_modules listing (preset / prh):"
-          ls "${TEXTLINT_MODULES}" | grep -E "textlint-rule-preset|^textlint-rule-prh$"
-          echo "preset-ja-technical-writing/package.json type field:"
-          cat "${TEXTLINT_MODULES}/textlint-rule-preset-ja-technical-writing/package.json" | grep -E '"name"|"version"|"type"|"main"|"exports"' | head -20 || echo "preset not present"
-          echo "::endgroup::"
-          # textlint の rule resolver は require.resolve を __dirname 起点で走らせるため，
-          # cwd や NODE_PATH や --rules-base-directory では tmpdir の rule package を確実に解決できない．
-          # caller cwd に node_modules への symlink を一時的に張って，標準の CommonJS 解決経路に乗せる．
-          # 既存の node_modules を壊さないよう，存在チェックして無いときのみ作成し，最後に削除する．
-          NODE_MODULES_LINK_CREATED=0
-          if [ ! -e "${CALLER_CWD}/node_modules" ]; then
-            ln -s "${TEXTLINT_MODULES}" "${CALLER_CWD}/node_modules"
-            NODE_MODULES_LINK_CREATED=1
-          fi
-          (cd "${CALLER_CWD}" && \
-            "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG_ABS}" "${abs_files[@]}" \
-            > "${CALLER_CWD}/textlint-report.xml" 2> "${CALLER_CWD}/textlint-stderr.log") || TEXTLINT_EXIT=$?
-          if [ "${NODE_MODULES_LINK_CREATED}" = "1" ]; then
-            rm -f "${CALLER_CWD}/node_modules"
-          fi
+        "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" \
+          > textlint-report.xml 2> textlint-stderr.log || TEXTLINT_EXIT=$?
+        if [ "${NODE_MODULES_LINK_CREATED}" = "1" ]; then
+          rm -f "${CALLER_CWD}/node_modules"
         fi
         if [ -s textlint-stderr.log ]; then
           echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"
           cat textlint-stderr.log
           echo "::endgroup::"
         fi
-        REPORT_SIZE=$(wc -c < textlint-report.xml || echo 0)
-        echo "::group::textlint-report.xml (size=${REPORT_SIZE} bytes, exit=${TEXTLINT_EXIT})"
-        cat textlint-report.xml
-        echo
-        echo "::endgroup::"
         # 空 / EOF 等で reviewdog parse error にならないよう，最小限の checkstyle ガードを入れる
         if [ ! -s textlint-report.xml ]; then
           echo '<?xml version="1.0" encoding="UTF-8"?><checkstyle version="4.3"></checkstyle>' > textlint-report.xml
