@@ -1,0 +1,26 @@
+# github-workflows 自身の markdownlint 設定．
+# 中央 templates/.markdownlint-cli2.yaml は `tests/fixtures/` を ignores しているが，
+# 本リポジトリの統合テスト（`.github/workflows/test-self-lint.yml` の `integration-action`
+# job）は composite action を fixture に対して走らせて lint 指摘の検出可否を確認する．
+# `ignores` は明示 glob を渡しても適用されるため，self-test では fixture を ignore しない
+# 専用 config を root に置き，caller-first 解決でこちらを採用させる．
+# 中央 templates と差分があるのは ignores から `tests/fixtures/` を除外する点のみ．
+
+config:
+  default: true
+  MD013: false
+  MD033: false
+  MD041: false
+  MD024:
+    siblings_only: true
+
+globs:
+  - "**/*.md"
+
+ignores:
+  - "node_modules"
+  - ".git"
+  - "dist"
+  - "build"
+  - "coverage"
+  - "CHANGELOG.md"
