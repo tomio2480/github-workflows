@@ -37,38 +37,20 @@ runs:
       # PR 上に「いま review 動いてるよ」のサインを最初に出す．無いと caller 視点では
       # workflow が起動したのか lint config 解決で詰まったのか判別できない．
       # 失敗してもレビュー本体は続行する（reviewdog 投稿が本命のため UX nicety を理由に
-      # job を落とさない）．
+      # job を落とさない）．実装は scripts/add-pr-reaction.sh に委譲し bats で単体
+      # テストする．composite action 自身のチェックアウトパスは $GITHUB_ACTION_PATH
+      # から取り，スクリプトを絶対パスで実行する（caller checkout 非依存）．
       if: github.event_name == 'pull_request'
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         GH_TOKEN: ${{ inputs.github-token }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -uo pipefail
-        # GitHub API は同一 user × 同一 content の reaction を idempotent に扱う（200）．
-        # 連続実行や rerun でも reaction が重複生成されない．冪等なので curl の retry も安全．
-        # self-hosted runner や act での並列実行を想定し，レスポンス保存先は mktemp で衝突回避．
-        REACTION_RESP="$(mktemp)"
-        trap 'rm -f "${REACTION_RESP}"' EXIT
-        # --retry 2 / --max-time 10 で「失敗しても review 本体は続行」方針との整合を取る．
-        # --retry-all-errors は connection refused 等の非 5xx も retry 対象に含める（curl 7.71+）．
-        HTTP_STATUS="$(
-          curl -sS --retry 2 --retry-all-errors --max-time 10 \
-            -o "${REACTION_RESP}" -w '%{http_code}' \
-            -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${REPO}/issues/${PR_NUMBER}/reactions" \
-            -d '{"content":"eyes"}'
-        )" || HTTP_STATUS="curl-error"
-        if [[ "${HTTP_STATUS}" =~ ^2[0-9][0-9]$ ]]; then
-          echo "Added 👀 reaction to PR #${PR_NUMBER} (HTTP ${HTTP_STATUS})"
-        else
-          echo "::warning::Failed to add 👀 reaction (HTTP ${HTTP_STATUS}); continuing review"
-          [ -f "${REACTION_RESP}" ] && cat "${REACTION_RESP}" || true
-        fi
+        REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
+        bash "${REPO_ROOT}/scripts/add-pr-reaction.sh"
 
     - name: Resolve config file paths
       id: cfg
