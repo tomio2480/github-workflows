@@ -3,7 +3,7 @@
   "rules": {
     "preset-ja-technical-writing": {
       "sentence-length": {
-        "max": 100
+        "max": 80
       },
       "max-kanji-continuous-len": {
         "max": 6
