@@ -113,13 +113,13 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 
 ## 👀 review 開始の可視化（PR reaction）
 
-`pull_request` イベントで起動した場合，composite action は最初の step として PR 本文に 👀 reaction を付与する．これは「workflow は起動済みで，これから lint review を行う」状態を caller 側で即座に判別するための UX nicety である．reaction を付ける前に lint config 解決などで失敗した場合は reaction 自体が現れないので，「reaction が無い＝workflow が動いていない／環境エラー」と切り分けられる．
+`pull_request` イベントで起動した場合，composite action は最初の step として PR 本文に 👀 reaction を付与する．これは「workflow は起動済みで，これから lint review を行う」状態を caller 側で即座に判別するための UX nicety である．reaction を付ける前に lint config 解決などで失敗した場合は reaction 自体が現れない．ただし reaction の API call が失敗した場合（後述の fail-open）も reaction は付かないため，「reaction 無し」だけで workflow 未起動かどうかは確定しない．最終的な切り分けは reviewdog コメントの有無や Actions の実行ログを併せて判断する．
 
 表 4: reaction による状態識別
 
 | 状態 | 見え方 |
 |---|---|
-| reaction 無し | workflow が未起動か，最初の reaction step より前で失敗 |
+| reaction 無し | workflow 未起動，最初の reaction step より前で失敗，または reaction API 呼び出し失敗（fail-open のためレビューは継続し得る） |
 | 👀 reaction あり | composite action が正常に動き始めた．以後 reviewdog の inline コメントを待つ |
 | 👀 + reviewdog コメント | review 完了 |
 
