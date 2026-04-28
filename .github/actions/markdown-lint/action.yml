@@ -160,8 +160,10 @@ runs:
           (cd "${TEXTLINT_MODULES}/.." && "${TEXTLINT_BIN}/textlint" --config "${TEXTLINT_CONFIG_ABS}" --print-config 2>&1) | head -40 || true
           echo "config file content:"
           cat "${TEXTLINT_CONFIG_ABS}" | head -60
-          echo "node_modules listing (textlint-rule-*):"
-          ls "${TEXTLINT_MODULES}" | grep -E "textlint-rule|preset" | head -20
+          echo "node_modules listing (preset / prh):"
+          ls "${TEXTLINT_MODULES}" | grep -E "textlint-rule-preset|^textlint-rule-prh$"
+          echo "preset-ja-technical-writing/package.json type field:"
+          cat "${TEXTLINT_MODULES}/textlint-rule-preset-ja-technical-writing/package.json" | grep -E '"name"|"version"|"type"|"main"|"exports"' | head -20 || echo "preset not present"
           echo "::endgroup::"
           # tmpdir の親で実行することで textlint の require が tmpdir/node_modules を解決する
           (cd "${TEXTLINT_MODULES}/.." && \
