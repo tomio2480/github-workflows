@@ -97,6 +97,6 @@ gh release create v2 \
 確認ポイント：
 
 - `Resolve config file paths` ステップで `${GITHUB_ACTION_PATH}/../../../templates/` 配下のパスが解決されているか
-- `Generate runtime textlint config with resolved prh path` で `.textlintrc.runtime.json` が生成されているか
+- `Generate runtime textlint config with resolved prh path` で `${RUNNER_TEMP}/textlintrc.runtime.json` が生成されているか
 - reviewdog の markdownlint・textlint コメントが PR に投稿されているか
 - CI ステータスが緑で終わっているか（`fail_on_error: false` のため）

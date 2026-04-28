@@ -4,6 +4,9 @@
 
 `tomio2480/github-workflows` を自分のアカウントへフォークして運用するための手順．フォーク後に composite action 本体（`.github/actions/markdown-lint/action.yml`）を書き換える必要はない．`$GITHUB_ACTION_PATH` ベースの自己検出ロジックにより，どのオーナーから呼び出されても自動的に正しい設定が読み込まれる．利用者が触るのは caller workflow の `OWNER` プレースホルダー置換と SHA pin（または `v2` タグ）管理のみ．
 
+> [!IMPORTANT]
+> 本ドキュメント中の例で示している `tomio2480/github-workflows` はそのままコピペせず，フォーク利用時は **`OWNER` 部分を必ず自分の GitHub ユーザー名に置き換えてください** ．caller workflow（`templates/.github/workflows/md-lint.yml`）の `uses:` に出てくる `OWNER` プレースホルダーが置換対象です．
+
 ## 目次
 
 - 🎯 フォーク運用に向いているケース
