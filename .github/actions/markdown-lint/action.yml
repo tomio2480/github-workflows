@@ -161,7 +161,7 @@ runs:
           echo "textlint version:"
           (cd "${TEXTLINT_MODULES}/.." && "${TEXTLINT_BIN}/textlint" --version) || true
           echo "textlint --print-config:"
-          (cd "${TEXTLINT_MODULES}/.." && "${TEXTLINT_BIN}/textlint" --config "${TEXTLINT_CONFIG_ABS}" --print-config 2>&1) | head -40 || true
+          "${TEXTLINT_BIN}/textlint" --rules-base-directory "${TEXTLINT_MODULES}" --config "${TEXTLINT_CONFIG_ABS}" --print-config 2>&1 | head -40 || true
           echo "config file content:"
           cat "${TEXTLINT_CONFIG_ABS}" | head -60
           echo "node_modules listing (preset / prh):"
@@ -169,10 +169,17 @@ runs:
           echo "preset-ja-technical-writing/package.json type field:"
           cat "${TEXTLINT_MODULES}/textlint-rule-preset-ja-technical-writing/package.json" | grep -E '"name"|"version"|"type"|"main"|"exports"' | head -20 || echo "preset not present"
           echo "::endgroup::"
-          # tmpdir の親で実行することで textlint の require が tmpdir/node_modules を解決する
-          (cd "${TEXTLINT_MODULES}/.." && \
-            "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG_ABS}" "${abs_files[@]}" \
-            > "${CALLER_CWD}/textlint-report.xml" 2> "${CALLER_CWD}/textlint-stderr.log") || TEXTLINT_EXIT=$?
+          # textlint の rule resolver は require.resolve を __dirname 起点で走らせるため，
+          # cwd や NODE_PATH では tmpdir の rule package を引けない．
+          # --rules-base-directory で tmpdir/node_modules を絶対パスとして渡し，rule を確実に解決する．
+          "${TEXTLINT_BIN}/textlint" \
+            --rules-base-directory "${TEXTLINT_MODULES}" \
+            -f checkstyle \
+            --config "${TEXTLINT_CONFIG_ABS}" \
+            "${abs_files[@]}" \
+            > "${CALLER_CWD}/textlint-report.xml" \
+            2> "${CALLER_CWD}/textlint-stderr.log" \
+            || TEXTLINT_EXIT=$?
         fi
         if [ -s textlint-stderr.log ]; then
           echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"
