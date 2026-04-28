@@ -131,9 +131,10 @@ runs:
         export PATH="${TEXTLINT_BIN}:${PATH}"
         # textlint が rule package を caller の cwd から解決できないため NODE_PATH を tmpdir に向ける．
         export NODE_PATH="${TEXTLINT_MODULES}:${NODE_PATH:-}"
-        # textlint は非ゼロ終了で指摘を出すため `|| true` で吸収し，checkstyle 出力を reviewdog に渡す
-        textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml 2> textlint-stderr.log
-        TEXTLINT_EXIT=$?
+        # textlint は指摘を見つけると非ゼロ終了する．GitHub Actions の bash は -e 付きで起動するため
+        # 終了コードは `|| TEXTLINT_EXIT=$?` で捕捉し，後続の reviewdog に渡せるようにする
+        TEXTLINT_EXIT=0
+        textlint -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" > textlint-report.xml 2> textlint-stderr.log || TEXTLINT_EXIT=$?
         if [ -s textlint-stderr.log ]; then
           echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"
           cat textlint-stderr.log
