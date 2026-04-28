@@ -86,8 +86,9 @@ runs:
         github_token: ${{ inputs.github-token }}
         reporter: github-pr-review
         level: ${{ inputs.level }}
-        # fail_on_error は v0.26.0 で deprecated．boolean 入力を fail_level の文字列にマップする
-        fail_level: ${{ inputs.fail-on-error == 'true' && 'error' || 'none' }}
+        # fail_on_error は v0.26.0 で deprecated．boolean 入力を fail_level の文字列にマップする．
+        # fail-on-error=true のとき，`level` 以上の指摘で job を失敗させる．
+        fail_level: ${{ inputs.fail-on-error == 'true' && inputs.level || 'none' }}
         filter_mode: ${{ inputs.filter-mode }}
         markdownlint_flags: '--config ${{ steps.cfg.outputs.mdlint }} "${{ inputs.markdown-glob }}" "#node_modules"'
 
@@ -95,7 +96,8 @@ runs:
       # reviewdog/action-setup v1.5.0
       uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f
       with:
-        reviewdog_version: latest
+        # reviewdog 本体は再現性のため tag を固定．Dependabot の対象外なため version up は別 issue で扱う．
+        reviewdog_version: v0.21.0
 
     - name: Install textlint and rule packages (isolated in tmpdir)
       # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
@@ -150,7 +152,16 @@ runs:
           cat textlint-stderr.log
           echo "::endgroup::"
         fi
-        # 空 / EOF 等で reviewdog parse error にならないよう，最小限の checkstyle ガードを入れる
+        # 「実行失敗」と「指摘なし」を区別する．
+        # textlint は指摘ありで非ゼロ終了するが，その場合は checkstyle XML に findings が書かれている．
+        # 一方 rule 解決失敗等の execution error では report が空のまま非ゼロ終了するため，
+        # `exit != 0 かつ report が空` のケースだけ step 自体を失敗扱いにする．
+        if [ "${TEXTLINT_EXIT}" -ne 0 ] && [ ! -s textlint-report.xml ]; then
+          echo "::error::textlint exited with ${TEXTLINT_EXIT} and produced no report; treating as execution failure"
+          exit "${TEXTLINT_EXIT}"
+        fi
+        # 「指摘なし」のケース（exit=0 かつ report が空）では reviewdog parse error 回避のため
+        # 最小限の空 checkstyle XML を補う．
         if [ ! -s textlint-report.xml ]; then
           echo '<?xml version="1.0" encoding="UTF-8"?><checkstyle version="4.3"></checkstyle>' > textlint-report.xml
         fi
