@@ -5,7 +5,8 @@
     - rules.prh が False または未定義のときはそのまま尊重する（書き換えない）
     - rules.prh がそれ以外の型のときは TypeError を上げる
     - rules 自体が dict でないときは TypeError を上げる
-    - 引数が 3 つ未満のときは ValueError を上げる（誤用時の早期失敗）
+    - 引数がちょうど 3 つでないときは ValueError を上げる（誤用時の早期失敗）
+    - JSON ルートが dict でないときは ValueError を上げる
 """
 
 import importlib
@@ -19,7 +20,7 @@ import pytest
 _MODULE = importlib.import_module("generate-textlint-runtime")
 
 
-def _write(path: Path, payload: dict) -> Path:
+def _write(path: Path, payload) -> Path:
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return path
 
@@ -73,7 +74,7 @@ def test_prh_unsupported_type_raises_type_error(tmp_path):
     prh = _make_prh(tmp_path)
     dest = tmp_path / "runtime.json"
 
-    with pytest.raises(TypeError, match="rules.prh"):
+    with pytest.raises(TypeError, match=r"rules\.prh"):
         _MODULE.main([str(src), str(prh), str(dest)])
 
 
@@ -85,7 +86,35 @@ def test_rules_not_object_raises_type_error(tmp_path):
     with pytest.raises(TypeError, match="rules"):
         _MODULE.main([str(src), str(prh), str(dest)])
 
-@pytest.mark.parametrize("argv", [[], ["only-src"], ["src", "prh"]])
-def test_too_few_arguments_raises_value_error(argv):
-    with pytest.raises(ValueError, match="3"):
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [],
+        ["only-src"],
+        ["src", "prh"],
+        ["src", "prh", "dest", "extra"],
+    ],
+)
+def test_argv_must_be_exactly_3_otherwise_value_error(argv):
+    with pytest.raises(ValueError, match=r"\b3\b"):
         _MODULE.main(argv)
+
+
+@pytest.mark.parametrize(
+    "non_dict_cfg",
+    [
+        [],
+        ["a", "list"],
+        "a-string",
+        42,
+        None,
+    ],
+)
+def test_json_root_must_be_object_otherwise_value_error(tmp_path, non_dict_cfg):
+    src = _write(tmp_path / "src.json", non_dict_cfg)
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(ValueError, match="object"):
+        _MODULE.main([str(src), str(prh), str(dest)])
