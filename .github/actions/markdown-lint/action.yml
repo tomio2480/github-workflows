@@ -47,9 +47,15 @@ runs:
       run: |
         set -uo pipefail
         # GitHub API は同一 user × 同一 content の reaction を idempotent に扱う（200）．
-        # 連続実行や rerun でも reaction が重複生成されない．
+        # 連続実行や rerun でも reaction が重複生成されない．冪等なので curl の retry も安全．
+        # self-hosted runner や act での並列実行を想定し，レスポンス保存先は mktemp で衝突回避．
+        REACTION_RESP="$(mktemp)"
+        trap 'rm -f "${REACTION_RESP}"' EXIT
+        # --retry 2 / --max-time 10 で「失敗しても review 本体は続行」方針との整合を取る．
+        # --retry-all-errors は connection refused 等の非 5xx も retry 対象に含める（curl 7.71+）．
         HTTP_STATUS="$(
-          curl -sS -o /tmp/reaction-resp.json -w '%{http_code}' \
+          curl -sS --retry 2 --retry-all-errors --max-time 10 \
+            -o "${REACTION_RESP}" -w '%{http_code}' \
             -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
@@ -61,7 +67,7 @@ runs:
           echo "Added 👀 reaction to PR #${PR_NUMBER} (HTTP ${HTTP_STATUS})"
         else
           echo "::warning::Failed to add 👀 reaction (HTTP ${HTTP_STATUS}); continuing review"
-          [ -f /tmp/reaction-resp.json ] && cat /tmp/reaction-resp.json || true
+          [ -f "${REACTION_RESP}" ] && cat "${REACTION_RESP}" || true
         fi
 
     - name: Resolve config file paths
