@@ -146,6 +146,16 @@ runs:
           : > textlint-report.xml
           : > textlint-stderr.log
         else
+          echo "::group::textlint diagnostic"
+          echo "abs_files count: ${#abs_files[@]}"
+          for f in "${abs_files[@]}"; do echo "  $f"; done
+          echo "TEXTLINT_CONFIG_ABS=${TEXTLINT_CONFIG_ABS}"
+          echo "TEXTLINT_MODULES=${TEXTLINT_MODULES}"
+          echo "textlint version:"
+          (cd "${TEXTLINT_MODULES}/.." && "${TEXTLINT_BIN}/textlint" --version) || true
+          echo "textlint --print-config:"
+          (cd "${TEXTLINT_MODULES}/.." && "${TEXTLINT_BIN}/textlint" --config "${TEXTLINT_CONFIG_ABS}" --print-config 2>&1) | head -40 || true
+          echo "::endgroup::"
           # tmpdir の親で実行することで textlint の require が tmpdir/node_modules を解決する
           (cd "${TEXTLINT_MODULES}/.." && \
             "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG_ABS}" "${abs_files[@]}" \
