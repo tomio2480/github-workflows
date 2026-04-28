@@ -85,9 +85,16 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 |---|---|
 | `.markdownlint-cli2.yaml` | ① caller root に存在すれば採用 → ② 中央の `templates/.markdownlint-cli2.yaml` |
 | `.textlintrc.json` | 同上 |
+| `.textlintignore` | 同上．textlint には `--ignore-path` で明示的に渡す |
 | `prh.yml` | 同上 |
 
 **ファイル全置換方式** のため，caller に置いたファイルは中央と差分マージされず単独で採用される．部分的に中央を流用したいときは中央の該当ファイルを丸ごとコピーしてから改変する．
+
+### lint 対象外パターンと self-test
+
+中央 `templates/.markdownlint-cli2.yaml` の `ignores` および `templates/.textlintignore` は `tests/fixtures/` を既定で除外する．これは **故意に違反を含む fixture が caller PR レビューに大量の指摘として流れ込むのを防ぐ** ためである．`ignores` は CLI で明示 glob を渡しても適用される（明示 glob で fixture を指定しても ignore がかかれば 0 件になる）．
+
+本リポジトリの自己統合テスト（`integration-action` job）は composite action を fixture に対して実行して指摘検出を確認する必要があるため，リポジトリルートに `.markdownlint-cli2.yaml` と `.textlintignore` の override を置き，caller-first 解決でこちらを優先採用させている．override 内容は中央 templates と同等で，`tests/fixtures/` の ignore のみ外している．caller 側で個別に fixture を ignore したくない場合も同じ手法を取ればよい．
 
 ### textlint 用 runtime config 生成
 
