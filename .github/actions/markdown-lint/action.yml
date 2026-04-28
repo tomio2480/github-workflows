@@ -68,8 +68,11 @@ runs:
       run: |
         set -euo pipefail
         REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
-        DEST=".textlintrc.runtime.json"
+        # caller cwd 配下に生成すると後段 step との cwd 共有が前提になり脆い．
+        # 確実に共有できる RUNNER_TEMP に絶対パスで書き出す．
+        DEST="${RUNNER_TEMP}/textlintrc.runtime.json"
         python3 "${REPO_ROOT}/scripts/generate-textlint-runtime.py" "${SRC}" "${PRH}" "${DEST}"
+        ls -la "${DEST}"
         echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
     - name: Setup Node.js
