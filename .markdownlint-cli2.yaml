@@ -18,9 +18,9 @@ globs:
   - "**/*.md"
 
 ignores:
-  - "node_modules"
-  - ".git"
-  - "dist"
-  - "build"
-  - "coverage"
+  - "node_modules/**"
+  - ".git/**"
+  - "dist/**"
+  - "build/**"
+  - "coverage/**"
   - "CHANGELOG.md"
