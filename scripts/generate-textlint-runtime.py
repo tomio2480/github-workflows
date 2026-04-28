@@ -16,6 +16,10 @@ from typing import Sequence
 
 
 def main(argv: Sequence[str]) -> None:
+    if len(argv) < 3:
+        raise ValueError(
+            f"expected 3 arguments (src, prh, dest), got {len(argv)}"
+        )
     src, prh, dest = argv[0], argv[1], argv[2]
     cfg = json.loads(pathlib.Path(src).read_text(encoding="utf-8"))
 

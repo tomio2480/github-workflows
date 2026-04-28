@@ -5,6 +5,7 @@
     - rules.prh が False または未定義のときはそのまま尊重する（書き換えない）
     - rules.prh がそれ以外の型のときは TypeError を上げる
     - rules 自体が dict でないときは TypeError を上げる
+    - 引数が 3 つ未満のときは ValueError を上げる（誤用時の早期失敗）
 """
 
 import importlib
@@ -83,3 +84,8 @@ def test_rules_not_object_raises_type_error(tmp_path):
 
     with pytest.raises(TypeError, match="rules"):
         _MODULE.main([str(src), str(prh), str(dest)])
+
+@pytest.mark.parametrize("argv", [[], ["only-src"], ["src", "prh"]])
+def test_too_few_arguments_raises_value_error(argv):
+    with pytest.raises(ValueError, match="3"):
+        _MODULE.main(argv)
