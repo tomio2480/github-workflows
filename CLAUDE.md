@@ -76,6 +76,7 @@
 - [docs/onboarding-new-repo.md](docs/onboarding-new-repo.md) — 新規リポジトリ導入
 - [docs/onboarding-existing-repo.md](docs/onboarding-existing-repo.md) — 既存リポジトリ導入
 - [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md) — 辞書メンテナンス
+- [docs/rule-rationale.md](docs/rule-rationale.md) — textlint / prh ルールの採用根拠
 - [docs/architecture.md](docs/architecture.md) — 内部動作と自己検出ロジック
 - [docs/security.md](docs/security.md) — 公開運用時の脅威モデル
 - [docs/fork-usage.md](docs/fork-usage.md) — フォーク利用手順

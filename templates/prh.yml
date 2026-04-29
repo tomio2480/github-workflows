@@ -21,7 +21,9 @@ rules:
       - Javascript
       - javascript
       - JAVASCRIPT
-      - JS
+      # `JS` は word boundary 付きの regex で書く．
+      # plain string で書くと substring match が効き，`JSON` 等にも誤マッチする．
+      - /\bJS\b/
     prh:
       - specs:
           - from: JS
