@@ -190,10 +190,12 @@ composite action は `reviewdog/action-markdownlint` を SHA pin している．
 bot レビュー（Gemini Code Assist / CodeRabbit）の到着には数分から十数分の幅がある．
 連続で push せず一拍おく狙いとして次の運用が有効である．
 
-1. push 直後に baseline を取得する
+1. push 直後に baseline を取得する．2 つは排他的に異なるコメント種別を返す
 
     ```bash
-    gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate > .pr_baseline.json
+    # inline review comments（特定行に紐づくレビューコメント）
+    gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate > .pr_inline_baseline.json
+    # top-level / issue-level comments（PR スレッド全体への投稿）
     gh pr view <n> --json comments > .pr_top_baseline.json
     ```
 
