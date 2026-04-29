@@ -63,11 +63,10 @@ runs:
       run: |
         set -euo pipefail
         # action_path = .../.github/actions/markdown-lint
-        # repo root   = action_path/../../..
-        # templates   = repo root/templates
-        REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
-        TEMPLATES="${REPO_ROOT}/templates"
-        RESOLVE="${REPO_ROOT}/scripts/resolve-config-path.sh"
+        # ${ACTION_PATH}/../../../templates / scripts でリポジトリルート起点に到達できる．
+        # OS 側で `..` セグメントが解決されるため cd/pwd で正規化する必要はない．
+        TEMPLATES="${ACTION_PATH}/../../../templates"
+        RESOLVE="${ACTION_PATH}/../../../scripts/resolve-config-path.sh"
 
         MDLINT_CFG="$(bash "${RESOLVE}" .markdownlint-cli2.yaml "${TEMPLATES}")"
         TEXTLINT_CFG="$(bash "${RESOLVE}" .textlintrc.json "${TEMPLATES}")"
@@ -106,7 +105,6 @@ runs:
         PYYAML_VERSION: ${{ inputs.pyyaml-version }}
       run: |
         set -euo pipefail
-        REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
         # caller cwd に依存せず確実に共有できる RUNNER_TEMP 配下に絶対パスで書き出す．
         DEST="${RUNNER_TEMP}/textlintrc.runtime.json"
 
@@ -118,7 +116,7 @@ runs:
           python3 -m pip install --quiet --user "pyyaml==${PYYAML_VERSION}"
         fi
 
-        python3 "${REPO_ROOT}/scripts/generate-textlint-runtime.py" \
+        python3 "${ACTION_PATH}/../../../scripts/generate-textlint-runtime.py" \
           "${SRC}" "${PRH}" "${DEST}" "${ALLOWLIST}"
         echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
