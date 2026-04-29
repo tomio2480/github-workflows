@@ -39,7 +39,10 @@ runs:
       # 失敗してもレビュー本体は続行する（reviewdog 投稿が本命のため UX nicety を理由に
       # job を落とさない）．実装は scripts/add-pr-reaction.sh に委譲し bats で単体
       # テストする．composite action 自身のチェックアウトパスは $GITHUB_ACTION_PATH
-      # から取り，スクリプトを絶対パスで実行する（caller checkout 非依存）．
+      # から取り，スクリプトを相対参照で実行する（caller checkout 非依存）．
+      # ACTION_PATH は絶対パスのため cd/pwd での再正規化は不要．スクリプト側で
+      # set -uo pipefail / 必須 env 検証 / fail-open exit を担うため step では
+      # bash 起動 1 行のみ．
       if: github.event_name == 'pull_request'
       shell: bash
       env:
@@ -47,10 +50,7 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-      run: |
-        set -uo pipefail
-        REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
-        bash "${REPO_ROOT}/scripts/add-pr-reaction.sh"
+      run: bash "${ACTION_PATH}/../../../scripts/add-pr-reaction.sh"
 
     - name: Resolve config file paths
       id: cfg
