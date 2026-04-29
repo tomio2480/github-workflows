@@ -33,6 +33,25 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Indicate review start (👀 reaction on PR)
+      # PR 上に「いま review 動いてるよ」のサインを最初に出す．無いと caller 視点では
+      # workflow が起動したのか lint config 解決で詰まったのか判別できない．
+      # 失敗してもレビュー本体は続行する（reviewdog 投稿が本命のため UX nicety を理由に
+      # job を落とさない）．実装は scripts/add-pr-reaction.sh に委譲し bats で単体
+      # テストする．composite action 自身のチェックアウトパスは $GITHUB_ACTION_PATH
+      # から取り，スクリプトを相対参照で実行する（caller checkout 非依存）．
+      # ACTION_PATH は絶対パスのため cd/pwd での再正規化は不要．スクリプト側で
+      # set -uo pipefail / 必須 env 検証 / fail-open exit を担うため step では
+      # bash 起動 1 行のみ．
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: bash "${ACTION_PATH}/../../../scripts/add-pr-reaction.sh"
+
     - name: Resolve config file paths
       id: cfg
       shell: bash
@@ -49,13 +68,16 @@ runs:
 
         MDLINT_CFG="$(bash "${RESOLVE}" .markdownlint-cli2.yaml "${TEMPLATES}")"
         TEXTLINT_CFG="$(bash "${RESOLVE}" .textlintrc.json "${TEMPLATES}")"
+        TEXTLINT_IGNORE="$(bash "${RESOLVE}" .textlintignore "${TEMPLATES}")"
         PRH_CFG="$(bash "${RESOLVE}" prh.yml "${TEMPLATES}")"
 
         echo "mdlint=${MDLINT_CFG}" >> "${GITHUB_OUTPUT}"
         echo "textlint=${TEXTLINT_CFG}" >> "${GITHUB_OUTPUT}"
+        echo "textlint_ignore=${TEXTLINT_IGNORE}" >> "${GITHUB_OUTPUT}"
         echo "prh=${PRH_CFG}" >> "${GITHUB_OUTPUT}"
         echo "markdownlint config: ${MDLINT_CFG}"
         echo "textlint config:     ${TEXTLINT_CFG}"
+        echo "textlint ignore:     ${TEXTLINT_IGNORE}"
         echo "prh dictionary:      ${PRH_CFG}"
 
     - name: Generate runtime textlint config with resolved prh path
@@ -130,6 +152,7 @@ runs:
       env:
         REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
         TEXTLINT_CONFIG: ${{ steps.textlint_runtime.outputs.config }}
+        TEXTLINT_IGNORE: ${{ steps.cfg.outputs.textlint_ignore }}
         MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
         RD_LEVEL: ${{ inputs.level }}
         RD_FILTER_MODE: ${{ inputs.filter-mode }}
@@ -144,8 +167,11 @@ runs:
         export NODE_PATH="${TEXTLINT_MODULES}:${NODE_PATH:-}"
         # textlint は指摘を見つけると非ゼロ終了する．GitHub Actions の bash は -e 付きで起動するため
         # 終了コードは `|| TEXTLINT_EXIT=$?` で捕捉し，後続の reviewdog に渡せるようにする．
+        # --ignore-path は明示パスを指定する．textlint の既定は cwd の .textlintignore のみ
+        # 探索するため，caller に置かれていない場合は中央 templates/.textlintignore を採用する．
         TEXTLINT_EXIT=0
-        "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG}" "${MARKDOWN_GLOB}" \
+        "${TEXTLINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_CONFIG}" \
+          --ignore-path "${TEXTLINT_IGNORE}" "${MARKDOWN_GLOB}" \
           > textlint-report.xml 2> textlint-stderr.log || TEXTLINT_EXIT=$?
         if [ -s textlint-stderr.log ]; then
           echo "::group::textlint stderr (exit=${TEXTLINT_EXIT})"

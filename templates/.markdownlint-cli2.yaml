@@ -28,10 +28,17 @@ globs:
   - "**/*.md"
 
 # lint 対象外パターン
+# `templates/.textlintignore` と揃える．micromatch の glob 解釈ではディレクトリ指定に
+# `/**` を付けないと配下のファイルが一致しないため，すべて `/**` で末端まで明示する．
+# 片方だけにあるとレビュー挙動が齟齬するため，更新時は両ファイルを同時に変更すること．
 ignores:
-  - "node_modules"
-  - ".git"
-  - "dist"
-  - "build"
-  - "coverage"
+  - "node_modules/**"
+  - ".git/**"
+  - "dist/**"
+  - "build/**"
+  - "coverage/**"
   - "CHANGELOG.md"
+  # 故意に違反を含むテスト fixture．caller 側 PR レビューにノイズが乗るのを防ぐ．
+  # `ignores` は CLI で明示 glob を渡しても適用されるため，自己統合テスト等で
+  # fixture を lint したい場合は caller root に override config を置くこと．
+  - "tests/fixtures/**"

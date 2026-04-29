@@ -1,0 +1,4 @@
+# github-workflows 自身の textlint ignore 設定．
+# 中央 templates/.textlintignore は `tests/fixtures/` を除外しているが，本リポジトリの
+# 統合テストは fixture に対して textlint を走らせる必要があるため，root では fixture を
+# ignore しない（空の ignore リスト）．caller-first 解決でこちらが優先される．

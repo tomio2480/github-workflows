@@ -9,6 +9,7 @@
 - 🗺 全体の流れ
 - 🔍 自己検出のしくみ（`$GITHUB_ACTION_PATH`）
 - 📁 設定ファイルの解決順序
+- 👀 review 開始の可視化（PR reaction）
 - 🐶 reviewdog の挙動
 - 🔀 caller → composite action → reviewdog のデータフロー
 - 🧪 テスト戦略
@@ -18,7 +19,7 @@
 
 図 1: PR 作成から PR コメントまでの流れ（データ flow）
 
-```
+```text
 開発者
   │ git push + Pull Request 作成
   ▼
@@ -28,13 +29,14 @@
   │ 2. uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2
   ▼
 composite action（本リポジトリ）
-  │ 1. $GITHUB_ACTION_PATH から中央 templates の絶対パスを解決
-  │ 2. caller root に config があれば優先，無ければ中央 templates/ を採用
-  │ 3. scripts/generate-textlint-runtime.py で prh の絶対パスを埋め込んだ
+  │ 1. PR に 👀 reaction を付け「review 開始」を可視化（`pull_request` イベント時のみ）
+  │ 2. $GITHUB_ACTION_PATH から中央 templates の絶対パスを解決
+  │ 3. caller root に config があれば優先，無ければ中央 templates/ を採用
+  │ 4. scripts/generate-textlint-runtime.py で prh の絶対パスを埋め込んだ
   │    .textlintrc.runtime.json を生成
-  │ 4. Node.js setup
-  │ 5. reviewdog/action-markdownlint → PR レビューコメント
-  │ 6. textlint を tmpdir に install して実行 → reviewdog で PR レビューコメント
+  │ 5. Node.js setup
+  │ 6. reviewdog/action-markdownlint → PR レビューコメント
+  │ 7. textlint を tmpdir に install して実行 → reviewdog で PR レビューコメント
   ▼
 PR の該当行に inline コメントが付く
 lint 指摘では job を失敗させない（fail_on_error: false）．設定解決・setup 等の実行エラーは通常どおり失敗する
@@ -85,9 +87,16 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 |---|---|
 | `.markdownlint-cli2.yaml` | ① caller root に存在すれば採用 → ② 中央の `templates/.markdownlint-cli2.yaml` |
 | `.textlintrc.json` | 同上 |
+| `.textlintignore` | 同上．textlint には `--ignore-path` で明示的に渡す |
 | `prh.yml` | 同上 |
 
 **ファイル全置換方式** のため，caller に置いたファイルは中央と差分マージされず単独で採用される．部分的に中央を流用したいときは中央の該当ファイルを丸ごとコピーしてから改変する．
+
+### lint 対象外パターンと self-test
+
+中央 `templates/.markdownlint-cli2.yaml` の `ignores` および `templates/.textlintignore` は `tests/fixtures/` を既定で除外する．これは **故意に違反を含む fixture が caller PR レビューに大量の指摘として流れ込むのを防ぐ** ためである．`ignores` は CLI で明示 glob を渡しても適用される（明示 glob で fixture を指定しても ignore がかかれば 0 件になる）．
+
+本リポジトリの自己統合テスト（`integration-action` job）は composite action を fixture に対して実行して指摘検出を確認する必要があるため，リポジトリルートに `.markdownlint-cli2.yaml` と `.textlintignore` の override を置き，caller-first 解決でこちらを優先採用させている．override 内容は中央 templates と同等で，`tests/fixtures/` の ignore のみ外している．caller 側で個別に fixture を ignore したくない場合も同じ手法を取ればよい．
 
 ### textlint 用 runtime config 生成
 
@@ -102,9 +111,23 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 
 これにより override 組み合わせ（caller 辞書＋中央 textlintrc など）でも path が破綻しない．
 
+## 👀 review 開始の可視化（PR reaction）
+
+`pull_request` イベントで起動した場合，composite action は最初の step として PR 本文に 👀 reaction を付与する．これは「workflow は起動済みで，これから lint review を行う」状態を caller 側で即座に判別するための UX nicety である．reaction を付ける前に lint config 解決などで失敗した場合は reaction 自体が現れない．ただし reaction の API call が失敗した場合（後述の fail-open）も reaction は付かないため，「reaction 無し」だけで workflow 未起動かどうかは確定しない．最終的な切り分けは reviewdog コメントの有無や Actions の実行ログを併せて判断する．
+
+表 4: reaction による状態識別
+
+| 状態 | 見え方 |
+|---|---|
+| reaction 無し | workflow 未起動，最初の reaction step より前で失敗，または reaction API 呼び出し失敗（fail-open のためレビューは継続し得る） |
+| 👀 reaction あり | composite action が正常に動き始めた．以後 reviewdog の inline コメントを待つ |
+| 👀 + reviewdog コメント | review 完了 |
+
+GitHub API は同一 user × 同一 content の reaction を idempotent に扱うため，rerun や複数回実行でも reaction が重複生成されることはない．reaction の API call が失敗しても review 本体は続行する（fail open）．caller token に対する権限要件は既存の reviewdog コメント投稿と同じ `pull-requests: write` で十分．
+
 ## 🐶 reviewdog の挙動
 
-表 4: reviewdog の主要パラメータ
+表 5: reviewdog の主要パラメータ
 
 | パラメータ | デフォルト | 意図 |
 |---|---|---|
@@ -130,7 +153,7 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 
 本リポジトリは composite action の品質保証として 3 層のテストを持つ．
 
-表 5: テスト 3 層
+表 6: テスト 3 層
 
 | 層 | 対象 | 道具 | 配置 | 実行 |
 |---|---|---|---|---|
@@ -142,11 +165,12 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 
 ## 🧪 トラブルシューティング
 
-表 6: よくある失敗と対処
+表 7: よくある失敗と対処
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
 | reviewdog がコメントを投稿しない | caller 側の `permissions: pull-requests: write` がない，または `github-token` input を渡し忘れ | caller workflow に `permissions` ブロックを追加し，`with: github-token: ${{ secrets.GITHUB_TOKEN }}` を渡す |
+| PR に 👀 reaction が付かない | 上と同じく `pull-requests: write` 不足．または `pull_request` 以外のイベント（`push` 等）でトリガーされた | 権限を追加するか，`pull_request` ベースで起動する．reaction 失敗は warning に降格して review 自体は続行する |
 | 外部フォークからの PR だけ reviewdog が投稿しない | GitHub の fork PR セキュリティ制限で `GITHUB_TOKEN` が read-only | 仕様．`pull_request_target` は供給網リスクから採用しない方針のため対処しない．base repo にブランチを切って PR を出し直せば投稿される |
 | 設定ファイルが見つからない旨のエラー | override ファイル名の typo | `.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml` の正確な名前を確認 |
 | `@v1` を pin した caller が `FileNotFoundError` で落ちる | v1 系（reusable workflow 形式）は self-detection bug により動作しない | v2 以降の composite action 形式へ移行する．caller を `@<SHA> # v2` 形式に書き換える |
