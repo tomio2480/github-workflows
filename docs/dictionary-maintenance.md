@@ -11,6 +11,7 @@
 - 2️⃣ per-repo の辞書 override
 - 3️⃣ prh.yml の書き方
 - 4️⃣ バージョニングと影響範囲
+- 5️⃣ prh と caller-side allowlist の使い分け
 
 ## 🎯 辞書を更新する場面
 
@@ -115,3 +116,36 @@ git push -f origin v1
 | prh 設定の構造変更 | `v2` など新メジャーを切る．`v1` はそのまま維持 |
 
 破壊的変更の場合は CLAUDE.md のタグ運用規律に従う．
+
+## 5️⃣ prh と caller-side allowlist の使い分け
+
+caller root に `.textlint-allowlist.yml` を置くと，固有の例外を textlint 指摘から外せる．
+v2.1〜 の機能で，差分追加方式のため中央設定は変更しない．prh とは目的が異なる．
+
+表 4: prh と caller-side allowlist の使い分け
+
+| 観点 | `templates/prh.yml`（中央） | `.textlint-allowlist.yml`（caller） |
+|---|---|---|
+| 目的 | 表記ゆれの統一 | 固有名詞・法令名等の例外許容 |
+| 対象 | すべての caller | 配置した caller のみ |
+| 例 | `github` → `GitHub` | `電波法施行規則` を `max-kanji-continuous-len` から除外 |
+| 反映 | 中央 PR 経由で全 caller に反映 | caller 単独で完結．中央 PR 不要 |
+| スキーマ | prh 仕様 | [textlint-filter-rule-allowlist 仕様](https://github.com/textlint/textlint-filter-rule-allowlist) |
+
+新しい例外語が出たら，まず「これは表記ゆれか」を確認する．表記ゆれなら中央 prh 追記，固有名詞の特殊事情なら caller 側 allowlist が向く．
+
+caller 側 allowlist の導入手順は次のとおり．
+
+```bash
+OWNER=tomio2480
+
+# サンプルを取得して必要部分のコメントを外す
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.textlint-allowlist.yml" \
+  > .textlint-allowlist.yml
+```
+
+allow / allowRules は次のように使い分ける．
+
+- `allow:` ：対象テキスト（文字列または `/regex/`）を丸ごと指摘から除外する
+- `allowRules:` ：特定のルール ID を caller 全体で無効化する

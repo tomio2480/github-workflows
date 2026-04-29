@@ -1,0 +1,21 @@
+# caller リポジトリ root に配置すると，中央 textlint 設定を上書きせず per-repo の
+# 例外語・例外パターン・例外ルールを差分管理できる．composite action が runtime config の
+# filters.allowlist に inject する．配置しない場合は中央既定の空 allowlist が使われ noop．
+#
+# スキーマは textlint-filter-rule-allowlist に従う．
+# https://github.com/textlint/textlint-filter-rule-allowlist
+#
+# 使い方:
+#   - allow:      文字列または /regex/ の配列．対象テキストを丸ごと指摘から除外する
+#   - allowRules: ルール ID の配列．特定のルールを caller 全体で無効化する
+#
+# prh の表記ゆれ辞書とは目的が異なる．用途分担は次のとおり．
+#   - 表記ゆれの統一        → 中央 templates/prh.yml に追加（PR で全 caller 共有）
+#   - 固有名詞・法令名等の例外 → 本ファイル（caller 単独で完結）
+
+allow: []
+  # - 電波法施行規則              # 法令の正式名称：max-kanji-continuous-len 例外
+  # - "/!\\[.+?\\]\\(.+?\\)/"     # 画像 alt text の長文：sentence-length 例外
+
+allowRules: []
+  # - ja-technical-writing/ja-no-mixed-period   # 表 / 図 caption はラベル扱いとみなす
