@@ -222,3 +222,32 @@ def test_allowlist_root_must_be_dict_otherwise_type_error(tmp_path, yaml_body):
 
     with pytest.raises(TypeError, match="allowlist"):
         _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+
+@pytest.mark.parametrize(
+    "non_dict_filters",
+    [
+        None,
+        False,
+        [],
+        ["a", "list"],
+        "string",
+        42,
+    ],
+)
+def test_allowlist_filters_non_dict_raises_type_error(tmp_path, non_dict_filters):
+    """既存 filters が dict でない場合は意図的に TypeError を上げる（fail-fast）．
+
+    rules の strict ハンドリングと整合する設計．caller が `"filters": null` や
+    `"filters": false` と明示している場合は silent overwrite せず caller 意図を尊重する．
+    """
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {}, "filters": non_dict_filters},
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+    allowlist = _make_allowlist(tmp_path, "allow:\n  - foo\n")
+
+    with pytest.raises(TypeError, match="filters"):
+        _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
