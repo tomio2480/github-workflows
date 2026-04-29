@@ -30,7 +30,7 @@ inputs:
     description: "reviewdog が PR レビューコメント投稿に使う GitHub token．caller 側で secrets.GITHUB_TOKEN を with で渡す"
     required: true
   pyyaml-version:
-    description: "明示的に install する PyYAML のバージョン（== 形式の固定指定子，例: 6.0.2）．空のときは ubuntu-latest プリインストールの PyYAML をそのまま使う．self-hosted runner や再現性を重視する caller のための逃げ道"
+    description: "明示的に install する PyYAML のバージョン番号（例: 6.0.2）．内部で pyyaml==<value> として渡されるため == 等の比較子は付けない．空のときは ubuntu-latest プリインストールの PyYAML をそのまま使う．self-hosted runner や再現性を重視する caller のための逃げ道"
     default: ""
 
 runs:
