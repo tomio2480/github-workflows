@@ -16,8 +16,12 @@ _PRH_PATH = Path(__file__).resolve().parents[2] / "templates" / "prh.yml"
 
 def test_javascript_rule_does_not_use_bare_js_pattern() -> None:
     content = _PRH_PATH.read_text(encoding="utf-8")
-    # 末尾コメント `- JS # ...` 形式の再導入も検出する．
-    bare_js_line = re.search(r"^\s*-\s*JS\s*(?:#.*)?\s*$", content, re.MULTILINE)
+    # 末尾コメント `- JS # ...` および YAML quoted form (`- "JS"` / `- 'JS'`) も検出する．
+    bare_js_line = re.search(
+        r"^\s*-\s*(?:['\"])?JS(?:['\"])?\s*(?:#.*)?\s*$",
+        content,
+        re.MULTILINE,
+    )
     assert bare_js_line is None, (
         "templates/prh.yml に plain-string `JS` パターンが残っている．"
         "prh は substring match のため `JSON` を誤検出する．"
