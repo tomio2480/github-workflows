@@ -191,8 +191,11 @@ curl -fsSL \
 | `.markdownlint-cli2.yaml` | markdownlint のルールを全置換 |
 | `.textlintrc.json` | textlint のルールを全置換 |
 | `prh.yml` | 辞書を全置換（中央辞書は無視される） |
+| `.textlint-allowlist.yml` | caller 固有の例外語・例外パターン・例外ルールを差分追加（v2.1〜） |
 
 override は **ファイル全置換方式** であり，差分マージはしない．中央を基点にしたいときは中央の該当ファイルをコピーして，必要部分だけ改変する．
+
+`.textlint-allowlist.yml` だけは差分追加方式で，caller 単独で固有名詞や法令名等の false positive を恒久化できる．prh と allowlist の使い分けは [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md) を参照．サンプルは [templates/.textlint-allowlist.yml](templates/.textlint-allowlist.yml) からコピーするとよい．
 
 ## 🔀 フォーク運用の手引き
 
