@@ -24,7 +24,7 @@
 - データの整合性に資する
 
 caller 固有の例外は per-repo override で吸収する前提とし，中央側は「広く効く既定」を優先する方針である．
-個別 caller の例外語彙は将来的に [Issue #14](https://github.com/tomio2480/github-workflows/issues/14) の caller-side allowlist で扱う想定である．
+個別 caller の例外語彙は v2.1（[Issue #14](https://github.com/tomio2480/github-workflows/issues/14) で実装）以降，caller root に `.textlint-allowlist.yml` を置くことで扱える．運用方針は [docs/dictionary-maintenance.md](dictionary-maintenance.md) を参照．
 
 ## 🧩 ja-no-space-around-parentheses の根拠
 

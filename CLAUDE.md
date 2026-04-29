@@ -80,3 +80,4 @@
 - [docs/architecture.md](docs/architecture.md) — 内部動作と自己検出ロジック
 - [docs/security.md](docs/security.md) — 公開運用時の脅威モデル
 - [docs/fork-usage.md](docs/fork-usage.md) — フォーク利用手順
+- [docs/development-notes.md](docs/development-notes.md) — 設計判断とレビュー対応の知見（過去 PR のふりかえり）

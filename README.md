@@ -44,29 +44,34 @@ github-workflows/
 │   ├── workflows/
 │   │   └── test-self-lint.yml  # 単体／統合テスト用 CI workflow
 │   └── dependabot.yml          # third-party action の自動更新
-├── scripts/                    # composite action から呼ぶ抽出ロジック（test-first 対象）
+├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
+│   ├── add-pr-reaction.sh         # 👀 reaction 付与（fail-open）
 │   ├── generate-textlint-runtime.py
 │   └── resolve-config-path.sh
-├── tests/                      # スクリプト単体テスト + 統合テスト fixture
-│   ├── python/                 # pytest
-│   ├── bash/                   # bats-core
-│   └── fixtures/markdown/      # 統合テスト用 Markdown
-├── templates/                  # 各リポジトリにコピーするテンプレート
+├── tests/                         # スクリプト単体テスト + 統合テスト fixture
+│   ├── python/                    # pytest
+│   ├── bash/                      # bats-core
+│   └── fixtures/markdown/         # 統合テスト用 Markdown
+├── templates/                     # 各リポジトリにコピーするテンプレート
 │   ├── .github/
 │   │   └── workflows/
-│   │       └── md-lint.yml     # 呼び出し側ワークフロー（唯一の必須ファイル）
-│   ├── .markdownlint-cli2.yaml # 中央デフォルト＋override 用
-│   ├── .textlintrc.json        # 中央デフォルト＋override 用
-│   ├── prh.yml                 # 中央辞書＋override 用
-│   └── lefthook.yml            # ローカル hook（任意）
-├── docs/                       # 運用ガイド
+│   │       └── md-lint.yml        # 呼び出し側ワークフロー（唯一の必須ファイル）
+│   ├── .markdownlint-cli2.yaml    # 中央デフォルト＋override 用
+│   ├── .textlintrc.json           # 中央デフォルト＋override 用
+│   ├── .textlintignore            # 中央 ignore 設定＋override 用
+│   ├── .textlint-allowlist.yml    # caller-side allowlist のサンプル（v2.1〜，optional）
+│   ├── prh.yml                    # 中央辞書＋override 用
+│   └── lefthook.yml               # ローカル hook（任意）
+├── docs/                          # 運用ガイド
 │   ├── setup-guide.md
 │   ├── onboarding-new-repo.md
 │   ├── onboarding-existing-repo.md
 │   ├── dictionary-maintenance.md
+│   ├── rule-rationale.md
 │   ├── architecture.md
 │   ├── security.md
-│   └── fork-usage.md
+│   ├── fork-usage.md
+│   └── development-notes.md       # 設計判断とレビュー対応の知見
 ├── README.md
 ├── CLAUDE.md                   # AI エージェント向けの作業指針
 └── LICENSE
@@ -243,6 +248,7 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/architecture.md](docs/architecture.md) | 内部動作 | メンテナー・AI |
 | [docs/security.md](docs/security.md) | 公開運用の脅威モデル | オーナー |
 | [docs/fork-usage.md](docs/fork-usage.md) | フォーク運用 | 他利用者 |
+| [docs/development-notes.md](docs/development-notes.md) | 設計判断とレビュー対応の知見 | メンテナー・AI |
 
 ## 📝 ライセンス
 
