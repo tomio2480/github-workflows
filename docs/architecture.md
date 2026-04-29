@@ -89,8 +89,15 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 | `.textlintrc.json` | 同上 |
 | `.textlintignore` | 同上．textlint には `--ignore-path` で明示的に渡す |
 | `prh.yml` | 同上 |
+| `.textlint-allowlist.yml` | ① caller root に存在すれば絶対パスを採用 → ② 無ければ空文字（中央フォールバックを持たない optional ファイル．v2.1〜） |
 
 **ファイル全置換方式** のため，caller に置いたファイルは中央と差分マージされず単独で採用される．部分的に中央を流用したいときは中央の該当ファイルを丸ごとコピーしてから改変する．
+
+`.textlint-allowlist.yml` のみ規約から外れる．
+`scripts/resolve-config-path.sh` の「無ければ中央テンプレを返す」抽象には乗らない．
+そのため `action.yml` 内で `[ -f .textlint-allowlist.yml ]` を inline 判定する．
+存在すれば runtime config の `filters.allowlist` に inject される．
+無ければ中央 `templates/.textlintrc.json` 既定の `"allowlist": {}`（noop）が使われる．
 
 ### lint 対象外パターンと self-test
 
@@ -100,16 +107,31 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 
 ### textlint 用 runtime config 生成
 
-`.textlintrc.json` の `rules.prh.rulePaths` は相対パスで書かれている．中央の textlint config と caller の prh.yml（または逆）を組み合わせると相対解決が意図どおりにならない場合がある．
+`.textlintrc.json` の `rules.prh.rulePaths` は相対パスで書かれている．
+中央の textlint config と caller の prh.yml を組み合わせると相対解決が意図どおりにならない場合がある．
+加えて caller の `.textlint-allowlist.yml` を `filters.allowlist` に inject する責務もここで担う．
 
 このため workflow は次のステップを挟む．
 
 1. 解決済みの textlint config を読み込む
 2. `rules.prh.rulePaths` を解決済みの prh.yml の絶対パスで上書きする
-3. `.textlintrc.runtime.json` として caller root に書き出す
-4. textlint action にはこの runtime config を渡す
+3. caller root の `.textlint-allowlist.yml` があれば PyYAML で読み込み `filters.allowlist` を上書き．
+   無ければ中央既定の `"allowlist": {}`（noop）が残る
+4. `.textlintrc.runtime.json` として `RUNNER_TEMP` 配下に書き出す
+5. textlint コマンドにはこの runtime config を渡す
 
-これにより override 組み合わせ（caller 辞書＋中央 textlintrc など）でも path が破綻しない．
+allowlist の inject は `scripts/generate-textlint-runtime.py` で行う．
+argv 4 つ目（optional）で allowlist パスを受け取る．
+argv 3 つの呼び出しは従来動作を厳密維持する．
+PyYAML は遅延 import としており，3 つ呼び出しに依存追加を強要しない．
+
+PyYAML は `ubuntu-latest` runner に preinstall されている前提である．
+再現性が必要な caller は `pyyaml-version` input にバージョン番号（例 `6.0.2`）を渡せばよい．
+内部で `pip install pyyaml==<value>` として固定される．`==` 等の比較子は付けない．
+既定（空文字）では何も install せず runner 既定の PyYAML を使う．
+
+この組み立てにより，override 組み合わせ（caller 辞書＋中央 textlintrc など）でも path が破綻しない．
+caller 単独で固有名詞や法令名等の例外も差分追加できる．
 
 ## 👀 review 開始の可視化（PR reaction）
 
