@@ -29,6 +29,9 @@ inputs:
   github-token:
     description: "reviewdog が PR レビューコメント投稿に使う GitHub token．caller 側で secrets.GITHUB_TOKEN を with で渡す"
     required: true
+  pyyaml-version:
+    description: "明示的に install する PyYAML のバージョン（== 形式の固定指定子，例: 6.0.2）．空のときは ubuntu-latest プリインストールの PyYAML をそのまま使う．self-hosted runner や再現性を重視する caller のための逃げ道"
+    default: ""
 
 runs:
   using: composite
@@ -71,10 +74,22 @@ runs:
         TEXTLINT_IGNORE="$(bash "${RESOLVE}" .textlintignore "${TEMPLATES}")"
         PRH_CFG="$(bash "${RESOLVE}" prh.yml "${TEMPLATES}")"
 
+        # caller root の .textlint-allowlist.yml は optional．存在すれば絶対パスを，
+        # 無ければ空文字を出力する．resolve-config-path.sh は「無ければ中央テンプレを返す」
+        # 規約のため allowlist には流用せず inline でハンドリングする．
+        if [ -f .textlint-allowlist.yml ]; then
+          ALLOWLIST_CFG="$(pwd)/.textlint-allowlist.yml"
+          echo "caller allowlist:    ${ALLOWLIST_CFG}"
+        else
+          ALLOWLIST_CFG=""
+          echo "caller allowlist:    (not configured)"
+        fi
+
         echo "mdlint=${MDLINT_CFG}" >> "${GITHUB_OUTPUT}"
         echo "textlint=${TEXTLINT_CFG}" >> "${GITHUB_OUTPUT}"
         echo "textlint_ignore=${TEXTLINT_IGNORE}" >> "${GITHUB_OUTPUT}"
         echo "prh=${PRH_CFG}" >> "${GITHUB_OUTPUT}"
+        echo "allowlist=${ALLOWLIST_CFG}" >> "${GITHUB_OUTPUT}"
         echo "markdownlint config: ${MDLINT_CFG}"
         echo "textlint config:     ${TEXTLINT_CFG}"
         echo "textlint ignore:     ${TEXTLINT_IGNORE}"
@@ -87,12 +102,24 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         SRC: ${{ steps.cfg.outputs.textlint }}
         PRH: ${{ steps.cfg.outputs.prh }}
+        ALLOWLIST: ${{ steps.cfg.outputs.allowlist }}
+        PYYAML_VERSION: ${{ inputs.pyyaml-version }}
       run: |
         set -euo pipefail
         REPO_ROOT="$(cd "${ACTION_PATH}/../../.." && pwd)"
         # caller cwd に依存せず確実に共有できる RUNNER_TEMP 配下に絶対パスで書き出す．
         DEST="${RUNNER_TEMP}/textlintrc.runtime.json"
-        python3 "${REPO_ROOT}/scripts/generate-textlint-runtime.py" "${SRC}" "${PRH}" "${DEST}"
+
+        # PyYAML は ubuntu-latest にプリインストールされているため，既定では何もしない．
+        # caller が pyyaml-version を明示した場合のみ pip install で固定する（再現性向上）．
+        # PyYAML は generate-textlint-runtime.py の allowlist 読込でのみ必要．
+        if [ -n "${PYYAML_VERSION}" ]; then
+          echo "Installing PyYAML==${PYYAML_VERSION} for reproducibility"
+          python3 -m pip install --quiet --user "pyyaml==${PYYAML_VERSION}"
+        fi
+
+        python3 "${REPO_ROOT}/scripts/generate-textlint-runtime.py" \
+          "${SRC}" "${PRH}" "${DEST}" "${ALLOWLIST}"
         echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
     - name: Setup Node.js
@@ -142,7 +169,8 @@ runs:
           textlint-rule-preset-ja-technical-writing \
           textlint-rule-preset-ja-spacing \
           textlint-rule-prh \
-          textlint-filter-rule-comments)
+          textlint-filter-rule-comments \
+          textlint-filter-rule-allowlist)
         echo "bin=${TMP}/node_modules/.bin" >> "${GITHUB_OUTPUT}"
         echo "modules=${TMP}/node_modules" >> "${GITHUB_OUTPUT}"
         echo "Installed under: ${TMP}"
