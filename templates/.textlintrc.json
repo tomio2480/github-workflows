@@ -45,6 +45,7 @@
     }
   },
   "filters": {
-    "comments": true
+    "comments": true,
+    "allowlist": {}
   }
 }
