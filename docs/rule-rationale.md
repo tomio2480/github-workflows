@@ -11,6 +11,7 @@
 - 🎯 採用方針
 - 🧩 ja-no-space-around-parentheses の根拠
 - 📦 prh の表記ゆれ辞書
+- 🧩 全角記号前後の半角スペース禁止の根拠
 - 📚 参照
 
 ## 🎯 採用方針
@@ -46,6 +47,35 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 plain string で `JS` と書くと substring match が効き，`JSON Lines` のような語にも誤マッチするため避ける．
 
 辞書追加の手順は [docs/dictionary-maintenance.md](dictionary-maintenance.md) を参照．
+
+## 🧩 全角記号前後の半角スペース禁止の根拠
+
+4 シンボル（中黒 `・`・全角スラッシュ `／`・全角コロン `：`・波ダッシュ `〜`）を対象に，
+前後の半角スペースを禁止するルールを追加している．
+JTF 日本語標準スタイルガイドの全角記号周りの規定に準拠した対応である．
+
+根拠は表 2 のとおり．強度の高い順に並べている．
+
+表 2: 全角記号前後の半角スペース禁止の採用根拠（強度の高い順）
+
+| 観点 | 内容 | 出典 |
+|---|---|---|
+| 業界慣習 | JTF 日本語標準スタイルガイドが全角句読点・記号後スペース禁止を規定．Gemini Code Assist が caller 原稿で繰り返し指摘してきた事象（[Issue #15](https://github.com/tomio2480/github-workflows/issues/15)）と合致 | [JTF スタイルガイド](https://www.jtf.jp/pdf/jtf_style_guide.pdf) |
+| 日本語組版 | 全角記号は前後の文字幅に合わせて字面を縮める前提で設計されている．半角スペース挿入は組版上の冗長な余白を生む | [textlint-rule-preset-ja-spacing](https://github.com/textlint-ja/textlint-rule-preset-ja-spacing) |
+| アクセシビリティ | screen reader が記号と前後文字を別語として読み上げ，冗長読み上げを誘発する実装がある | [Deque: Screen Readers and Punctuation](https://www.deque.com/blog/dont-screen-readers-read-whats-screen-part-1-punctuation-typographic-symbols/) |
+| データ整合性 | 機械処理（diff・grep・置換）で表記ゆれが残ると整合性検査が困難になる．preset-ja-spacing で機械検出できなかった範囲を prh で補う | （業界慣習） |
+
+patterns 設計について補足する．
+prh は同一 rule 内の複数 pattern を alternation に合成する．
+leading/trailing を別 pattern に分割すると後続の取りこぼしが発生する．
+そのため `/ X | X|X /` の長い順 alternation 1 本で leftmost-longest を機能させている．
+
+caller が `--fix` を組み込む場合は事前に diff 確認を推奨する．
+中央 composite action は `--fix` を起動しない．
+caller 独自パイプラインで有効化すると一括置換が走るため，事前のレビューが必要になる．
+
+per-repo の例外は caller root に `.textlint-allowlist.yml` を置くことで吸収できる（v2.1 以降）．
+詳細は [docs/dictionary-maintenance.md](dictionary-maintenance.md) の「prh と caller-side allowlist の使い分け」を参照．
 
 ## 📚 参照
 

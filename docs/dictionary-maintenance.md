@@ -89,6 +89,37 @@ rules:
 
 詳細仕様は [prh 公式](https://github.com/prh/prh) を参照．
 
+### 正規表現で前後スペースを拾うパターン
+
+文字の前後にある半角スペースを検出したいとき，`/ X | X|X /` の形式を使う．
+以下は `・` 1 シンボルの例である．
+
+```yaml
+- expected: ・
+  patterns:
+    - / ・ | ・|・ /
+  prh: 全角中黒「・」の前後に半角スペースを入れない（JTF スタイル）
+  specs:
+    - from: CI ・ cron
+      to: CI・cron
+    - from: 日本語 ・英語
+      to: 日本語・英語
+    - from: a・ b
+      to: a・b
+```
+
+prh は同一 rule 内の複数 pattern を alternation に合成して `/g` 適用する．
+leading と trailing を別 pattern に分割すると合成後が `/(?: ・|・ )/gmu` になる．
+両側スペース入力で後続スペースを取りこぼして spec が落ちる点に注意が必要である．
+長い順 alternation `/ X | X|X /` を 1 本書くことで leftmost-longest が機能する．
+両側スペースを 1 マッチで処理できる点がこの記法の利点である．
+
+`JS` の word boundary 例（`/\bJS\b/`）と同様に，plain string では拾えない場合がある．
+空白コンテキストを正規表現で解決する事例として並べて参照されたい．
+
+lint 上は両側スペース行で 1 件の diagnostic が出る．
+`--fix` を 1 回適用すると両端が同時に解消される動作になる．
+
 ## 4️⃣ バージョニングと影響範囲
 
 表 2: 参照方式と反映タイミング
@@ -120,7 +151,7 @@ git push -f origin v1
 ## 5️⃣ prh と caller-side allowlist の使い分け
 
 caller root に `.textlint-allowlist.yml` を置くと，固有の例外を textlint 指摘から外せる．
-v2.1〜 の機能で，差分追加方式のため中央設定は変更しない．prh とは目的が異なる．
+v2.1 以降の機能で，差分追加方式のため中央設定は変更しない．prh とは目的が異なる．
 
 表 4: prh と caller-side allowlist の使い分け
 
@@ -147,5 +178,5 @@ curl -fsSL \
 
 allow / allowRules は次のように使い分ける．
 
-- `allow:` ：対象テキスト（文字列または `/regex/`）を丸ごと指摘から除外する
-- `allowRules:` ：特定のルール ID を caller 全体で無効化する
+- `allow:`：対象テキスト（文字列または `/regex/`）を丸ごと指摘から除外する
+- `allowRules:`：特定のルール ID を caller 全体で無効化する
