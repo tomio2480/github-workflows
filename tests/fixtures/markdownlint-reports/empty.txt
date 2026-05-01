@@ -1,0 +1,4 @@
+markdownlint-cli2 v0.13.0 (markdownlint v0.34.0)
+Finding: tests/fixtures/markdown/clean.md
+Linting: 1 file(s)
+Summary: 0 error(s)
