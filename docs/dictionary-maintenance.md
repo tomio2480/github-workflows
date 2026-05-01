@@ -130,7 +130,7 @@ lint 上は両側スペース行で 1 件の diagnostic が出る．
 | `@main` | 中央 main へのマージで次回 PR から即反映．即時性重視の利用者向け |
 | `@v2` major mutable | patch リリースごとに最新 patch へ進められる．caller の介入なしで追従 |
 | `@v2.2.0` patch immutable | 原則反映されない（固定）．新 patch へ切り替える明示的な操作が必要 |
-| `@<SHA> # v2.2.0`（既定） | SHA pin．Dependabot が patch tag 更新を検知して caller に PR を起票 |
+| `@<SHA> # v2.2.0`（既定） | SHA pin．Dependabot がタグの更新を検知して caller に PR を起票 |
 
 patch リリースは PR マージごとに切る運用とする．major mutable は同時に最新 patch へ進める．
 
@@ -148,9 +148,9 @@ gh release create v2.2.1 --title "v2.2.1" --notes "..."
 | 変更種別 | タグ運用 |
 |---|---|
 | 辞書エントリ追加 | patch リリース（`vX.Y.Z+1`）として切る．major mutable も同時に進める |
-| 辞書エントリ削除・変更 | 既存 caller の指摘が意図せず変わるため事前に影響確認．patch として切るか minor に上げるかは破壊性で判断 |
-| prh 設定の構造変更 | minor リリース（`vX.Y+1.0`）として切る．major mutable も進める |
-| inputs の意味変更・required 化 | 後方非互換のため新 major（`vX+1`）を切る．旧 major は据え置き |
+| 辞書エントリ削除・変更 | 既存 caller の指摘が意図せず変わるため事前に影響確認．破壊性に応じて patch / minor のどちらで切るかを判断 |
+| prh.yml スキーマへの非破壊的追加 | minor リリース（`vX.Y+1.0`）として切る．major mutable も進める |
+| prh.yml スキーマの破壊的変更 / `action.yml` inputs の意味変更・required 化 | 後方非互換のため新 major（`vX+1`）を切る．旧 major は据え置き |
 
 破壊的変更の場合は CLAUDE.md のタグ運用規律に従う．
 

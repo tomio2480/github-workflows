@@ -92,7 +92,7 @@ github-workflows/
 | アップデート（`@main`） | 中央 main へのマージで次回 PR から即反映 | 自分でフォーク先に上流同期すると反映 |
 | おすすめ対象 | Tomio さん本人 / ルールに異存がない利用者 | 組織運用 / ルールを独自カスタムしたい利用者 |
 
-参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2.2.0` 形式の SHA pin で，Dependabot が SHA と patch バージョンを自動追随する．即時反映を優先したい場合は `@main` を，caller 自身で明示的に追従したい場合は `@v2`（major mutable，patch ごとに進む）または `@v2.2.0`（patch immutable）を pin する．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
+参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2.2.0` 形式の SHA pin で，Dependabot が SHA とバージョンを自動追随する．即時反映を優先したい場合は `@main` を，caller 自身で明示的に追従したい場合は `@v2`（major mutable，patch ごとに進む）または `@v2.2.0`（patch immutable）を pin する．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
 
 ### パターン (A)：tomio2480/github-workflows を直接参照
 

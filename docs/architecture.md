@@ -26,7 +26,7 @@
 対象リポジトリ（caller）
   │ .github/workflows/md-lint.yml が on: pull_request で起動
   │ 1. actions/checkout で caller 自身を checkout
-  │ 2. uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2
+  │ 2. uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2.2.0
   ▼
 composite action（本リポジトリ）
   │ 1. PR に 👀 reaction を付け「review 開始」を可視化（`pull_request` イベント時のみ）
