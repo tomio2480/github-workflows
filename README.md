@@ -29,6 +29,7 @@ Markdown を書くすべてのリポジトリに，PR にコメントする Bot 
 - 日本語文章の問題を [textlint](https://textlint.github.io/) が検出（長文，混在文末，助詞連続など）
 - 表記ゆれを [prh](https://github.com/prh/prh) が検出（GitHub 表記など）
 - これらの指摘が [reviewdog](https://github.com/reviewdog/reviewdog) 経由で **PR の該当行に inline コメント** として投稿される
+- 件数の summary コメントが PR に **1 件 upsert** される（指摘ゼロでも明示．push のたびに最新化）
 - CI 自体は緑のまま（マージをブロックしない）
 
 Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自前運用する構成である．
@@ -46,7 +47,9 @@ github-workflows/
 │   └── dependabot.yml          # third-party action の自動更新
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
 │   ├── add-pr-reaction.sh         # 👀 reaction 付与（fail-open）
+│   ├── count-lint-findings.py     # textlint XML / markdownlint テキストから件数集計
 │   ├── generate-textlint-runtime.py
+│   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   └── resolve-config-path.sh
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
