@@ -3,11 +3,16 @@ name: Self test (composite action)
 # composite action の TDD 検証用 CI workflow．
 #
 # 3 jobs:
-#   - unit-python: scripts/generate-textlint-runtime.py の pytest
-#   - unit-bash: scripts/resolve-config-path.sh の bats
+#   - unit-python: scripts/*.py の pytest
+#   - unit-bash: scripts/*.sh の bats
 #   - integration-action: ./.github/actions/markdown-lint を fixture に対して走らせる
 #
 # integration-action は reviewdog で PR inline コメントを投稿するため pull_request のみで動く．
+# 「指摘ゼロ」 ケースは scripts/count-lint-findings.py の pytest と
+# scripts/post-lint-summary.sh の bats で網羅し，self-PR では「指摘あり混在」
+# fixture に対する upsert 挙動だけを目視確認する（同一 PR で複数 job が
+# 同じ marker を upsert すると race するため，integration は単一 job に
+# 絞る）．
 
 on:
   pull_request:
