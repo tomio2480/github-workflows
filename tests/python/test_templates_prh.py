@@ -59,6 +59,10 @@ def prh_rules() -> list[dict]:
         data = yaml.safe_load(f)
     if data is None:
         raise ValueError(f"{_PRH_PATH} が空または無効な YAML です")
+    if not isinstance(data, dict):
+        raise TypeError(
+            f"{_PRH_PATH} の root が dict でなく {type(data).__name__} です"
+        )
     rules = data.get("rules")
     if rules is None:
         raise ValueError(f"{_PRH_PATH} に rules キーがありません")
@@ -104,11 +108,12 @@ def test_fullwidth_symbol_pattern_uses_longest_first_alternation(
     """
     rule = _find_rule_by_expected(prh_rules, symbol)
     assert rule is not None
-    patterns = rule.get("patterns") or []
+    patterns = rule.get("patterns")
     expected_regex = f"/ {symbol} | {symbol}|{symbol} /"
-    assert expected_regex in patterns, (
-        f"templates/prh.yml の expected:{symbol} rule に `{expected_regex}` パターンが無い．"
-        "両側スペースを 1 マッチで処理するため長い順 alternation が必要．"
+    assert patterns == [expected_regex], (
+        f"templates/prh.yml の expected:{symbol} rule の patterns は "
+        f"`[{expected_regex!r}]` の 1 本のみであるべきだが {patterns!r} が見つかった．"
+        "補助 pattern の混在は longest-first 設計を壊すため禁止．"
     )
 
 

@@ -69,7 +69,7 @@ prh は YAML で記述する．最低限必要なのは `version` と `rules`．
 version: 1
 rules:
   - expected: GitHub
-    pattern:
+    patterns:
       - /github/i
       - Github
       - GITHUB
@@ -83,7 +83,7 @@ rules:
 | フィールド | 役割 |
 |---|---|
 | `expected` | 正解の表記 |
-| `pattern` | 検出対象．正規表現（`/.../i` 形式）または文字列配列 |
+| `patterns` | 検出対象．正規表現（`/.../i` 形式）または文字列配列 |
 | `prh` | 指摘メッセージ |
 | `specs` | 期待する変換結果の例（テスト用） |
 
