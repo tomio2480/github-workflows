@@ -87,16 +87,19 @@ gh search code "tomio2480/github-workflows" --owner tomio2480 --extension yml \
   --json repository,path
 
 # 2. 各 caller の workflow 参照と Dependabot 設定を確認
+#    --silent と 2>/dev/null で 404 等の HTTP エラー出力を抑える
 for repo in <caller_list>; do
-  gh api "repos/tomio2480/${repo}/contents/.github/workflows/md-lint.yml" \
-    --jq '.content' | base64 -d | grep "uses:.*github-workflows"
-  gh api "repos/tomio2480/${repo}/contents/.github/dependabot.yml" \
+  gh api --silent "repos/tomio2480/${repo}/contents/.github/workflows/md-lint.yml" \
+    --jq '.content' | base64 -d 2>/dev/null | grep "uses:.*github-workflows"
+  gh api --silent "repos/tomio2480/${repo}/contents/.github/dependabot.yml" \
     --jq '.content' | base64 -d 2>/dev/null
 done
 
 # 3. 並行セッションの可能性を踏まえて最近の commit と open PR を確認
+#    commits は --jq で日時とメッセージだけ抽出して目視判定しやすくする
 for repo in <caller_list>; do
-  gh api "repos/tomio2480/${repo}/commits?path=.github/workflows/md-lint.yml&per_page=3"
+  gh api "repos/tomio2480/${repo}/commits?path=.github/workflows/md-lint.yml&per_page=3" \
+    --jq '.[] | "\(.commit.author.date) \(.commit.message)"'
   gh pr list --repo "tomio2480/${repo}" --search "author:app/dependabot github-workflows"
 done
 ```
