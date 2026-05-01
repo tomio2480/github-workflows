@@ -126,6 +126,26 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
+    - name: Count markdownlint findings (for summary)
+      # reviewdog/action-markdownlint は件数を outputs で公開しないため，summary
+      # 投稿のためだけに markdownlint-cli2 を再実行して結果テキストを残す．
+      # findings ありで非ゼロ終了するため continue-on-error と `|| true` で吸収．
+      # 出力の各 finding 行は `path:line[:col] RULE/...` 形式であり，
+      # scripts/count-lint-findings.py が同形式の正規表現で件数を集計する．
+      id: mdlint_count
+      if: github.event_name == 'pull_request'
+      shell: bash
+      continue-on-error: true
+      env:
+        MDLINT_CFG: ${{ steps.cfg.outputs.mdlint }}
+        MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
+      run: |
+        set -uo pipefail
+        npx -y -p markdownlint-cli2@^0.13.0 markdownlint-cli2 \
+          --config "${MDLINT_CFG}" \
+          "${MARKDOWN_GLOB}" "#node_modules" \
+          > markdownlint-report.txt 2>&1 || true
+
     - name: Run markdownlint with reviewdog
       # reviewdog/action-markdownlint v0.26.2
       uses: reviewdog/action-markdownlint@3667398db9118d7e78f7a63d10e26ce454ba5f58
@@ -225,3 +245,38 @@ runs:
           -fail-on-error="${RD_FAIL_ON_ERROR}" \
           -filter-mode="${RD_FILTER_MODE}" \
           < textlint-report.xml
+
+    - name: Post lint summary comment to PR
+      # reviewdog の github-pr-review reporter は findings ゼロのとき何も投稿
+      # しないため，PR 上で「lint が走ったが指摘なし」 と「workflow が起動して
+      # いない」 が判別できない．本ステップは件数の summary を hidden marker
+      # 付き 1 コメントで upsert することでこの UX 欠落を補う．
+      #
+      # 失敗を fail-open にする責務は scripts/post-lint-summary.sh が持つ
+      # （非 2xx は ::warning:: + exit 0）．reviewdog 本体は既に投稿済みの
+      # ため UX nicety で job を落とさない方針．
+      #
+      # ガード条件:
+      #   - always(): textlint / markdownlint が指摘ありで非ゼロ終了しても
+      #     summary を出すために必要
+      #   - pull_request イベントに限定: push 時は対象 PR が存在しない
+      #   - 同一リポジトリからの PR に限定: fork からの PR では
+      #     pull-requests: write が降格され API call が必ず失敗するため，
+      #     reviewdog inline コメントの制約と整合させて事前に skip
+      if: |
+        always() &&
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -uo pipefail
+        SUMMARY_JSON_PATH="$(pwd)/lint-summary.json"
+        python3 "${ACTION_PATH}/../../../scripts/count-lint-findings.py" \
+          textlint-report.xml markdownlint-report.txt > "${SUMMARY_JSON_PATH}"
+        SUMMARY_JSON="${SUMMARY_JSON_PATH}" \
+          bash "${ACTION_PATH}/../../../scripts/post-lint-summary.sh"
