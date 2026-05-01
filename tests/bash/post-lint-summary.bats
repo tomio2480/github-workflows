@@ -147,7 +147,7 @@ _write_summary() {
 }
 
 @test "marker 付きコメントが既にあるとき PATCH で更新する" {
-  _write_summary '{"markdownlint":{"total":3},"textlint":{"error":1,"warning":2,"info":0,"total":3}}'
+  _write_summary '{"markdownlint":{"total":3,"findings":[{"file":"a.md","line":1,"rule":"MD041/x","message":"top heading"}]},"textlint":{"error":1,"warning":2,"info":0,"total":3,"findings":[{"file":"a.md","line":2,"severity":"error","rule":"r1","message":"bad"}]}}'
   export FAKE_CURL_GET_BODY='[{"id":99,"body":"<!-- gh-workflows-lint-summary -->\nold"}]'
 
   run bash "${SCRIPT}"
@@ -155,9 +155,54 @@ _write_summary() {
   [ "${status}" -eq 0 ]
   grep -q '^PATCH https://api\.github\.com/repos/acme/repo/issues/comments/99$' "${FAKE_CURL_LOG}"
   ! grep -q '^POST ' "${FAKE_CURL_LOG}"
-  grep -q 'BODY: .*詳細は inline' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*差分行に該当' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*filter-mode' "${FAKE_CURL_LOG}"
   grep -q 'BODY: .*markdownlint' "${FAKE_CURL_LOG}"
   grep -q 'BODY: .*error: 1' "${FAKE_CURL_LOG}"
+  # findings 一覧が details で展開可能な形で含まれる
+  grep -q 'BODY: .*<details>' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*a\.md:1' "${FAKE_CURL_LOG}"
+}
+
+@test "Actions run の env が揃っていれば本文に Actions run リンクを含む" {
+  _write_summary '{"markdownlint":{"total":0},"textlint":{"error":0,"warning":0,"info":0,"total":0}}'
+  export FAKE_CURL_GET_BODY='[]'
+  export GITHUB_SERVER_URL="https://github.com"
+  export GITHUB_REPOSITORY="acme/repo"
+  export GITHUB_RUN_ID="9999"
+  export GITHUB_RUN_ATTEMPT="1"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*Actions run: https://github\.com/acme/repo/actions/runs/9999/attempts/1' "${FAKE_CURL_LOG}"
+
+  unset GITHUB_SERVER_URL GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_RUN_ATTEMPT
+}
+
+@test "findings が MAX を超えるとき details 末尾に「他 X 件」 と出る" {
+  # MAX_FINDINGS_PER_TOOL は 20．25 件渡して切り詰めを確認．
+  python3 - "${SUMMARY_JSON_FILE}" <<'PY'
+import json
+import sys
+
+findings = [
+    {"file": f"f{i}.md", "line": i, "severity": "error", "rule": "r", "message": "msg"}
+    for i in range(1, 26)
+]
+payload = {
+    "markdownlint": {"total": 0, "findings": []},
+    "textlint": {"error": 25, "warning": 0, "info": 0, "total": 25, "findings": findings},
+}
+with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as f:
+    json.dump(payload, f, ensure_ascii=False)
+PY
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*他 5 件' "${FAKE_CURL_LOG}"
 }
 
 @test "他人のコメントのみで marker が無いときは POST する" {
