@@ -164,6 +164,74 @@ _write_summary() {
   grep -q 'BODY: .*a\.md:1' "${FAKE_CURL_LOG}"
 }
 
+@test "GITHUB_WORKSPACE 配下の絶対パスは相対パスに正規化されて本文に出る" {
+  python3 - "${SUMMARY_JSON_FILE}" <<'PY'
+import json
+import sys
+
+payload = {
+    "markdownlint": {
+        "total": 1,
+        "findings": [
+            {
+                "file": "/home/runner/work/repo/repo/docs/foo.md",
+                "line": 3,
+                "rule": "MD041/first-line-heading",
+                "message": "First line heading",
+            }
+        ],
+    },
+    "textlint": {
+        "error": 0, "warning": 0, "info": 0, "total": 0, "findings": [],
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as f:
+    json.dump(payload, f, ensure_ascii=False)
+PY
+  export FAKE_CURL_GET_BODY='[]'
+  export GITHUB_WORKSPACE="/home/runner/work/repo/repo"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*`docs/foo\.md:3`' "${FAKE_CURL_LOG}"
+  ! grep -q 'BODY: .*`/home/runner' "${FAKE_CURL_LOG}"
+
+  unset GITHUB_WORKSPACE
+}
+
+@test "textlint の eslint.rules. プレフィックスは表示時に剥がされる" {
+  python3 - "${SUMMARY_JSON_FILE}" <<'PY'
+import json
+import sys
+
+payload = {
+    "markdownlint": {"total": 0, "findings": []},
+    "textlint": {
+        "error": 1, "warning": 0, "info": 0, "total": 1,
+        "findings": [
+            {
+                "file": "docs/foo.md",
+                "line": 5,
+                "severity": "error",
+                "rule": "eslint.rules.prh",
+                "message": "Github => GitHub",
+            }
+        ],
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as f:
+    json.dump(payload, f, ensure_ascii=False)
+PY
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*\[error\] prh:' "${FAKE_CURL_LOG}"
+  ! grep -q 'BODY: .*eslint\.rules\.prh' "${FAKE_CURL_LOG}"
+}
+
 @test "Actions run の env が揃っていれば本文に Actions run リンクを含む" {
   _write_summary '{"markdownlint":{"total":0},"textlint":{"error":0,"warning":0,"info":0,"total":0}}'
   export FAKE_CURL_GET_BODY='[]'

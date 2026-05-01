@@ -76,11 +76,35 @@ server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
 repo = os.environ.get("GITHUB_REPOSITORY", "")
 run_id = os.environ.get("GITHUB_RUN_ID", "")
 run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+workspace = (os.environ.get("GITHUB_WORKSPACE") or "").rstrip("/")
 run_url = ""
 if repo and run_id:
     run_url = f"{server}/{repo}/actions/runs/{run_id}"
     if run_attempt:
         run_url += f"/attempts/{run_attempt}"
+
+
+def normalize_file(path: str) -> str:
+    """runner 上の絶対パスを caller リポジトリ起点の相対パスに整える．
+
+    GitHub Actions では `GITHUB_WORKSPACE` が caller チェックアウトのルート
+    （例 `/home/runner/work/<repo>/<repo>`）として渡るため，それを strip する．
+    workspace 配下に該当しない path はそのまま返す．
+    """
+    if workspace and path.startswith(workspace + "/"):
+        return path[len(workspace) + 1:]
+    return path
+
+
+def normalize_rule(rule: str) -> str:
+    """textlint checkstyle が付ける `eslint.rules.` プレフィックスを取り除く．
+
+    textlint v14 の checkstyle formatter は `source` 属性を `eslint.rules.<rule>`
+    で出すが，summary 上では冗長になるため表示専用に剥がす．JSON（集計層）の
+    生データは触らず，rendering 層で正規化する責務分離を保つ．
+    """
+    prefix = "eslint.rules."
+    return rule[len(prefix):] if rule.startswith(prefix) else rule
 
 
 def render_findings(label, findings):
@@ -93,9 +117,9 @@ def render_findings(label, findings):
     ]
     shown = findings[:MAX_FINDINGS_PER_TOOL]
     for f in shown:
-        file_ = f.get("file") or "?"
+        file_ = normalize_file(f.get("file") or "?")
         line = f.get("line") or 0
-        rule = f.get("rule") or ""
+        rule = normalize_rule(f.get("rule") or "")
         msg = (f.get("message") or "").replace("|", "\\|")
         sev = f.get("severity")
         sev_tag = f"[{sev}] " if sev else ""
