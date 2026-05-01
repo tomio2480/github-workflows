@@ -75,3 +75,60 @@ rules:
   - expected: ください
     patterns:
       - 下さい
+
+  # 全角記号前後の半角スペース禁止（Issue #15 stage 2）
+  # JTF 日本語標準スタイルガイドに基づき，4 シンボル（中黒・全角スラッシュ・
+  # 全角コロン・波ダッシュ）の前後に半角スペースを入れない．
+  # patterns は ASCII 半角スペースに限定する（`\s` は改行・タブも拾い
+  # 箇条書き構造で偽陽性が出るため使わない）．量指定子 `+` でシングルスペースに
+  # 加えてダブルスペース等の typo も検出する．`/ +X +| +X|X +/` の長い順
+  # alternation で「両側／前のみ／後のみ」 の 3 形態を 1 本で扱う．
+  # 同一 rule 内の複数 pattern は prh が内部で alternation に合成するため，
+  # leftmost-longest が機能するこの 1 本記法に統一している．
+  - expected: ・
+    patterns:
+      - / +・ +| +・|・ +/
+    prh: 全角中黒「・」の前後に半角スペースを入れない（JTF スタイル）
+    specs:
+      - from: CI ・ cron
+        to: CI・cron
+      - from: 日本語 ・英語
+        to: 日本語・英語
+      - from: a・ b
+        to: a・b
+
+  - expected: ／
+    patterns:
+      - / +／ +| +／|／ +/
+    prh: 全角スラッシュ「／」の前後に半角スペースを入れない（JTF スタイル）
+    specs:
+      - from: hatena ／ note
+        to: hatena／note
+      - from: source ／url
+        to: source／url
+      - from: url／ title
+        to: url／title
+
+  - expected: ：
+    patterns:
+      - / +： +| +：|： +/
+    prh: 全角コロン「：」の前後に半角スペースを入れない（JTF スタイル）
+    specs:
+      - from: Title ： Value
+        to: Title：Value
+      - from: key ：value
+        to: key：value
+      - from: key： value
+        to: key：value
+
+  - expected: 〜
+    patterns:
+      - / +〜 +| +〜|〜 +/
+    prh: 波ダッシュ「〜」の前後に半角スペースを入れない（JTF スタイル）
+    specs:
+      - from: 2025-08-30 〜 2026-04-13
+        to: 2025-08-30〜2026-04-13
+      - from: A 〜B
+        to: A〜B
+      - from: A〜 B
+        to: A〜B
