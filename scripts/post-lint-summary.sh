@@ -120,7 +120,16 @@ def render_findings(label, findings):
         file_ = normalize_file(f.get("file") or "?")
         line = f.get("line") or 0
         rule = normalize_rule(f.get("rule") or "")
-        msg = (f.get("message") or "").replace("|", "\\|")
+        # message 内の改行は list の改行として解釈され 1 件分の表示が崩れる．
+        # 半角スペースに置換して 1 行に畳む．`|` は将来テーブル併用したときの
+        # 防衛のためエスケープしておく．
+        msg = (
+            (f.get("message") or "")
+            .replace("\r\n", " ")
+            .replace("\n", " ")
+            .replace("\r", " ")
+            .replace("|", "\\|")
+        )
         sev = f.get("severity")
         sev_tag = f"[{sev}] " if sev else ""
         out.append(f"- `{file_}:{line}` {sev_tag}{rule}: {msg}")

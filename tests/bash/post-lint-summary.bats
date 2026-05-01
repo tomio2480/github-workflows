@@ -200,6 +200,40 @@ PY
   unset GITHUB_WORKSPACE
 }
 
+@test "message 内の改行はスペースに畳まれて 1 行に表示される" {
+  python3 - "${SUMMARY_JSON_FILE}" <<'PY'
+import json
+import sys
+
+payload = {
+    "markdownlint": {"total": 0, "findings": []},
+    "textlint": {
+        "error": 1, "warning": 0, "info": 0, "total": 1,
+        "findings": [
+            {
+                "file": "docs/foo.md",
+                "line": 5,
+                "severity": "error",
+                "rule": "prh",
+                "message": "first line\nsecond line\rthird line",
+            }
+        ],
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as f:
+    json.dump(payload, f, ensure_ascii=False)
+PY
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  # 改行が含まれた message でも，1 件分が 1 行で表現されている
+  grep -q 'BODY: .*first line second line third line' "${FAKE_CURL_LOG}"
+  # body 中に「裸の改行」 の中継表現（リテラル \n や \r）が残っていない
+  ! grep -Pq 'BODY: .*first line\\n' "${FAKE_CURL_LOG}"
+}
+
 @test "textlint の eslint.rules. プレフィックスは表示時に剥がされる" {
   python3 - "${SUMMARY_JSON_FILE}" <<'PY'
 import json
