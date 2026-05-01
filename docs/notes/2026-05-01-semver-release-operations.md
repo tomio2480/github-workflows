@@ -24,7 +24,7 @@ retroactive に v2.0.0 / v2.1.0 / v2.2.0 を切る．対応コミットは次の
 - v2.1.0：`9d82865`（PR #17 — caller-side textlint allowlist 対応）
 - v2.2.0：`39b56da`（PR #23 — Issue #15 stage 2 prh ルール）
 
-`v2` mutable は v2.2.0 まで進める．
+加えて本 PR（#25）自身も新ポリシーに従い v2.2.1 として切る．`b69f79d` を指す doc-only patch である．`v2` mutable は v2.2.1 まで進める．実行手順と落とし穴の詳細は [2026-05-01-retroactive-tag-rollout.md](2026-05-01-retroactive-tag-rollout.md) を参照．
 
 中間 patch（v2.0.x の細分化など）は切らない．判定が難しく，必要な caller は SHA pin で固定可能．
 
