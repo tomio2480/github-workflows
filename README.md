@@ -92,7 +92,7 @@ github-workflows/
 | アップデート（`@main`） | 中央 main へのマージで次回 PR から即反映 | 自分でフォーク先に上流同期すると反映 |
 | おすすめ対象 | Tomio さん本人 / ルールに異存がない利用者 | 組織運用 / ルールを独自カスタムしたい利用者 |
 
-参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2` 形式の SHA pin で，Dependabot が SHA とバージョンを自動追随する．即時反映を優先したい場合は `@main` を直接参照する．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
+参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2.2.0` 形式の SHA pin で，Dependabot が SHA と patch バージョンを自動追随する．即時反映を優先したい場合は `@main` を，caller 自身で明示的に追従したい場合は `@v2`（major mutable，patch ごとに進む）または `@v2.2.0`（patch immutable）を pin する．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
 
 ### パターン (A)：tomio2480/github-workflows を直接参照
 
@@ -124,7 +124,7 @@ curl -fsSL \
   > .github/workflows/md-lint.yml
 ```
 
-以後は自分のフォークを主軸に辞書やルールを育てていく．caller が `@main` を参照していれば自動で反映される．pinning したい利用者向けに `v1` / `v1.0.0` タグを打つのは任意．詳細は [docs/fork-usage.md](docs/fork-usage.md) を参照．
+以後は自分のフォークを主軸に辞書やルールを育てていく．caller が `@main` を参照していれば自動で反映される．pinning したい利用者向けに `vX.Y.Z` 形式の patch タグと `vX` の major mutable を打つのは任意．詳細は [docs/fork-usage.md](docs/fork-usage.md) を参照．
 
 ### 導入後の挙動
 
@@ -168,7 +168,8 @@ curl -fsSL \
 | ドキュメントの軽微な誤字修正 PR | AI で自動対応可 |
 | 設定ルールの無効化・変更 | ユーザー確認必須 |
 | 辞書（prh.yml）への追加 | AI が提案，ユーザー確認してマージ |
-| `@v1` タグの移動 | ユーザーのみ |
+| major mutable タグ（`v2` 等）の移動 | ユーザーのみ |
+| patch タグ（`v2.2.0` 等）の新規発行 | ユーザー確認のうえ AI が提案 |
 | 外部からの PR マージ | ユーザーのみ |
 | 中央 repo 自体の破壊的変更 | ユーザー確認必須かつ新バージョンタグが前提 |
 

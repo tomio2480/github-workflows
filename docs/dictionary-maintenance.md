@@ -2,7 +2,7 @@
 
 ## 要約
 
-表記ゆれ辞書 `prh.yml` は **中央リポジトリで一括管理** する．caller が `@main`（既定）を参照していれば，中央へのマージ時点で次回 PR から新辞書が効く．pinning 利用者（`@v1` / `@v1.0.0`）は対象タグが移動されるまで反映されない．個別リポジトリで辞書を独自運用したい場合のみ repo ローカルに `prh.yml` を置く（override）．
+表記ゆれ辞書 `prh.yml` は **中央リポジトリで一括管理** する．caller が `@main`（既定）を参照していれば，中央へのマージ時点で次回 PR から新辞書が効く．pinning 利用者（`@v2` major mutable / `@v2.2.0` のような patch immutable / SHA pin）は対象タグが移動・新規発行されるまで反映されない．個別リポジトリで辞書を独自運用したい場合のみ repo ローカルに `prh.yml` を置く（override）．
 
 ## 目次
 
@@ -43,7 +43,7 @@ git commit -m "dict: add XXX entry"
 
 Draft PR で `filter-mode: nofilter` で実際に lint を流し，辞書の想定通りの挙動を確認してから Ready にする．
 
-マージされると `@main` 参照の caller には次回 PR から新辞書が適用される．`@v1` / `@v1.0.0` pinning 利用者には反映されないため，pinning 利用者向けに反映したい場合は別途タグを移動する必要がある（後述）．
+マージされると `@main` 参照の caller には次回 PR から新辞書が適用される．`@v2` major mutable 利用者には patch tag を切って major mutable を進めたタイミングで反映される．`@v2.2.0` のような patch immutable 利用者は固定のため，新 patch（例: `@v2.2.1`）への明示的な切り替えが必要．SHA pin 利用者には Dependabot が更新 PR を起票する．詳細は後述．
 
 ## 2️⃣ per-repo の辞書 override
 
@@ -127,25 +127,30 @@ lint 上は両側スペース行で 1 件の diagnostic が出る．
 
 | caller の参照先 | 辞書変更が反映されるタイミング |
 |---|---|
-| `@main`（既定） | 中央 main へのマージで次回 PR から即反映 |
-| `@v1` | 中央が `v1` タグを移動したときのみ反映 |
-| `@v1.0.0` | 原則反映されない（固定） |
+| `@main` | 中央 main へのマージで次回 PR から即反映．即時性重視の利用者向け |
+| `@v2` major mutable | patch リリースごとに最新 patch へ進められる．caller の介入なしで追従 |
+| `@v2.2.0` patch immutable | 原則反映されない（固定）．新 patch へ切り替える明示的な操作が必要 |
+| `@<SHA> # v2.2.0`（既定） | SHA pin．Dependabot が patch tag 更新を検知して caller に PR を起票 |
 
-pinning 利用者（`@v1` / `@v1.0.0`）への反映が必要な変更を入れた場合はタグ運用を検討する．
+patch リリースは PR マージごとに切る運用とする．major mutable は同時に最新 patch へ進める．
 
 ```bash
-# v1 参照の利用者に最新 main を反映したい場合（要注意・事前通知必須）
-git tag -f v1 main
-git push -f origin v1
+# PR マージ後に patch tag を切り，major mutable を進める例
+git tag v2.2.1 <merge-sha>
+git push origin v2.2.1
+git tag -f v2 v2.2.1
+git push -f origin v2
+gh release create v2.2.1 --title "v2.2.1" --notes "..."
 ```
 
 表 3: 変更種別ごとの扱い
 
 | 変更種別 | タグ運用 |
 |---|---|
-| 辞書エントリ追加 | `@main` 利用者には即反映．pinning 利用者に反映したい場合のみ `v1` を移動 |
-| 辞書エントリ削除・変更 | `@main` 利用者の指摘が意図せず変わるため事前に影響確認．`v1` 移動は慎重に |
-| prh 設定の構造変更 | `v2` など新メジャーを切る．`v1` はそのまま維持 |
+| 辞書エントリ追加 | patch リリース（`vX.Y.Z+1`）として切る．major mutable も同時に進める |
+| 辞書エントリ削除・変更 | 既存 caller の指摘が意図せず変わるため事前に影響確認．patch として切るか minor に上げるかは破壊性で判断 |
+| prh 設定の構造変更 | minor リリース（`vX.Y+1.0`）として切る．major mutable も進める |
+| inputs の意味変更・required 化 | 後方非互換のため新 major（`vX+1`）を切る．旧 major は据え置き |
 
 破壊的変更の場合は CLAUDE.md のタグ運用規律に従う．
 

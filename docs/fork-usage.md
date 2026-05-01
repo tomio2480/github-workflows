@@ -98,12 +98,15 @@ git merge upstream/main
 main にマージされると `@main` 参照の caller には次回 PR から新しい内容が反映される．SHA pin 利用者は Dependabot の更新 PR を経由して取り込むため自動的に追随する．
 
 ```bash
-# pinning 利用者（@v2 のような major tag）にも反映したい場合（要注意・事前通知必須）
-git tag -f v2 main
+# patch リリース（PR マージごとに実施）
+git tag v2.2.1 main
+git push origin v2.2.1
+git tag -f v2 v2.2.1
 git push -f origin v2
+gh release create v2.2.1 --title "v2.2.1" --notes "..."
 ```
 
-`-f` と `--force` はオーナー操作．pinning 利用している caller の影響範囲を確認し，stakeholder（caller repo のオーナー）に事前通知したうえで実施する．パッチ追随を opt-in したい場合は `v2.x.y` のような追加タグを別 commit に切る運用が安全．
+`-f` と `--force` はオーナー操作．pinning 利用している caller の影響範囲を確認し，stakeholder（caller repo のオーナー）に事前通知したうえで実施する．patch immutable（`v2.2.0` 等）に固定したい caller は，新 patch への切り替えを明示的に行う必要がある．major mutable（`v2`）に追従する caller は patch リリースで自動的に最新化される．
 
 ## 5️⃣ 辞書・ルールの独自カスタム
 
