@@ -91,13 +91,13 @@ rules:
 
 ### 正規表現で前後スペースを拾うパターン
 
-文字の前後にある半角スペースを検出したいとき，`/ X | X|X /` の形式を使う．
+文字の前後にある半角スペースを検出したいとき，`/ +X +| +X|X +/` の形式を使う．
 以下は `・` 1 シンボルの例である．
 
 ```yaml
 - expected: ・
   patterns:
-    - / ・ | ・|・ /
+    - / +・ +| +・|・ +/
   prh: 全角中黒「・」の前後に半角スペースを入れない（JTF スタイル）
   specs:
     - from: CI ・ cron
@@ -109,10 +109,11 @@ rules:
 ```
 
 prh は同一 rule 内の複数 pattern を alternation に合成して `/g` 適用する．
-leading と trailing を別 pattern に分割すると合成後が `/(?: ・|・ )/gmu` になる．
+leading と trailing を別 pattern に分割すると合成後が `/(?: +・|・ +)/gmu` になる．
 両側スペース入力で後続スペースを取りこぼして spec が落ちる点に注意が必要である．
-長い順 alternation `/ X | X|X /` を 1 本書くことで leftmost-longest が機能する．
+長い順 alternation `/ +X +| +X|X +/` を 1 本書くことで leftmost-longest が機能する．
 両側スペースを 1 マッチで処理できる点がこの記法の利点である．
+量指定子 `+` を使うことでシングルスペース・ダブルスペース等の typo も一括して扱える．
 
 `JS` の word boundary 例（`/\bJS\b/`）と同様に，plain string では拾えない場合がある．
 空白コンテキストを正規表現で解決する事例として並べて参照されたい．

@@ -98,18 +98,19 @@ def test_fullwidth_symbol_rule_present(symbol: str, prh_rules: list[dict]) -> No
 def test_fullwidth_symbol_pattern_uses_longest_first_alternation(
     symbol: str, prh_rules: list[dict]
 ) -> None:
-    """各 rule の patterns が `/ X | X|X /` 形式の長い順 alternation 1 本を
+    """各 rule の patterns が `/ +X +| +X|X +/` 形式の長い順 alternation 1 本を
     含むことを確認する．
 
     prh は同一 rule 内の複数 pattern を内部で alternation に合成し /g 適用するため，
     `[/ X/, /X /]` のように pattern を分けても両側スペース（例: `CI ・ cron`）の
-    後続スペースが消えずに spec test が落ちる．長い順 alternation `/ X | X|X /` で
+    後続スペースが消えずに spec test が落ちる．長い順 alternation `/ +X +| +X|X +/` で
     leftmost-longest を機能させ，両側スペースを 1 マッチで `X` に置換する設計．
+    量指定子 `+` でシングルスペース・ダブルスペース等を一括して扱う．
     """
     rule = _find_rule_by_expected(prh_rules, symbol)
     assert rule is not None
     patterns = rule.get("patterns")
-    expected_regex = f"/ {symbol} | {symbol}|{symbol} /"
+    expected_regex = f"/ +{symbol} +| +{symbol}|{symbol} +/"
     assert patterns == [expected_regex], (
         f"templates/prh.yml の expected:{symbol} rule の patterns は "
         f"`[{expected_regex!r}]` の 1 本のみであるべきだが {patterns!r} が見つかった．"

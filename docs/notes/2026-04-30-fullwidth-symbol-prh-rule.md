@@ -12,8 +12,9 @@ stage 1（PR #21）で fixture 化し，stage 2 で中央 prh ルールとして
 
 ## 判断
 
-prh の長い順 alternation `/ X | X|X /` を 1 本書く方式を採用した．
+prh の長い順 alternation `/ +X +| +X|X +/` を 1 本書く方式を採用した．
 1 シンボルにつき 1 rule を定義し，`specs:` に両側・前のみ・後のみの 3 件を配置する．
+量指定子 `+` でシングルスペース・ダブルスペース等の typo を一括して扱う．
 動作の担保は YAML 内 specs と pytest の二重で行う．
 specs は prh 自身が保証する自己テストで，pytest は YAML の構造（rule 存在・正規表現形式・specs 充足）を回帰検出する．
 
@@ -32,8 +33,8 @@ mutable tag（`v1`/`v2`）は動かさない．
    `markdownlint-cli2` 側にカスタムルールの先例もないため棄却した．
 
 3. **同一 rule 内の 2 pattern 分離**
-   `[/ X/, /X /]` のように leading/trailing を分割する書き方である．
-   prh 内部で `/(?: X|X )/gmu` に合成され，両側スペース入力で後続スペースを取りこぼす．
+   `[/ +X/, /X +/]` のように leading/trailing を分割する書き方である．
+   prh 内部で `/(?: +X|X +)/gmu` に合成され，両側スペース入力で後続スペースを取りこぼす．
    spec が落ちることを確認し，長い順 alternation 1 本に統一して棄却した．
 
 4. **8 個の独立 rule（leading/trailing × 4 シンボル）**
