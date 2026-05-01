@@ -71,7 +71,8 @@ github-workflows/
 │   ├── architecture.md
 │   ├── security.md
 │   ├── fork-usage.md
-│   └── development-notes.md       # 設計判断とレビュー対応の知見
+│   ├── development-notes.md       # 設計判断とレビュー対応の知見
+│   └── notes/                     # 日付つき設計判断・実装知見メモ
 ├── README.md
 ├── CLAUDE.md                   # AI エージェント向けの作業指針
 └── LICENSE
