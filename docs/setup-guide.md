@@ -85,7 +85,7 @@ gh release create v2 \
   --notes "Initial stable release as composite action."
 ```
 
-`@<SHA> # v2` 参照の利用者は SHA pin で固定されているので，タグを移動しても自動で SHA は変わらない．Dependabot の更新 PR を経由する．パッチ追随を opt-in したい場合は `v2.x.y` のような追加タグを別 commit に切る運用が安全．
+`@<SHA> # v2.x.y` 参照の利用者は SHA pin で固定されているので，タグを移動しても自動で SHA は変わらない．Dependabot の更新 PR を経由する．patch tag は PR マージごとに切る運用とし，major mutable（`v2`）も同時に最新 patch へ進める．caller は `@v2` で major mutable に追従するか，`@v2.2.0` のような patch immutable で固定するかを選べる．
 
 > [!WARNING]
 > `v1` タグは reusable workflow 形式で self-detection bug により動作しません．新規セットアップで `v1` を打ち直してはいけません．composite action 形式の v2 以降を採用してください．
