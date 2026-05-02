@@ -1,0 +1,7 @@
+markdownlint-cli2 v0.13.0 (markdownlint v0.34.0)
+docs/keep.md:1:1 MD041/first-line-heading kept finding
+tests/fixtures/markdown/with-issues.md:5:1 MD012/no-multiple-blanks ignored finding 1
+tests/fixtures/markdown/another.md:7 MD047/single-trailing-newline ignored finding 2
+/home/runner/work/repo/repo/tests/fixtures/markdown/abs.md:1:1 MD041/first-line-heading ignored finding 3 (absolute)
+
+Summary: 4 error(s)

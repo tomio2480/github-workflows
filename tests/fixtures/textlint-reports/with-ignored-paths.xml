@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="4.3">
+  <file name="docs/keep.md">
+    <error line="1" column="1" severity="error" message="kept finding" source="rule-a" />
+  </file>
+  <file name="tests/fixtures/markdown/with-issues.md">
+    <error line="3" column="1" severity="warning" message="ignored finding 1" source="rule-b" />
+    <error line="5" column="1" severity="warning" message="ignored finding 2" source="rule-c" />
+  </file>
+  <file name="/home/runner/work/repo/repo/tests/fixtures/markdown/another.md">
+    <error line="2" column="1" severity="info" message="ignored finding 3 (absolute path)" source="rule-d" />
+  </file>
+</checkstyle>
