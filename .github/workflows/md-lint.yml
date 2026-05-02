@@ -1,0 +1,39 @@
+name: Markdown Lint
+
+# 本リポジトリ自身に caller-style の lint を適用する dogfooding 用 workflow．
+# self-test の `test-self-lint.yml` とは別経路で動く．self-test の
+# `integration-action` job は v2.4.0 で `post-summary: "false"` に切ってあるため，
+# summary marker `<!-- gh-workflows-lint-summary -->` の上書き競合は発生しない．
+#
+# composite action は同リポジトリに存在するため `uses: ./.github/actions/markdown-lint`
+# で local 参照する．caller の見本としては `templates/.github/workflows/md-lint.yml`
+# を参照する．こちらは「最新 head の composite を即時に dogfood する」 用途．
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint:
+    name: Markdown Lint (self)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # actions/checkout v4.3.0
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Markdown Lint via composite action (local)
+        uses: ./.github/actions/markdown-lint
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # tests/fixtures/ 配下は故意に違反を含む fixture．caller-style では
+          # summary 件数から除外する．reviewdog の inline コメントは
+          # `filter-mode: added` で PR 差分行のみ対象になるため，本 input が
+          # 空でも fixture へ inline 化されることはない．
+          markdown-ignore: |
+            tests/fixtures/**
