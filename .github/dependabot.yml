@@ -3,6 +3,9 @@ version: 2
 # GitHub Actions の依存（composite action 内の third-party action）を週次で更新する．
 # SHA ピンしているアクションも Dependabot が自動で PR を起票する．
 #
+# npm エコシステム: .github/actions/markdown-lint/ の package-lock.json を追跡する．
+# textlint 等の npm パッケージバージョンを固定し，Dependabot で更新 PR を自動起票する．
+#
 # 更新 PR は手動レビューのうえマージする．第三者アクションの挙動変化に注意．
 
 updates:
@@ -14,3 +17,12 @@ updates:
       actions:
         patterns:
           - "*"
+
+  - package-ecosystem: npm
+    directory: /.github/actions/markdown-lint
+    schedule:
+      interval: weekly
+    groups:
+      textlint:
+        patterns:
+          - "textlint*"
