@@ -183,18 +183,20 @@ runs:
       # 必須依存．これが install されていないと @textlint/config-loader の loadFilterRules で
       # ReferenceError が発生し，TextlintrcLoader.js が ok:false を受けて空 rule で fallback する．
       # 結果として rules セクションも含めて全 rule が silent に破棄され "No rules found" になる．
+      #
+      # package.json / package-lock.json を action ディレクトリから tmpdir にコピーして npm ci を
+      # 実行する．これにより registry の状態に依存しない再現可能なインストールを保証する．
+      # バージョン更新は Dependabot（.github/dependabot.yml の npm エコシステム設定）が追跡する．
       id: textlint_install
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        TMP="$(mktemp -d)"
-        (cd "${TMP}" && npm install --no-save --no-package-lock \
-          'textlint@^14' \
-          textlint-rule-preset-ja-technical-writing \
-          textlint-rule-preset-ja-spacing \
-          textlint-rule-prh \
-          textlint-filter-rule-comments \
-          textlint-filter-rule-allowlist)
+        TMP="$(mktemp -d "${RUNNER_TEMP}/XXXXXX")"
+        cp "${ACTION_PATH}/package.json" "${TMP}/"
+        cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
+        (cd "${TMP}" && npm ci)
         echo "bin=${TMP}/node_modules/.bin" >> "${GITHUB_OUTPUT}"
         echo "modules=${TMP}/node_modules" >> "${GITHUB_OUTPUT}"
         echo "Installed under: ${TMP}"
