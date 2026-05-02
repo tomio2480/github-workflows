@@ -254,8 +254,11 @@ def test_main_with_missing_files_returns_zero_totals(capsys, tmp_path):
 
 
 def test_main_wrong_argv_raises_value_error():
-    with pytest.raises((ValueError, SystemExit)):
+    # argparse は不足引数で SystemExit(2) を投げる．exit code を厳密に検査することで
+    # 「黙って exit 0」 のような誤動作を回避する．
+    with pytest.raises(SystemExit) as exc:
         _MODULE.main(["only-one"])
+    assert exc.value.code == 2
 
 
 def test_main_accepts_repeated_ignore_glob(capsys):

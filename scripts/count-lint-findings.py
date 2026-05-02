@@ -73,11 +73,12 @@ def _path_matches_ignore(path: str, pattern: str) -> bool:
     norm = path.replace("\\", "/")
     if pattern.endswith("/**"):
         prefix = pattern[:-3]
+        # 相対 path：prefix 自身または `prefix/...` 形式．
         if norm == prefix or norm.startswith(prefix + "/"):
             return True
+        # 絶対 path や runner workspace 配下：path の途中に prefix が
+        # ディレクトリ境界として現れる形を吸収する．
         if "/" + prefix + "/" in norm:
-            return True
-        if norm.endswith("/" + prefix):
             return True
         return False
     return fnmatch.fnmatchcase(norm, pattern)
