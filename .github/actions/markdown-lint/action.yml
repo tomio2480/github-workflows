@@ -32,6 +32,9 @@ inputs:
   pyyaml-version:
     description: "明示的に install する PyYAML のバージョン番号（例: 6.0.2）．内部で pyyaml==<value> として渡されるため == 等の比較子は付けない．空のときは ubuntu-latest プリインストールの PyYAML をそのまま使う．self-hosted runner や再現性を重視する caller のための逃げ道"
     default: ""
+  post-summary:
+    description: "PR に lint summary コメントを upsert するかどうか．`true`（既定）なら hidden marker 付きのコメントを 1 件 upsert する．同一 PR で複数 job が並走するなど marker 競合を避けたい場合に `false` を指定する．reviewdog の inline コメント投稿には影響しない"
+    default: "true"
 
 runs:
   using: composite
@@ -263,10 +266,16 @@ runs:
       #   - 同一リポジトリからの PR に限定: fork からの PR では
       #     pull-requests: write が降格され API call が必ず失敗するため，
       #     reviewdog inline コメントの制約と整合させて事前に skip
+      #   - inputs.post-summary == 'true': caller 側で opt-out したい場合は
+      #     `post-summary: "false"` を渡すことで step 自体を skip できる．
+      #     同一 PR で複数 job が並走し marker `<!-- gh-workflows-lint-summary -->`
+      #     を奪い合うケースに使う（例：本リポジトリの self-test と caller 形式が
+      #     共存するときの整理）
       if: |
         always() &&
         github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        inputs.post-summary == 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}

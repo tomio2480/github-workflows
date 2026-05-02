@@ -74,8 +74,12 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Run composite action against fixtures
+        # self-test は fixture に対する lint を確認することが目的．caller-style の
+        # md-lint.yml と同一 PR で並走したときに summary marker を奪い合わない
+        # よう post-summary は false に切る．
         uses: ./.github/actions/markdown-lint
         with:
           markdown-glob: "tests/fixtures/markdown/**/*.md"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-error: "false"
+          post-summary: "false"
