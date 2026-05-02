@@ -60,8 +60,16 @@ rules:
       - サーバ
 
   - expected: ユーザー
+    # plain string `ユーザ` だと substring match で「ユーザー」内の「ユーザ」にも
+    # ヒットして誤検出する（Issue #33・tomio2480/settings PR #37 で 8 件観測）．
+    # 否定先読み `(?!ー)` で「ユーザー」を除外する．
     patterns:
-      - ユーザ
+      - /ユーザ(?!ー)/
+    specs:
+      - from: ユーザ登録
+        to: ユーザー登録
+      - from: ユーザー登録
+        to: ユーザー登録
 
   - expected: コンピューター
     patterns:
