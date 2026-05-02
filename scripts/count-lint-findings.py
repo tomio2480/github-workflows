@@ -6,11 +6,14 @@ composite action の summary 投稿ステップで呼ばれる．集計と投稿
 post-lint-summary.sh が担当する．
 
 usage:
-    count-lint-findings.py <textlint-xml> <markdownlint-txt> > summary.json
+    count-lint-findings.py <textlint-xml> <markdownlint-txt> [--ignore-glob PATTERN ...]
 
 入力:
     <textlint-xml>     textlint の checkstyle 形式レポート
     <markdownlint-txt> markdownlint-cli2 の stderr 取り込みテキスト
+    --ignore-glob      集計から除外する path glob．繰り返し指定可．`tests/fixtures/**`
+                       のような prefix 形式で，相対パス・絶対パス（runner workspace 配下）
+                       両方の findings を除外する
 
 出力（stdout，JSON）:
     {
@@ -34,16 +37,21 @@ usage:
       行で同定する．banner（"Finding:" "Linting:" "Summary:"）は除外される．
       path 部分は非貪欲（non-greedy）でマッチさせ，ファイル名にコロンを含む
       環境でも左端の `path:line` を正しく拾う
+    - --ignore-glob は dogfooding（自リポジトリへの caller-style 適用）で
+      tests/fixtures/ のような lint 対象外 path を summary 件数から外すための
+      逃げ道．reviewdog の inline コメント側はこの input の影響を受けない
 """
 
 from __future__ import annotations
 
+import argparse
+import fnmatch
 import json
 import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Sequence
+from typing import Iterable, Sequence
 
 
 _MARKDOWNLINT_LINE = re.compile(
@@ -51,7 +59,37 @@ _MARKDOWNLINT_LINE = re.compile(
 )
 
 
-def count_textlint(path: Path) -> dict:
+def _path_matches_ignore(path: str, pattern: str) -> bool:
+    """path が pattern にマッチするか判定する．
+
+    pattern が `<prefix>/**` 形式のとき：
+
+    - path が prefix 自身または `prefix/...` 形式（相対）→ 一致
+    - path が `.../prefix/...` または末尾が `/prefix` → 一致．absolute 経路や
+      runner workspace 配下の絶対パスもこの分岐で吸収する
+
+    それ以外の pattern は fnmatchcase で評価する．
+    """
+    norm = path.replace("\\", "/")
+    if pattern.endswith("/**"):
+        prefix = pattern[:-3]
+        if norm == prefix or norm.startswith(prefix + "/"):
+            return True
+        if "/" + prefix + "/" in norm:
+            return True
+        if norm.endswith("/" + prefix):
+            return True
+        return False
+    return fnmatch.fnmatchcase(norm, pattern)
+
+
+def _is_ignored(path: str, ignore_globs: Sequence[str] | None) -> bool:
+    if not ignore_globs:
+        return False
+    return any(_path_matches_ignore(path, p) for p in ignore_globs)
+
+
+def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dict:
     """checkstyle XML を読み severity 別件数と findings 一覧を返す．"""
     empty = {"error": 0, "warning": 0, "info": 0, "total": 0, "findings": []}
     if not Path(path).is_file():
@@ -66,6 +104,8 @@ def count_textlint(path: Path) -> dict:
     findings: list[dict] = []
     for file_el in tree.getroot().iter("file"):
         file_name = file_el.get("name") or ""
+        if _is_ignored(file_name, ignore_globs):
+            continue
         for error in file_el.iter("error"):
             sev = (error.get("severity") or "").lower()
             if sev in counts:
@@ -88,7 +128,7 @@ def count_textlint(path: Path) -> dict:
     return counts
 
 
-def count_markdownlint(path: Path) -> dict:
+def count_markdownlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dict:
     """markdownlint-cli2 のテキストレポートから件数と findings 一覧を返す．"""
     if not Path(path).is_file():
         return {"total": 0, "findings": []}
@@ -99,13 +139,16 @@ def count_markdownlint(path: Path) -> dict:
             m = _MARKDOWNLINT_LINE.match(line.rstrip("\r\n"))
             if not m:
                 continue
+            file_name = m.group("file")
+            if _is_ignored(file_name, ignore_globs):
+                continue
             try:
                 line_no = int(m.group("line"))
             except ValueError:
                 line_no = 0
             findings.append(
                 {
-                    "file": m.group("file"),
+                    "file": file_name,
                     "line": line_no,
                     "rule": m.group("rule"),
                     "message": (m.group("message") or "").strip(),
@@ -114,13 +157,28 @@ def count_markdownlint(path: Path) -> dict:
     return {"total": len(findings), "findings": findings}
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="count-lint-findings.py", add_help=True)
+    parser.add_argument("textlint_xml")
+    parser.add_argument("markdownlint_txt")
+    parser.add_argument(
+        "--ignore-glob",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="path glob to exclude from findings; repeatable",
+    )
+    return parser
+
+
 def main(argv: Sequence[str]) -> int:
-    if len(argv) != 2:
-        raise ValueError("usage: count-lint-findings.py <textlint-xml> <markdownlint-txt>")
+    parser = _build_parser()
+    args = parser.parse_args(list(argv))
+    ignore_globs = args.ignore_glob or []
 
     payload = {
-        "markdownlint": count_markdownlint(Path(argv[1])),
-        "textlint": count_textlint(Path(argv[0])),
+        "markdownlint": count_markdownlint(Path(args.markdownlint_txt), ignore_globs),
+        "textlint": count_textlint(Path(args.textlint_xml), ignore_globs),
     }
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
