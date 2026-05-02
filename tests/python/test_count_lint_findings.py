@@ -261,6 +261,20 @@ def test_main_wrong_argv_raises_value_error():
     assert exc.value.code == 2
 
 
+def test_main_rejects_empty_or_whitespace_ignore_glob():
+    # 空文字 / 空白のみは設定ミスの可能性が高いため fail-fast で ValueError．
+    for bad in ("", "   ", "\t"):
+        with pytest.raises(ValueError, match="ignore-glob"):
+            _MODULE.main(
+                [
+                    str(_FIXTURES / "textlint-reports" / "empty.xml"),
+                    str(_FIXTURES / "markdownlint-reports" / "empty.txt"),
+                    "--ignore-glob",
+                    bad,
+                ]
+            )
+
+
 def test_main_accepts_repeated_ignore_glob(capsys):
     rc = _MODULE.main(
         [

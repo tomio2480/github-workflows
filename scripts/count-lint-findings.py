@@ -59,35 +59,38 @@ _MARKDOWNLINT_LINE = re.compile(
 )
 
 
-def _path_matches_ignore(path: str, pattern: str) -> bool:
-    """path が pattern にマッチするか判定する．
+def _path_matches_ignore(norm_path: str, pattern: str) -> bool:
+    """事前に正規化済みの path が pattern にマッチするか判定する．
 
     pattern が `<prefix>/**` 形式のとき：
 
     - path が prefix 自身または `prefix/...` 形式（相対）→ 一致
-    - path が `.../prefix/...` または末尾が `/prefix` → 一致．absolute 経路や
-      runner workspace 配下の絶対パスもこの分岐で吸収する
+    - path が `.../prefix/...` 形式または末尾が `/prefix` → 一致．
+      runner workspace 配下の絶対 path や directory 自身を指す path も
+      この分岐で吸収する
 
-    それ以外の pattern は fnmatchcase で評価する．
+    それ以外の pattern は `fnmatchcase` に委ねる．
     """
-    norm = path.replace("\\", "/")
     if pattern.endswith("/**"):
         prefix = pattern[:-3]
         # 相対 path：prefix 自身または `prefix/...` 形式．
-        if norm == prefix or norm.startswith(prefix + "/"):
+        if norm_path == prefix or norm_path.startswith(prefix + "/"):
             return True
-        # 絶対 path や runner workspace 配下：path の途中に prefix が
-        # ディレクトリ境界として現れる形を吸収する．
-        if "/" + prefix + "/" in norm:
+        # 絶対 path や subpath 一致：途中に `/<prefix>/` を含む，
+        # または末尾が `/<prefix>` の形（後者は directory 自身を指すケース）．
+        if "/" + prefix + "/" in norm_path or norm_path.endswith("/" + prefix):
             return True
         return False
-    return fnmatch.fnmatchcase(norm, pattern)
+    return fnmatch.fnmatchcase(norm_path, pattern)
 
 
 def _is_ignored(path: str, ignore_globs: Sequence[str] | None) -> bool:
     if not ignore_globs:
         return False
-    return any(_path_matches_ignore(path, p) for p in ignore_globs)
+    # path 正規化はループ外で 1 回だけ実施する．pattern 数が多い場合の
+    # 無駄な replace を避ける．
+    norm_path = path.replace("\\", "/")
+    return any(_path_matches_ignore(norm_path, p) for p in ignore_globs)
 
 
 def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dict:
@@ -175,7 +178,15 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str]) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv))
-    ignore_globs = args.ignore_glob or []
+
+    # ignore_globs は早期に正規化して fail-fast．空文字や空白のみの値は
+    # caller の設定ミスを示すため silent に通さず ValueError で落とす．
+    ignore_globs: list[str] = []
+    for p in args.ignore_glob or []:
+        normalized = p.strip().replace("\\", "/")
+        if not normalized:
+            raise ValueError("--ignore-glob must not be empty or whitespace only")
+        ignore_globs.append(normalized)
 
     payload = {
         "markdownlint": count_markdownlint(Path(args.markdownlint_txt), ignore_globs),
