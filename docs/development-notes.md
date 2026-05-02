@@ -11,6 +11,7 @@ PR #16 と #17 の経験を主な題材としている．
 PR #23 と #25 の経験で得た知見も追記している．
 PR #28 の経験で得た「機械生成 Markdown と bot レビュー対応」 の知見も追記している．
 PR #30 と #31 で進めた dogfooding の経験から「scope 分割」「設計 pivot」「複数 reviewer 判断割れ」の知見も追記している．
+PR #35 の prh 否定先読み修正と，Issue #34（SHA 直上バージョンコメント bump 漏れ再発防止）の知見も追記している．
 類似タスクに着手するセッションが過去判断を辿れるようにする．
 
 ## 目次
@@ -409,6 +410,19 @@ release 作業のチェックリストとして次を組み込む．
 template バージョンコメントは「同 release で発行されるバージョン」 を指すのが整合的である．
 古いバージョンを残すと利用者が「新 input を持たない古い tag」 を copy する事故につながる．
 チェックリスト化の経緯と Gemini レビューの実例は [docs/notes/2026-05-02-v2.5.0-postmortem.md](notes/2026-05-02-v2.5.0-postmortem.md) を参照．
+
+### Dependabot 更新時の SHA 直上コメント手動補正
+
+Dependabot は SHA を更新するが，SHA 直上の `# <action> vX.Y.Z` コメントは自動 bump しない（既知挙動）．
+PR #10 の事例では，`# actions/checkout v4.3.0` が SHA 更新後も残置されていた．
+
+Dependabot PR をレビュー・マージする際は次を確認する．
+
+1. 差分で SHA が更新された行を特定する．
+2. SHA 直上の `# <action> vX.Y.Z` コメントを新バージョンへ手動補正する．
+3. 補正 commit を squash merge に含めてから ready → merge する．
+
+この確認は将来的に `self-reviewer` Skill の観点リストへ組み込む候補である（Issue #34）．
 
 ### caller 追従確認は並行セッションを前提にする
 
