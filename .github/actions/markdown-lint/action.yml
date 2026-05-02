@@ -35,6 +35,9 @@ inputs:
   post-summary:
     description: "PR に lint summary コメントを upsert するかどうか．`true`（既定）なら hidden marker 付きのコメントを 1 件 upsert する．同一 PR で複数 job が並走するなど marker 競合を避けたい場合に `false` を指定する．reviewdog の inline コメント投稿には影響しない"
     default: "true"
+  markdown-ignore:
+    description: "summary 件数の集計から除外する path glob．改行区切りで複数指定可．`tests/fixtures/**` のような prefix 形式で，相対・絶対両方のパスを除外する．reviewdog の inline コメントは別経路で `filter-mode` により制御されるため本 input の影響を受けない．自リポジトリの dogfooding で fixture を summary から外す等の用途を想定"
+    default: ""
 
 runs:
   using: composite
@@ -282,10 +285,20 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        MARKDOWN_IGNORE: ${{ inputs.markdown-ignore }}
       run: |
         set -uo pipefail
         SUMMARY_JSON_PATH="$(pwd)/lint-summary.json"
+        # markdown-ignore input が空でなければ改行区切りで複数 --ignore-glob を渡す．
+        # 空行は無視．配列展開で空展開した場合に引数が落ちるよう ${arr[@]+...} を使う．
+        IGNORE_ARGS=()
+        if [ -n "${MARKDOWN_IGNORE}" ]; then
+          while IFS= read -r line; do
+            [ -n "$line" ] && IGNORE_ARGS+=(--ignore-glob "$line")
+          done <<< "${MARKDOWN_IGNORE}"
+        fi
         python3 "${ACTION_PATH}/../../../scripts/count-lint-findings.py" \
-          textlint-report.xml markdownlint-report.txt > "${SUMMARY_JSON_PATH}"
+          textlint-report.xml markdownlint-report.txt \
+          ${IGNORE_ARGS[@]+"${IGNORE_ARGS[@]}"} > "${SUMMARY_JSON_PATH}"
         SUMMARY_JSON="${SUMMARY_JSON_PATH}" \
           bash "${ACTION_PATH}/../../../scripts/post-lint-summary.sh"

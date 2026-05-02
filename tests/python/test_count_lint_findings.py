@@ -82,6 +82,60 @@ def test_count_textlint_malformed_xml_raises(tmp_path):
         _MODULE.count_textlint(bad)
 
 
+def test_count_textlint_ignore_globs_excludes_matching_findings():
+    # tests/fixtures/** に該当する 3 件（warning 2 + info 1）を除外し
+    # docs/keep.md の 1 件（error）のみ残ること．severity 内訳と総件数も整合．
+    result = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
+        ignore_globs=["tests/fixtures/**"],
+    )
+    assert result["error"] == 1
+    assert result["warning"] == 0
+    assert result["info"] == 0
+    assert result["total"] == 1
+    assert len(result["findings"]) == 1
+    assert result["findings"][0]["file"] == "docs/keep.md"
+
+
+def test_count_textlint_ignore_globs_matches_absolute_paths_via_subpath():
+    # 絶対パス（runner workspace）も `tests/fixtures/**` で除外できる．
+    result = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
+        ignore_globs=["tests/fixtures/**"],
+    )
+    files = [f["file"] for f in result["findings"]]
+    assert "/home/runner/work/repo/repo/tests/fixtures/markdown/another.md" not in files
+    assert "tests/fixtures/markdown/with-issues.md" not in files
+
+
+def test_count_textlint_multiple_ignore_globs_or_combined(tmp_path):
+    xml = tmp_path / "multi.xml"
+    xml.write_text(
+        '<?xml version="1.0"?><checkstyle><file name="a/x.md">'
+        '<error line="1" severity="error" message="m" source="r"/></file>'
+        '<file name="b/y.md">'
+        '<error line="1" severity="error" message="m" source="r"/></file>'
+        '<file name="c/z.md">'
+        '<error line="1" severity="error" message="m" source="r"/></file>'
+        "</checkstyle>",
+        encoding="utf-8",
+    )
+    result = _MODULE.count_textlint(xml, ignore_globs=["a/**", "b/**"])
+    assert result["total"] == 1
+    assert result["findings"][0]["file"] == "c/z.md"
+
+
+def test_count_textlint_empty_ignore_globs_keeps_all_findings():
+    full = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml"
+    )
+    no_op = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
+        ignore_globs=[],
+    )
+    assert full == no_op
+
+
 # ---- count_markdownlint ---------------------------------------------------
 
 def test_count_markdownlint_empty_returns_zero_total_and_empty_findings():
@@ -134,6 +188,16 @@ def test_count_markdownlint_handles_path_without_column(tmp_path):
     result = _MODULE.count_markdownlint(txt)
     assert result["total"] == 1
     assert result["findings"][0]["line"] == 7
+
+
+def test_count_markdownlint_ignore_globs_excludes_matching(tmp_path):
+    result = _MODULE.count_markdownlint(
+        _FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt",
+        ignore_globs=["tests/fixtures/**"],
+    )
+    # 4 件中 3 件が tests/fixtures/ 配下（うち 1 件は絶対パス）．残るのは docs/keep.md の 1 件．
+    assert result["total"] == 1
+    assert result["findings"][0]["file"] == "docs/keep.md"
 
 
 def test_count_markdownlint_path_with_colon_uses_non_greedy_match(tmp_path):
@@ -190,5 +254,41 @@ def test_main_with_missing_files_returns_zero_totals(capsys, tmp_path):
 
 
 def test_main_wrong_argv_raises_value_error():
-    with pytest.raises(ValueError):
+    # argparse は不足引数で SystemExit(2) を投げる．exit code を厳密に検査することで
+    # 「黙って exit 0」 のような誤動作を回避する．
+    with pytest.raises(SystemExit) as exc:
         _MODULE.main(["only-one"])
+    assert exc.value.code == 2
+
+
+def test_main_rejects_empty_or_whitespace_ignore_glob():
+    # 空文字 / 空白のみは設定ミスの可能性が高いため fail-fast で ValueError．
+    for bad in ("", "   ", "\t"):
+        with pytest.raises(ValueError, match="ignore-glob"):
+            _MODULE.main(
+                [
+                    str(_FIXTURES / "textlint-reports" / "empty.xml"),
+                    str(_FIXTURES / "markdownlint-reports" / "empty.txt"),
+                    "--ignore-glob",
+                    bad,
+                ]
+            )
+
+
+def test_main_accepts_repeated_ignore_glob(capsys):
+    rc = _MODULE.main(
+        [
+            str(_FIXTURES / "textlint-reports" / "with-ignored-paths.xml"),
+            str(_FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt"),
+            "--ignore-glob",
+            "tests/fixtures/**",
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    # textlint: docs/keep.md の 1 件のみ
+    assert payload["textlint"]["total"] == 1
+    assert payload["textlint"]["findings"][0]["file"] == "docs/keep.md"
+    # markdownlint: docs/keep.md の 1 件のみ
+    assert payload["markdownlint"]["total"] == 1
+    assert payload["markdownlint"]["findings"][0]["file"] == "docs/keep.md"
