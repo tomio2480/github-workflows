@@ -193,7 +193,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        TMP="$(mktemp -d)"
+        TMP="$(mktemp -d "${RUNNER_TEMP}/XXXXXX")"
         cp "${ACTION_PATH}/package.json" "${TMP}/"
         cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
         (cd "${TMP}" && npm ci)
