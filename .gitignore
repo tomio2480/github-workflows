@@ -6,7 +6,8 @@ __pycache__/
 
 # Node.js（bats を npm でローカル取得した場合の一時インストール先）
 node_modules/
-package-lock.json
+# ルートレベルのみ除外．.github/actions/markdown-lint/package-lock.json はコミット対象
+/package-lock.json
 
 # Editor
 .vscode/
