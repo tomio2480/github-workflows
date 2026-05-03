@@ -67,12 +67,15 @@ def main(argv: Sequence[str]) -> None:
     else:
         raise TypeError("textlint config 'rules.prh' must be an object or false")
 
-    for i, override in enumerate(cfg.get("overrides", [])):
+    overrides = cfg.get("overrides", [])
+    if not isinstance(overrides, list):
+        raise TypeError("textlint config 'overrides' must be an array")
+    for i, override in enumerate(overrides):
         if not isinstance(override, dict):
-            continue
+            raise TypeError(f"textlint config 'overrides[{i}]' must be an object")
         override_rules = override.get("rules", {})
         if not isinstance(override_rules, dict):
-            continue
+            raise TypeError(f"textlint config 'overrides[{i}].rules' must be an object")
         override_prh = override_rules.get("prh")
         if isinstance(override_prh, dict):
             override_prh["rulePaths"] = [prh_abs]

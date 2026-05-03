@@ -379,3 +379,42 @@ def test_overrides_prh_unsupported_type_raises_type_error(tmp_path):
 
     with pytest.raises(TypeError, match=r"overrides\[0\]\.rules\.prh"):
         _MODULE.main([str(src), str(prh), str(dest)])
+
+
+def test_overrides_not_list_raises_type_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {}, "overrides": {"files": ["**/*.md"], "rules": {}}},
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(TypeError, match=r"'overrides' must be an array"):
+        _MODULE.main([str(src), str(prh), str(dest)])
+
+
+def test_overrides_entry_not_dict_raises_type_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {}, "overrides": ["not-a-dict"]},
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(TypeError, match=r"overrides\[0\]' must be an object"):
+        _MODULE.main([str(src), str(prh), str(dest)])
+
+
+def test_overrides_entry_rules_not_dict_raises_type_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {
+            "rules": {},
+            "overrides": [{"files": ["**/*.md"], "rules": "not-a-dict"}],
+        },
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(TypeError, match=r"overrides\[0\]\.rules' must be an object"):
+        _MODULE.main([str(src), str(prh), str(dest)])
