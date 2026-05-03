@@ -175,10 +175,6 @@ runs:
     - name: Install textlint and rule packages (isolated in tmpdir)
       # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
       #
-      # textlint は v14 系に固定する．textlint v15 は preset 側に ESM/exports field を要求する
-      # ため，現状 CommonJS の textlint-rule-preset-ja-technical-writing v12 系と組み合わせると
-      # rule が読み込まれず "No rules found" 状態になる．preset 側の対応を待つ間 v14 系で運用する．
-      #
       # textlint-filter-rule-comments は中央 .textlintrc.json の filters.comments: true に対応する
       # 必須依存．これが install されていないと @textlint/config-loader の loadFilterRules で
       # ReferenceError が発生し，TextlintrcLoader.js が ok:false を受けて空 rule で fallback する．
