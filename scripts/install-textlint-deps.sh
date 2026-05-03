@@ -22,6 +22,7 @@ set -euo pipefail
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
 TMP="$(mktemp -d "${RUNNER_TEMP}/XXXXXX")"
+trap 'rm -rf "${TMP}"' ERR
 cp "${ACTION_PATH}/package.json" "${TMP}/"
 cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
 (cd "${TMP}" && npm ci)
