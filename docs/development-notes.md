@@ -12,6 +12,7 @@ PR #23 と #25 の経験で得た知見も追記している．
 PR #28 の経験で得た「機械生成 Markdown と bot レビュー対応」 の知見も追記している．
 PR #30 と #31 で進めた dogfooding の経験から「scope 分割」「設計 pivot」「複数 reviewer 判断割れ」の知見も追記している．
 PR #35 の prh 否定先読み修正と，Issue #34（SHA 直上バージョンコメント bump 漏れ再発防止）の知見も追記している．
+PR #40 の textlint v15 互換性検証と，PR #43 の Gemini SHA 誤検知の知見も追記している．
 類似タスクに着手するセッションが過去判断を辿れるようにする．
 
 ## 目次
@@ -466,6 +467,7 @@ PR #23 / #25 を通じて確立した委譲パターン．
 - 採用ルールの根拠: [docs/rule-rationale.md](rule-rationale.md)
 - 辞書と allowlist の使い分け: [docs/dictionary-maintenance.md](dictionary-maintenance.md)
 - 公開運用の脅威モデル: [docs/security.md](security.md)
+- textlint v15 互換性検証と Gemini SHA 誤検知: [docs/notes/2026-05-03-textlint-v15-compat.md](notes/2026-05-03-textlint-v15-compat.md)
 - SemVer 移行の判断ログ: [docs/notes/2026-05-01-semver-release-operations.md](notes/2026-05-01-semver-release-operations.md)
 - retroactive タグ発行手順: [docs/notes/2026-05-01-retroactive-tag-rollout.md](notes/2026-05-01-retroactive-tag-rollout.md)
 - 全角記号スペース禁止の判断ログ: [docs/notes/2026-04-30-fullwidth-symbol-prh-rule.md](notes/2026-04-30-fullwidth-symbol-prh-rule.md)

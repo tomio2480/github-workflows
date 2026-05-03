@@ -187,15 +187,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
-        TMP="$(mktemp -d "${RUNNER_TEMP}/XXXXXX")"
-        cp "${ACTION_PATH}/package.json" "${TMP}/"
-        cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
-        (cd "${TMP}" && npm ci)
-        echo "bin=${TMP}/node_modules/.bin" >> "${GITHUB_OUTPUT}"
-        echo "modules=${TMP}/node_modules" >> "${GITHUB_OUTPUT}"
-        echo "Installed under: ${TMP}"
+      run: bash "${ACTION_PATH}/../../../scripts/install-textlint-deps.sh"
 
     - name: Run textlint with reviewdog
       shell: bash
