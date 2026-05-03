@@ -21,6 +21,20 @@ import sys
 from typing import Sequence
 
 
+def _resolve_prh_rule(prh_rule, prh_abs: str, context_path: str) -> None:
+    """prh_rule が dict なら rulePaths を prh_abs で上書きする．
+    None / False のときは caller の意図を尊重して何もしない．それ以外は TypeError．
+    """
+    if isinstance(prh_rule, dict):
+        prh_rule["rulePaths"] = [prh_abs]
+    elif prh_rule is None or prh_rule is False:
+        pass
+    else:
+        raise TypeError(
+            f"textlint config '{context_path}' must be an object or false"
+        )
+
+
 def _load_allowlist(path_str: str) -> dict:
     path = pathlib.Path(path_str)
     if not path.is_file():
@@ -58,14 +72,7 @@ def main(argv: Sequence[str]) -> None:
         raise TypeError("textlint config 'rules' must be an object")
 
     prh_abs = str(pathlib.Path(prh).resolve())
-    prh_rule = rules.get("prh")
-    if isinstance(prh_rule, dict):
-        prh_rule["rulePaths"] = [prh_abs]
-    elif prh_rule is None or prh_rule is False:
-        # caller が prh を未定義または false（無効化）にしている場合はそのまま尊重する
-        pass
-    else:
-        raise TypeError("textlint config 'rules.prh' must be an object or false")
+    _resolve_prh_rule(rules.get("prh"), prh_abs, "rules.prh")
 
     overrides = cfg.get("overrides", [])
     if not isinstance(overrides, list):
@@ -76,15 +83,7 @@ def main(argv: Sequence[str]) -> None:
         override_rules = override.get("rules", {})
         if not isinstance(override_rules, dict):
             raise TypeError(f"textlint config 'overrides[{i}].rules' must be an object")
-        override_prh = override_rules.get("prh")
-        if isinstance(override_prh, dict):
-            override_prh["rulePaths"] = [prh_abs]
-        elif override_prh is None or override_prh is False:
-            pass
-        else:
-            raise TypeError(
-                f"textlint config 'overrides[{i}].rules.prh' must be an object or false"
-            )
+        _resolve_prh_rule(override_rules.get("prh"), prh_abs, f"overrides[{i}].rules.prh")
 
     if allowlist_path:
         allowlist = _load_allowlist(allowlist_path)
