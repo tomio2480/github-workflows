@@ -126,10 +126,7 @@ caller root に `.textlintrc.json` を配置し，`overrides` フィールドを
 `overrides` 内に `prh.rulePaths` が含まれる場合も `generate-textlint-runtime.py`
 が絶対パスへ解決する．`prh.yml` を caller 側に配置しなければ中央テンプレートが自動採用される．
 
-**注意** ：textlint v14 では `overrides` で preset 由来ルールを上書きすると
-解釈エラーを起こす事例が報告されている（Issue #22）．textlint v15 での動作は
-本リポジトリでは未検証のため，動作しない場合は方法 B を使うこと．
-検証完了後，本節を更新予定．
+textlint v15.6.0 以降，`overrides` で preset 由来ルールを上書きする設定が動作することを確認している（Issue #22，`tomio2480/settings` PR #48 で検証）．
 
 ### 方法 B: .textlintignore による除外
 
