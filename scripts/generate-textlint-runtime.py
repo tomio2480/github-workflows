@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""textlint config の rules.prh.rulePaths を絶対パスに差し替え，必要なら caller の
+"""textlint config の prh.rulePaths を絶対パスに差し替え，必要なら caller の
 .textlint-allowlist.yml を filters.allowlist に inject した runtime config を生成する．
 
 caller の textlintrc と中央の prh.yml を組み合わせると相対パスが意図どおりに解決されない
 ため，本スクリプトで `.textlintrc.runtime.json` を作成して action から渡す．
 
-caller が rules.prh を意図的に false または未定義にしている場合は尊重し，書き換えない．
+rules.prh と overrides[*].rules.prh の両方を対象にパスを解決する．
+caller が prh を意図的に false または未定義にしている場合は尊重し，書き換えない．
 
 argv 4 つ目（optional）に caller root の .textlint-allowlist.yml の絶対パスが渡されると，
 その内容を filters.allowlist に inject する．空文字または argv 3 つの呼び出しでは
@@ -56,14 +57,31 @@ def main(argv: Sequence[str]) -> None:
     if not isinstance(rules, dict):
         raise TypeError("textlint config 'rules' must be an object")
 
+    prh_abs = str(pathlib.Path(prh).resolve())
     prh_rule = rules.get("prh")
     if isinstance(prh_rule, dict):
-        prh_rule["rulePaths"] = [str(pathlib.Path(prh).resolve())]
+        prh_rule["rulePaths"] = [prh_abs]
     elif prh_rule is None or prh_rule is False:
         # caller が prh を未定義または false（無効化）にしている場合はそのまま尊重する
         pass
     else:
         raise TypeError("textlint config 'rules.prh' must be an object or false")
+
+    for i, override in enumerate(cfg.get("overrides", [])):
+        if not isinstance(override, dict):
+            continue
+        override_rules = override.get("rules", {})
+        if not isinstance(override_rules, dict):
+            continue
+        override_prh = override_rules.get("prh")
+        if isinstance(override_prh, dict):
+            override_prh["rulePaths"] = [prh_abs]
+        elif override_prh is None or override_prh is False:
+            pass
+        else:
+            raise TypeError(
+                f"textlint config 'overrides[{i}].rules.prh' must be an object or false"
+            )
 
     if allowlist_path:
         allowlist = _load_allowlist(allowlist_path)
