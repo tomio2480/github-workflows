@@ -251,3 +251,170 @@ def test_allowlist_filters_non_dict_raises_type_error(tmp_path, non_dict_filters
 
     with pytest.raises(TypeError, match="filters"):
         _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+
+# ── overrides 内の prh.rulePaths 解決 ──────────────────────────────────────
+
+
+def test_overrides_prh_rulepaths_resolved_to_absolute(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {
+            "rules": {},
+            "overrides": [
+                {
+                    "files": ["claude/agents/**/*.md"],
+                    "rules": {
+                        "prh": {"rulePaths": ["./prh.yml"]},
+                        "preset-ja-technical-writing": {
+                            "no-mix-dearu-desumasu": {
+                                "preferInBody": "ですます",
+                                "preferInList": "ですます",
+                            }
+                        },
+                    },
+                }
+            ],
+        },
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    override_prh = written["overrides"][0]["rules"]["prh"]
+    assert override_prh["rulePaths"] == [str(prh.resolve())]
+
+
+def test_overrides_without_prh_preserved(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {
+            "rules": {},
+            "overrides": [
+                {
+                    "files": ["claude/agents/**/*.md"],
+                    "rules": {
+                        "preset-ja-technical-writing": {
+                            "no-mix-dearu-desumasu": {"preferInBody": "ですます"}
+                        }
+                    },
+                }
+            ],
+        },
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    override_rules = written["overrides"][0]["rules"]
+    assert "prh" not in override_rules
+    assert override_rules["preset-ja-technical-writing"]["no-mix-dearu-desumasu"] == {
+        "preferInBody": "ですます"
+    }
+
+
+def test_overrides_absent_no_error(tmp_path):
+    src = _write(tmp_path / "src.json", {"rules": {}})
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert "overrides" not in written
+
+
+def test_overrides_empty_list_no_error(tmp_path):
+    src = _write(tmp_path / "src.json", {"rules": {}, "overrides": []})
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert written["overrides"] == []
+
+
+def test_overrides_prh_false_preserved(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {
+            "rules": {},
+            "overrides": [
+                {
+                    "files": ["docs/**/*.md"],
+                    "rules": {"prh": False},
+                }
+            ],
+        },
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert written["overrides"][0]["rules"]["prh"] is False
+
+
+def test_overrides_prh_unsupported_type_raises_type_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {
+            "rules": {},
+            "overrides": [
+                {
+                    "files": ["docs/**/*.md"],
+                    "rules": {"prh": "string-not-allowed"},
+                }
+            ],
+        },
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(TypeError, match=r"overrides\[0\]\.rules\.prh"):
+        _MODULE.main([str(src), str(prh), str(dest)])
+
+
+def test_overrides_not_list_raises_type_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {}, "overrides": {"files": ["**/*.md"], "rules": {}}},
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(TypeError, match=r"'overrides' must be an array"):
+        _MODULE.main([str(src), str(prh), str(dest)])
+
+
+def test_overrides_entry_not_dict_raises_type_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {}, "overrides": ["not-a-dict"]},
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(TypeError, match=r"overrides\[0\]' must be an object"):
+        _MODULE.main([str(src), str(prh), str(dest)])
+
+
+def test_overrides_entry_rules_not_dict_raises_type_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {
+            "rules": {},
+            "overrides": [{"files": ["**/*.md"], "rules": "not-a-dict"}],
+        },
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    with pytest.raises(TypeError, match=r"overrides\[0\]\.rules' must be an object"):
+        _MODULE.main([str(src), str(prh), str(dest)])

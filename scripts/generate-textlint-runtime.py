@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""textlint config の rules.prh.rulePaths を絶対パスに差し替え，必要なら caller の
+"""textlint config の prh.rulePaths を絶対パスに差し替え，必要なら caller の
 .textlint-allowlist.yml を filters.allowlist に inject した runtime config を生成する．
 
 caller の textlintrc と中央の prh.yml を組み合わせると相対パスが意図どおりに解決されない
 ため，本スクリプトで `.textlintrc.runtime.json` を作成して action から渡す．
 
-caller が rules.prh を意図的に false または未定義にしている場合は尊重し，書き換えない．
+rules.prh と overrides[*].rules.prh の両方を対象にパスを解決する．
+caller が prh を意図的に false または未定義にしている場合は尊重し，書き換えない．
 
 argv 4 つ目（optional）に caller root の .textlint-allowlist.yml の絶対パスが渡されると，
 その内容を filters.allowlist に inject する．空文字または argv 3 つの呼び出しでは
@@ -18,6 +19,20 @@ import json
 import pathlib
 import sys
 from typing import Sequence
+
+
+def _resolve_prh_rule(prh_rule, prh_abs: str, context_path: str) -> None:
+    """prh_rule が dict なら rulePaths を prh_abs で上書きする．
+    None / False のときは caller の意図を尊重して何もしない．それ以外は TypeError．
+    """
+    if isinstance(prh_rule, dict):
+        prh_rule["rulePaths"] = [prh_abs]
+    elif prh_rule is None or prh_rule is False:
+        pass
+    else:
+        raise TypeError(
+            f"textlint config '{context_path}' must be an object or false"
+        )
 
 
 def _load_allowlist(path_str: str) -> dict:
@@ -56,14 +71,19 @@ def main(argv: Sequence[str]) -> None:
     if not isinstance(rules, dict):
         raise TypeError("textlint config 'rules' must be an object")
 
-    prh_rule = rules.get("prh")
-    if isinstance(prh_rule, dict):
-        prh_rule["rulePaths"] = [str(pathlib.Path(prh).resolve())]
-    elif prh_rule is None or prh_rule is False:
-        # caller が prh を未定義または false（無効化）にしている場合はそのまま尊重する
-        pass
-    else:
-        raise TypeError("textlint config 'rules.prh' must be an object or false")
+    prh_abs = str(pathlib.Path(prh).resolve())
+    _resolve_prh_rule(rules.get("prh"), prh_abs, "rules.prh")
+
+    overrides = cfg.get("overrides", [])
+    if not isinstance(overrides, list):
+        raise TypeError("textlint config 'overrides' must be an array")
+    for i, override in enumerate(overrides):
+        if not isinstance(override, dict):
+            raise TypeError(f"textlint config 'overrides[{i}]' must be an object")
+        override_rules = override.get("rules", {})
+        if not isinstance(override_rules, dict):
+            raise TypeError(f"textlint config 'overrides[{i}].rules' must be an object")
+        _resolve_prh_rule(override_rules.get("prh"), prh_abs, f"overrides[{i}].rules.prh")
 
     if allowlist_path:
         allowlist = _load_allowlist(allowlist_path)

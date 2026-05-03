@@ -1,5 +1,19 @@
 {
-  "_comment": "textlint の標準設定．各リポジトリにコピーして使用する．",
+  "_comment": "textlint の標準設定．各リポジトリにコピーして使用する．パス別に文体を切り替えたい場合は _example_overrides を overrides にリネームして有効化する（docs/rule-rationale.md の「文体使い分けと no-mix-dearu-desumasu」節を参照）．",
+  "_example_overrides": [
+    {
+      "files": ["claude/agents/**/*.md"],
+      "rules": {
+        "preset-ja-technical-writing": {
+          "no-mix-dearu-desumasu": {
+            "preferInBody": "ですます",
+            "preferInList": "ですます",
+            "strict": false
+          }
+        }
+      }
+    }
+  ],
   "rules": {
     "preset-ja-technical-writing": {
       "sentence-length": {
