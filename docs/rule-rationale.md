@@ -47,9 +47,11 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 `templates/prh.yml` の `JavaScript` ルールでは `JS` を `/\bJS\b/` の正規表現で検出する．
 plain string で `JS` と書くと substring match が効き，`JSON Lines` のような語にも誤マッチするため避ける．
 
-`ユーザー` ルールも同根の問題を回避している．
-plain string `ユーザ` は正しい表記の `ユーザー` 内の `ユーザ` 部分にも substring match して誤検出する．
-否定先読み `/ユーザ(?!ー)/` で「ユーザー」を除外する設計とする（[Issue #33](https://github.com/tomio2480/github-workflows/issues/33)）．
+`ユーザー`・`サーバー`・`コンピューター` ルールも同根の問題を回避している．
+長音「ー」で終わる語を plain string で書くと，正しい表記（例: `サーバー`）内の
+部分文字列（例: `サーバ`）にも substring match して誤検出する．
+否定先読み `(?!ー)` で長音が続く場合を除外する設計で統一する
+（[Issue #33](https://github.com/tomio2480/github-workflows/issues/33)・[Issue #48](https://github.com/tomio2480/github-workflows/issues/48)）．
 
 辞書追加の手順は [docs/dictionary-maintenance.md](dictionary-maintenance.md) を参照．
 
