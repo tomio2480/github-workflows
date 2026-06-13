@@ -13,6 +13,7 @@
 - 📦 prh の表記ゆれ辞書
 - 🧩 全角記号前後の半角スペース禁止の根拠
 - 🧩 文体使い分けと no-mix-dearu-desumasu
+- 🧩 max-kanji-continuous-len と固有名詞の例外
 - 📚 参照
 
 ## 🎯 採用方針
@@ -141,6 +142,31 @@ claude/agents/
 
 ファイル全体が対象外になるため，文体以外のルール（表記ゆれ・助詞重複など）も
 チェックされなくなる点に注意する．
+
+## 🧩 max-kanji-continuous-len と固有名詞の例外
+
+`max-kanji-continuous-len` は漢字が連続する文字数を制限するルールで，既定値は `max: 6` である．
+固有名詞など，意味を損なわずに分割できない語が誤検出される場合がある．
+`allow` オプションで例外を文字列配列として指定することで回避できる
+（[Issue #49](https://github.com/tomio2480/github-workflows/issues/49)）．
+
+```json
+{
+  "rules": {
+    "preset-ja-technical-writing": {
+      "max-kanji-continuous-len": {
+        "max": 6,
+        "allow": ["電子情報通信学会", "情報処理推進機構"]
+      }
+    }
+  }
+}
+```
+
+中央テンプレートは `"allow": []`（空リスト）を既定として定義する．
+固有名詞の例外は各 caller リポジトリで per-repo の `.textlintrc.json` に追加する運用とする．
+caller-side の除外方針については
+[docs/dictionary-maintenance.md](dictionary-maintenance.md) の「5️⃣」節も参照する．
 
 ## 📚 参照
 
