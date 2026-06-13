@@ -162,8 +162,9 @@ claude/agents/
 ```
 
 中央テンプレートは `"allow": []`（空リスト）を既定として定義する．
-固有名詞の例外は各 caller リポジトリで per-repo override として追加する運用とする．
-手順は [docs/onboarding-existing-repo.md](onboarding-existing-repo.md) を参照する．
+固有名詞の例外は各 caller リポジトリで per-repo の `.textlintrc.json` に追加する運用とする．
+caller-side の除外方針については
+[docs/dictionary-maintenance.md](dictionary-maintenance.md) の「5️⃣」節も参照する．
 
 ## 📚 参照
 
