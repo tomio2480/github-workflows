@@ -331,14 +331,38 @@ def test_count_textlint_diff_files_empty_list_excludes_everything():
     assert result["findings"] == []
 
 
-def test_count_textlint_diff_files_matches_absolute_paths_via_subpath():
+def test_count_textlint_diff_files_matches_absolute_paths_via_workspace_strip(
+    monkeypatch,
+):
+    # with-ignored-paths.xml の 1 件は絶対パス
+    # /home/runner/work/repo/repo/tests/fixtures/markdown/another.md．
+    # GITHUB_WORKSPACE を設定すれば，その prefix を剥がした相対パスで
+    # diff_files と完全一致させられる．
+    monkeypatch.setenv("GITHUB_WORKSPACE", "/home/runner/work/repo/repo")
     result = _MODULE.count_textlint(
         _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
         diff_files=["tests/fixtures/markdown/another.md"],
     )
     files = [f["file"] for f in result["findings"]]
-    assert all("another.md" in f for f in files)
-    assert len(files) >= 1
+    assert len(files) == 1
+    assert files[0] == "/home/runner/work/repo/repo/tests/fixtures/markdown/another.md"
+
+
+def test_count_textlint_diff_files_rejects_false_positive_suffix_match(tmp_path):
+    # 差分ファイルが docs/keep.md のとき，末尾が一致するだけの無関係な
+    # sub/docs/keep.md を誤って in-scope にしてはいけない（サフィックス一致
+    # による誤判定の回帰防止）．
+    xml = tmp_path / "suffix.xml"
+    xml.write_text(
+        '<?xml version="1.0"?><checkstyle>'
+        '<file name="sub/docs/keep.md">'
+        '<error line="1" severity="error" message="m" source="r"/></file>'
+        "</checkstyle>",
+        encoding="utf-8",
+    )
+    result = _MODULE.count_textlint(xml, diff_files=["docs/keep.md"])
+    assert result["total"] == 0
+    assert result["findings"] == []
 
 
 def test_count_markdownlint_diff_files_scopes_to_listed_files():

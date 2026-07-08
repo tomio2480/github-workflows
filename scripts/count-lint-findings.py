@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -99,23 +100,32 @@ def _is_ignored(path: str, ignore_globs: Sequence[str] | None) -> bool:
     return any(_path_matches_ignore(norm_path, p) for p in ignore_globs)
 
 
+def _strip_workspace_prefix(norm_path: str) -> str:
+    """runner workspace（`GITHUB_WORKSPACE`）配下の絶対 path を相対 path に戻す．
+
+    post-lint-summary.sh の `normalize_file`（表示用の正規化）と同じ考え方．
+    `GITHUB_WORKSPACE` 未設定時（ローカル実行やテスト）はそのまま返す．
+    """
+    workspace = (os.environ.get("GITHUB_WORKSPACE") or "").replace("\\", "/").rstrip("/")
+    if workspace and norm_path.startswith(workspace + "/"):
+        return norm_path[len(workspace) + 1 :]
+    return norm_path
+
+
 def _is_in_diff_scope(path: str, diff_files: Sequence[str] | None) -> bool:
     """diff_files が None なら絞り込みなし（全 in-scope）．
 
-    リストが渡された場合（空リスト含む）は，各要素を `<file>/**` 相当の
-    prefix パターンとみなして `_path_matches_ignore` を再利用し，一致した
-    ものだけ in-scope とする．一致判定は ignore-glob と対称にすることで
-    絶対パス・相対パス両対応の挙動を揃える．
+    リストが渡された場合（空リスト含む）は，`GITHUB_WORKSPACE` prefix を
+    剥がした上での完全一致だけを in-scope とする．`_is_ignored` の
+    `<prefix>/**` サフィックス一致をそのまま流用すると，`docs/keep.md` が
+    無関係な `sub/docs/keep.md` にも一致してしまう誤判定を招くため，
+    diff_files（個別ファイル一覧）には流用しない．
     """
     if diff_files is None:
         return True
-    # diff_files は呼び出し元（main()）で正規化済みの前提とする．
-    # ignore_globs / _is_ignored と同じ規約（要素側はループ内で再正規化しない）．
-    norm_path = path.replace("\\", "/")
-    for f in diff_files:
-        if norm_path == f or _path_matches_ignore(norm_path, f + "/**"):
-            return True
-    return False
+    # diff_files は呼び出し元（main()）で正規化済み（\\ を / に）の前提とする．
+    rel_path = _strip_workspace_prefix(path.replace("\\", "/"))
+    return rel_path in diff_files
 
 
 def count_textlint(
