@@ -30,11 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        # actions/checkout v6.0.3
+        # actions/checkout v7.0.0
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Python
-        # actions/setup-python v6.2.0
+        # actions/setup-python v6.3.0
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.x"
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        # actions/checkout v6.0.3
+        # actions/checkout v7.0.0
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install bats
@@ -70,7 +70,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
-        # actions/checkout v6.0.3
+        # actions/checkout v7.0.0
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Run composite action against fixtures
