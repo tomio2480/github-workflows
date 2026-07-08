@@ -7,6 +7,7 @@ post-lint-summary.sh が担当する．
 
 usage:
     count-lint-findings.py <textlint-xml> <markdownlint-txt> [--ignore-glob PATTERN ...]
+        [--diff-files-from FILE]
 
 入力:
     <textlint-xml>     textlint の checkstyle 形式レポート
@@ -14,6 +15,11 @@ usage:
     --ignore-glob      集計から除外する path glob．繰り返し指定可．`tests/fixtures/**`
                        のような prefix 形式で，相対パス・絶対パス（runner workspace 配下）
                        両方の findings を除外する
+    --diff-files-from  PR 差分ファイル一覧（改行区切り）を書いたファイルパス．指定時は
+                       一覧外のファイルの findings を summary から除外する（Issue #59:
+                       reviewdog の filter-mode はリポジトリ全体走査の結果を絞り込まない
+                       ため，summary だけが diff 外まで報告していた事象への対応）．
+                       未指定時は従来どおりリポジトリ全体を対象にする
 
 出力（stdout，JSON）:
     {
@@ -93,7 +99,29 @@ def _is_ignored(path: str, ignore_globs: Sequence[str] | None) -> bool:
     return any(_path_matches_ignore(norm_path, p) for p in ignore_globs)
 
 
-def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dict:
+def _is_in_diff_scope(path: str, diff_files: Sequence[str] | None) -> bool:
+    """diff_files が None なら絞り込みなし（全 in-scope）．
+
+    リストが渡された場合（空リスト含む）は，各要素を `<file>/**` 相当の
+    prefix パターンとみなして `_path_matches_ignore` を再利用し，一致した
+    ものだけ in-scope とする．一致判定は ignore-glob と対称にすることで
+    絶対パス・相対パス両対応の挙動を揃える．
+    """
+    if diff_files is None:
+        return True
+    norm_path = path.replace("\\", "/")
+    for f in diff_files:
+        norm_f = f.replace("\\", "/")
+        if norm_path == norm_f or _path_matches_ignore(norm_path, norm_f + "/**"):
+            return True
+    return False
+
+
+def count_textlint(
+    path: Path,
+    ignore_globs: Sequence[str] | None = None,
+    diff_files: Sequence[str] | None = None,
+) -> dict:
     """checkstyle XML を読み severity 別件数と findings 一覧を返す．"""
     empty = {"error": 0, "warning": 0, "info": 0, "total": 0, "findings": []}
     if not Path(path).is_file():
@@ -109,6 +137,8 @@ def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dic
     for file_el in tree.getroot().iter("file"):
         file_name = file_el.get("name") or ""
         if _is_ignored(file_name, ignore_globs):
+            continue
+        if not _is_in_diff_scope(file_name, diff_files):
             continue
         for error in file_el.iter("error"):
             sev = (error.get("severity") or "").lower()
@@ -132,7 +162,11 @@ def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dic
     return counts
 
 
-def count_markdownlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dict:
+def count_markdownlint(
+    path: Path,
+    ignore_globs: Sequence[str] | None = None,
+    diff_files: Sequence[str] | None = None,
+) -> dict:
     """markdownlint-cli2 のテキストレポートから件数と findings 一覧を返す．"""
     if not Path(path).is_file():
         return {"total": 0, "findings": []}
@@ -145,6 +179,8 @@ def count_markdownlint(path: Path, ignore_globs: Sequence[str] | None = None) ->
                 continue
             file_name = m.group("file")
             if _is_ignored(file_name, ignore_globs):
+                continue
+            if not _is_in_diff_scope(file_name, diff_files):
                 continue
             try:
                 line_no = int(m.group("line"))
@@ -172,6 +208,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATTERN",
         help="path glob to exclude from findings; repeatable",
     )
+    parser.add_argument(
+        "--diff-files-from",
+        metavar="FILE",
+        help=(
+            "newline-separated list of PR diff files (relative paths); "
+            "when given, findings outside this list are excluded from the "
+            "summary. Omit to keep the legacy repo-wide scope (Issue #59)"
+        ),
+    )
     return parser
 
 
@@ -188,9 +233,21 @@ def main(argv: Sequence[str]) -> int:
             raise ValueError("--ignore-glob must not be empty or whitespace only")
         ignore_globs.append(normalized)
 
+    # --diff-files-from 未指定なら None（絞り込みなし = 従来挙動）．
+    # 指定されたファイルの空行は無視する．
+    diff_files: list[str] | None = None
+    if args.diff_files_from:
+        diff_files = [
+            line.strip().replace("\\", "/")
+            for line in Path(args.diff_files_from).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
     payload = {
-        "markdownlint": count_markdownlint(Path(args.markdownlint_txt), ignore_globs),
-        "textlint": count_textlint(Path(args.textlint_xml), ignore_globs),
+        "markdownlint": count_markdownlint(
+            Path(args.markdownlint_txt), ignore_globs, diff_files
+        ),
+        "textlint": count_textlint(Path(args.textlint_xml), ignore_globs, diff_files),
     }
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")

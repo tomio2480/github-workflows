@@ -184,8 +184,13 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 | fork PR | `pull-requests: write` が降格されるため事前に skip．reviewdog inline コメントの制約と整合 |
 | opt-out | composite action の `post-summary` input に `"false"` を渡せば投稿 step ごと skip．同一 PR で複数 job が同 marker を奪い合うケースの逃げ道．reviewdog の inline コメント投稿には影響しない |
 | 件数フィルタ | composite action の `markdown-ignore` input に path glob を改行区切りで渡すと summary 件数から除外できる．`tests/fixtures/**` のような prefix 形式で相対・絶対両方のパスを除外する．reviewdog の inline コメントは `filter-mode` で別途制御されるため本 input の影響を受けない |
+| 集計スコープ | summary は PR 差分ファイルのみを対象にする（[Issue #59](https://github.com/tomio2480/github-workflows/issues/59)）．取得失敗時はリポジトリ全体スコープにフォールバックする |
 
 集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は textlint の checkstyle XML（`textlint-report.xml`）と markdownlint-cli2 のテキストレポート（`markdownlint-report.txt`）から件数と findings 一覧を集計し JSON を stdout に出す．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．markdownlint 側の集計用に composite action 内で markdownlint-cli2 を 1 度再実行するため，reviewdog action と合わせて cli2 が 2 回走る．コストは数秒で軽微．将来的に reviewdog action を自前 `markdownlint-cli2 --reporter rdjson | reviewdog -f rdjson` に置き換えれば一本化できる．
+
+`markdown-glob`（既定 `**/*.md`）はリポジトリ全体を走査するため，textlint・markdownlint の実行結果自体はリポジトリ全体分の findings を含む．reviewdog の `filter-mode`（既定 `added`）は **inline コメント投稿のみ** を diff 行に絞る機構であり，summary 集計の対象範囲には影響しない．そのため対策前は「本 PR の差分ファイルは 1 件なのに summary は数百件」という事象が起きていた（Issue #59）．
+
+対策として，composite action に `List PR diff files (for summary scoping)` step を追加した．[scripts/list-pr-diff-files.sh](../scripts/list-pr-diff-files.sh) が `GET /repos/:owner/:repo/pulls/:pr/files` で PR の差分ファイル一覧を取得し，`count-lint-findings.py` の `--diff-files-from` にファイルパスとして渡す．これにより summary は PR 差分ファイルのみを対象にする．GitHub API 呼び出しが失敗した場合は `::warning::` を出しつつ `--diff-files-from` を渡さず，従来どおりリポジトリ全体スコープにフォールバックする（fail-open）．`--diff-files-from` は `count-lint-findings.py` 単体の後方互換のため未指定時は従来どおりリポジトリ全体を対象にする仕様のままである．
 
 reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない指摘を inline 化しない．このため「集計件数 N 件あるのに inline コメントが 0 件」 という見え方が起こりうる．この差を埋めるため summary コメントには以下を含める．
 
