@@ -58,7 +58,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Collection, Iterable, Sequence
 
 
 _MARKDOWNLINT_LINE = re.compile(
@@ -112,14 +112,19 @@ def _strip_workspace_prefix(norm_path: str) -> str:
     return norm_path
 
 
-def _is_in_diff_scope(path: str, diff_files: Sequence[str] | None) -> bool:
+def _is_in_diff_scope(path: str, diff_files: Collection[str] | None) -> bool:
     """diff_files が None なら絞り込みなし（全 in-scope）．
 
-    リストが渡された場合（空リスト含む）は，`GITHUB_WORKSPACE` prefix を
-    剥がした上での完全一致だけを in-scope とする．`_is_ignored` の
-    `<prefix>/**` サフィックス一致をそのまま流用すると，`docs/keep.md` が
-    無関係な `sub/docs/keep.md` にも一致してしまう誤判定を招くため，
-    diff_files（個別ファイル一覧）には流用しない．
+    渡された場合（空集合含む）は，`GITHUB_WORKSPACE` prefix を剥がした
+    上での完全一致だけを in-scope とする．`_is_ignored` の `<prefix>/**`
+    サフィックス一致をそのまま流用すると，`docs/keep.md` が無関係な
+    `sub/docs/keep.md` にも一致してしまう誤判定を招くため，diff_files
+    （個別ファイル一覧）には流用しない．
+
+    findings ごとに繰り返し呼ばれるため，diff_files には `in` が O(1) の
+    `set`（や `frozenset`）を渡すことを想定する．型ヒントを `Iterable` では
+    なく `Collection` にしているのは，一度きりの generator を渡すと 2 件目
+    以降の finding で必ず False になる事故を型で防ぐため．
     """
     if diff_files is None:
         return True
@@ -131,7 +136,7 @@ def _is_in_diff_scope(path: str, diff_files: Sequence[str] | None) -> bool:
 def count_textlint(
     path: Path,
     ignore_globs: Sequence[str] | None = None,
-    diff_files: Sequence[str] | None = None,
+    diff_files: Collection[str] | None = None,
 ) -> dict:
     """checkstyle XML を読み severity 別件数と findings 一覧を返す．"""
     empty = {"error": 0, "warning": 0, "info": 0, "total": 0, "findings": []}
@@ -176,7 +181,7 @@ def count_textlint(
 def count_markdownlint(
     path: Path,
     ignore_globs: Sequence[str] | None = None,
-    diff_files: Sequence[str] | None = None,
+    diff_files: Collection[str] | None = None,
 ) -> dict:
     """markdownlint-cli2 のテキストレポートから件数と findings 一覧を返す．"""
     if not Path(path).is_file():
@@ -245,14 +250,15 @@ def main(argv: Sequence[str]) -> int:
         ignore_globs.append(normalized)
 
     # --diff-files-from 未指定なら None（絞り込みなし = 従来挙動）．
-    # 指定されたファイルの空行は無視する．
-    diff_files: list[str] | None = None
+    # 指定されたファイルの空行は無視する．set にするのは findings ごとに
+    # 繰り返し呼ばれる _is_in_diff_scope の `in` 判定を O(1) にするため．
+    diff_files: set[str] | None = None
     if args.diff_files_from:
-        diff_files = [
+        diff_files = {
             line.strip().replace("\\", "/")
             for line in Path(args.diff_files_from).read_text(encoding="utf-8").splitlines()
             if line.strip()
-        ]
+        }
 
     payload = {
         "markdownlint": count_markdownlint(
