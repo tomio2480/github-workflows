@@ -7,6 +7,7 @@ post-lint-summary.sh が担当する．
 
 usage:
     count-lint-findings.py <textlint-xml> <markdownlint-txt> [--ignore-glob PATTERN ...]
+        [--diff-files-from FILE]
 
 入力:
     <textlint-xml>     textlint の checkstyle 形式レポート
@@ -14,6 +15,11 @@ usage:
     --ignore-glob      集計から除外する path glob．繰り返し指定可．`tests/fixtures/**`
                        のような prefix 形式で，相対パス・絶対パス（runner workspace 配下）
                        両方の findings を除外する
+    --diff-files-from  PR 差分ファイル一覧（改行区切り）を書いたファイルパス．指定時は
+                       一覧外のファイルの findings を summary から除外する（Issue #59:
+                       reviewdog の filter-mode はリポジトリ全体走査の結果を絞り込まない
+                       ため，summary だけが diff 外まで報告していた事象への対応）．
+                       未指定時は従来どおりリポジトリ全体を対象にする
 
 出力（stdout，JSON）:
     {
@@ -47,11 +53,12 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Collection, Iterable, Sequence
 
 
 _MARKDOWNLINT_LINE = re.compile(
@@ -93,7 +100,44 @@ def _is_ignored(path: str, ignore_globs: Sequence[str] | None) -> bool:
     return any(_path_matches_ignore(norm_path, p) for p in ignore_globs)
 
 
-def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dict:
+def _strip_workspace_prefix(norm_path: str) -> str:
+    """runner workspace（`GITHUB_WORKSPACE`）配下の絶対 path を相対 path に戻す．
+
+    post-lint-summary.sh の `normalize_file`（表示用の正規化）と同じ考え方．
+    `GITHUB_WORKSPACE` 未設定時（ローカル実行やテスト）はそのまま返す．
+    """
+    workspace = (os.environ.get("GITHUB_WORKSPACE") or "").replace("\\", "/").rstrip("/")
+    if workspace and norm_path.startswith(workspace + "/"):
+        return norm_path[len(workspace) + 1 :]
+    return norm_path
+
+
+def _is_in_diff_scope(path: str, diff_files: Collection[str] | None) -> bool:
+    """diff_files が None なら絞り込みなし（全 in-scope）．
+
+    渡された場合（空集合含む）は，`GITHUB_WORKSPACE` prefix を剥がした
+    上での完全一致だけを in-scope とする．`_is_ignored` の `<prefix>/**`
+    サフィックス一致をそのまま流用すると，`docs/keep.md` が無関係な
+    `sub/docs/keep.md` にも一致してしまう誤判定を招くため，diff_files
+    （個別ファイル一覧）には流用しない．
+
+    findings ごとに繰り返し呼ばれるため，diff_files には `in` が O(1) の
+    `set`（や `frozenset`）を渡すことを想定する．型ヒントを `Iterable` では
+    なく `Collection` にしているのは，一度きりの generator を渡すと 2 件目
+    以降の finding で必ず False になる事故を型で防ぐため．
+    """
+    if diff_files is None:
+        return True
+    # diff_files は呼び出し元（main()）で正規化済み（\\ を / に）の前提とする．
+    rel_path = _strip_workspace_prefix(path.replace("\\", "/"))
+    return rel_path in diff_files
+
+
+def count_textlint(
+    path: Path,
+    ignore_globs: Sequence[str] | None = None,
+    diff_files: Collection[str] | None = None,
+) -> dict:
     """checkstyle XML を読み severity 別件数と findings 一覧を返す．"""
     empty = {"error": 0, "warning": 0, "info": 0, "total": 0, "findings": []}
     if not Path(path).is_file():
@@ -109,6 +153,8 @@ def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dic
     for file_el in tree.getroot().iter("file"):
         file_name = file_el.get("name") or ""
         if _is_ignored(file_name, ignore_globs):
+            continue
+        if not _is_in_diff_scope(file_name, diff_files):
             continue
         for error in file_el.iter("error"):
             sev = (error.get("severity") or "").lower()
@@ -132,7 +178,11 @@ def count_textlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dic
     return counts
 
 
-def count_markdownlint(path: Path, ignore_globs: Sequence[str] | None = None) -> dict:
+def count_markdownlint(
+    path: Path,
+    ignore_globs: Sequence[str] | None = None,
+    diff_files: Collection[str] | None = None,
+) -> dict:
     """markdownlint-cli2 のテキストレポートから件数と findings 一覧を返す．"""
     if not Path(path).is_file():
         return {"total": 0, "findings": []}
@@ -145,6 +195,8 @@ def count_markdownlint(path: Path, ignore_globs: Sequence[str] | None = None) ->
                 continue
             file_name = m.group("file")
             if _is_ignored(file_name, ignore_globs):
+                continue
+            if not _is_in_diff_scope(file_name, diff_files):
                 continue
             try:
                 line_no = int(m.group("line"))
@@ -172,6 +224,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATTERN",
         help="path glob to exclude from findings; repeatable",
     )
+    parser.add_argument(
+        "--diff-files-from",
+        metavar="FILE",
+        help=(
+            "newline-separated list of PR diff files (relative paths); "
+            "when given, findings outside this list are excluded from the "
+            "summary. Omit to keep the legacy repo-wide scope (Issue #59)"
+        ),
+    )
     return parser
 
 
@@ -188,9 +249,22 @@ def main(argv: Sequence[str]) -> int:
             raise ValueError("--ignore-glob must not be empty or whitespace only")
         ignore_globs.append(normalized)
 
+    # --diff-files-from 未指定なら None（絞り込みなし = 従来挙動）．
+    # 指定されたファイルの空行は無視する．set にするのは findings ごとに
+    # 繰り返し呼ばれる _is_in_diff_scope の `in` 判定を O(1) にするため．
+    diff_files: set[str] | None = None
+    if args.diff_files_from:
+        diff_files = {
+            line.strip().replace("\\", "/")
+            for line in Path(args.diff_files_from).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+
     payload = {
-        "markdownlint": count_markdownlint(Path(args.markdownlint_txt), ignore_globs),
-        "textlint": count_textlint(Path(args.textlint_xml), ignore_globs),
+        "markdownlint": count_markdownlint(
+            Path(args.markdownlint_txt), ignore_globs, diff_files
+        ),
+        "textlint": count_textlint(Path(args.textlint_xml), ignore_globs, diff_files),
     }
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")

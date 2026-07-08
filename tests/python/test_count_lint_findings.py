@@ -292,3 +292,117 @@ def test_main_accepts_repeated_ignore_glob(capsys):
     # markdownlint: docs/keep.md の 1 件のみ
     assert payload["markdownlint"]["total"] == 1
     assert payload["markdownlint"]["findings"][0]["file"] == "docs/keep.md"
+
+
+# ---- --diff-files-from (Issue #59: summary を PR 差分ファイルのみに絞る) ----
+
+def test_count_textlint_diff_files_scopes_to_listed_files():
+    # with-ignored-paths.xml は docs/keep.md（error 1件）と
+    # tests/fixtures/markdown/... 配下（warning 2 + info 1）を含む．
+    # diff_files に docs/keep.md のみを渡すと，それ以外は除外される．
+    result = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
+        diff_files=["docs/keep.md"],
+    )
+    assert result["total"] == 1
+    assert result["findings"][0]["file"] == "docs/keep.md"
+
+
+def test_count_textlint_diff_files_none_keeps_all_findings():
+    # diff_files 未指定（None）は従来どおり全 findings を返す．
+    full = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml"
+    )
+    scoped = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
+        diff_files=None,
+    )
+    assert full == scoped
+
+
+def test_count_textlint_diff_files_empty_list_excludes_everything():
+    # diff_files=[] は「差分ファイルが 0 件」を意味するため全除外する．
+    # None（絞り込みなし）と [] （0 件に絞り込み）は区別する．
+    result = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
+        diff_files=[],
+    )
+    assert result["total"] == 0
+    assert result["findings"] == []
+
+
+def test_count_textlint_diff_files_matches_absolute_paths_via_workspace_strip(
+    monkeypatch,
+):
+    # with-ignored-paths.xml の 1 件は絶対パス
+    # /home/runner/work/repo/repo/tests/fixtures/markdown/another.md．
+    # GITHUB_WORKSPACE を設定すれば，その prefix を剥がした相対パスで
+    # diff_files と完全一致させられる．
+    monkeypatch.setenv("GITHUB_WORKSPACE", "/home/runner/work/repo/repo")
+    result = _MODULE.count_textlint(
+        _FIXTURES / "textlint-reports" / "with-ignored-paths.xml",
+        diff_files=["tests/fixtures/markdown/another.md"],
+    )
+    files = [f["file"] for f in result["findings"]]
+    assert len(files) == 1
+    assert files[0] == "/home/runner/work/repo/repo/tests/fixtures/markdown/another.md"
+
+
+def test_count_textlint_diff_files_rejects_false_positive_suffix_match(tmp_path):
+    # 差分ファイルが docs/keep.md のとき，末尾が一致するだけの無関係な
+    # sub/docs/keep.md を誤って in-scope にしてはいけない（サフィックス一致
+    # による誤判定の回帰防止）．
+    xml = tmp_path / "suffix.xml"
+    xml.write_text(
+        '<?xml version="1.0"?><checkstyle>'
+        '<file name="sub/docs/keep.md">'
+        '<error line="1" severity="error" message="m" source="r"/></file>'
+        "</checkstyle>",
+        encoding="utf-8",
+    )
+    result = _MODULE.count_textlint(xml, diff_files=["docs/keep.md"])
+    assert result["total"] == 0
+    assert result["findings"] == []
+
+
+def test_count_markdownlint_diff_files_scopes_to_listed_files():
+    result = _MODULE.count_markdownlint(
+        _FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt",
+        diff_files=["docs/keep.md"],
+    )
+    assert result["total"] == 1
+    assert result["findings"][0]["file"] == "docs/keep.md"
+
+
+def test_main_accepts_diff_files_from_file(capsys, tmp_path):
+    diff_list = tmp_path / "diff-files.txt"
+    diff_list.write_text("docs/keep.md\n\n", encoding="utf-8")
+    rc = _MODULE.main(
+        [
+            str(_FIXTURES / "textlint-reports" / "with-ignored-paths.xml"),
+            str(_FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt"),
+            "--diff-files-from",
+            str(diff_list),
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["textlint"]["total"] == 1
+    assert payload["textlint"]["findings"][0]["file"] == "docs/keep.md"
+    assert payload["markdownlint"]["total"] == 1
+    assert payload["markdownlint"]["findings"][0]["file"] == "docs/keep.md"
+
+
+def test_main_without_diff_files_from_keeps_all_findings(capsys):
+    # --diff-files-from 未指定時は従来どおりリポジトリ全体の findings を返す
+    # （後方互換：既存 caller の挙動を変えない）．
+    rc = _MODULE.main(
+        [
+            str(_FIXTURES / "textlint-reports" / "with-ignored-paths.xml"),
+            str(_FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt"),
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["textlint"]["total"] == 4
+    assert payload["markdownlint"]["total"] == 4
