@@ -62,7 +62,12 @@ for item in payload:
 PY
 
   # Link ヘッダから rel="next" の URL を抽出する（post-lint-summary.sh と同じ実装）．
-  URL="$(grep -i '^link:' "${GET_HEADERS}" \
+  # `set -o pipefail` 下では次ページが無い（grep 不一致）とき pipeline の
+  # 終了コードが非 0 になり，ループ最後の代入がそのままスクリプト自身の
+  # 終了コードを汚染する．`|| true` で意図的に握りつぶす．
+  URL="$( (grep -i '^link:' "${GET_HEADERS}" \
     | sed -nE 's/.*<([^>]*)>;[[:space:]]*rel=["'"'"']next["'"'"'].*/\1/p' \
-    | head -n1)"
+    | head -n1) || true )"
 done
+
+exit 0
