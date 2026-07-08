@@ -270,7 +270,10 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -uo pipefail
-        DIFF_FILES_PATH="$(pwd)/pr-diff-files.txt"
+        # 後続の「Post lint summary comment to PR」ステップが読む cross-step
+        # artifact のため，textlintrc.runtime.json と同じ規約で RUNNER_TEMP
+        # 配下に絶対パスで置く（caller cwd 非依存・ワークスペース非汚染）．
+        DIFF_FILES_PATH="${RUNNER_TEMP}/pr-diff-files.txt"
         if bash "${ACTION_PATH}/../../../scripts/list-pr-diff-files.sh" > "${DIFF_FILES_PATH}"; then
           echo "path=${DIFF_FILES_PATH}" >> "${GITHUB_OUTPUT}"
         else
@@ -315,7 +318,8 @@ runs:
         DIFF_FILES_PATH: ${{ steps.diff_files.outputs.path }}
       run: |
         set -uo pipefail
-        SUMMARY_JSON_PATH="$(pwd)/lint-summary.json"
+        # ワークスペース非汚染のため RUNNER_TEMP 配下に置く（pr-diff-files.txt と同じ規約）．
+        SUMMARY_JSON_PATH="${RUNNER_TEMP}/lint-summary.json"
         # markdown-ignore input が空でなければ改行区切りで複数 --ignore-glob を渡す．
         # 空行は無視．配列展開で空展開した場合に引数が落ちるよう ${arr[@]+...} を使う．
         IGNORE_ARGS=()

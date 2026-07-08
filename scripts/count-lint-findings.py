@@ -109,10 +109,11 @@ def _is_in_diff_scope(path: str, diff_files: Sequence[str] | None) -> bool:
     """
     if diff_files is None:
         return True
+    # diff_files は呼び出し元（main()）で正規化済みの前提とする．
+    # ignore_globs / _is_ignored と同じ規約（要素側はループ内で再正規化しない）．
     norm_path = path.replace("\\", "/")
     for f in diff_files:
-        norm_f = f.replace("\\", "/")
-        if norm_path == norm_f or _path_matches_ignore(norm_path, norm_f + "/**"):
+        if norm_path == f or _path_matches_ignore(norm_path, f + "/**"):
             return True
     return False
 
