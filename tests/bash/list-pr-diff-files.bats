@@ -130,6 +130,17 @@ teardown() {
   [[ "${output}" == *"::warning::"* ]]
 }
 
+@test "GET は成功したが body が壊れた JSON のとき非 0 終了する（サイレント不具合防止）" {
+  # set -e を使わない設計のため，python3 の JSON parse 失敗を明示検知できていないと
+  # 「差分ファイル 0 件」として exit 0 してしまい，呼び出し側で全指摘が summary から
+  # 静かに消える．そのため execution error として非 0 終了することを保証する．
+  export FAKE_CURL_GET_BODY='not-json'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -ne 0 ]
+}
+
 @test "GH_TOKEN 未設定で execution error として非 0 終了" {
   unset GH_TOKEN
 

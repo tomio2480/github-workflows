@@ -49,7 +49,10 @@ while [ -n "${URL}" ]; do
     exit 1
   fi
 
-  python3 - "${GET_RESP}" <<'PY'
+  # `set -e` を使わない設計のため，JSON parse 失敗等の異常終了を明示的に
+  # 検知して非 0 で終わらせる．検知しないと「差分ファイル 0 件」と誤認され，
+  # 全指摘が summary から静かに消えるサイレント不具合になる．
+  python3 - "${GET_RESP}" <<'PY' || exit 1
 import json
 import sys
 
