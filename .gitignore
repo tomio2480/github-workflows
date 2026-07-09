@@ -13,6 +13,9 @@ node_modules/
 .vscode/
 .idea/
 
+# Claude Code（ローカル権限設定・worktree 置き場．共有しない）
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
