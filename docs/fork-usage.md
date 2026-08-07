@@ -62,15 +62,19 @@ mkdir -p .github/workflows
 
 OWNER=YOUR_USERNAME
 
+# フォーク先 main の先頭 commit SHA を取得して pin する（v2 タグは opt-in のため）
+SHA=$(gh api "repos/${OWNER}/github-workflows/commits/main" --jq '.sha')
+
 curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/md-lint.yml
 
 cat .github/workflows/md-lint.yml
 ```
 
-テンプレートの `uses:` 行は `OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2` 形式で出力される．`OWNER` を `YOUR_USERNAME` に，`<SHA>` をフォーク先の commit SHA に置換すれば caller として完成．即時反映を優先したい repo だけ `@<SHA>` 部分を `@main` に書き換える．
+`uses:` 行は `OWNER` と `<SHA>` を sed により置換した状態で出力される．テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）へ揃えるため，取得から pin までの間で main が進んでもずれない．即時反映を優先したい repo だけ `@<SHA>` 部分を `@main` に書き換える．
 
 ## 4️⃣ 上流（tomio2480）との同期
 

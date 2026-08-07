@@ -34,10 +34,14 @@
 # OWNER は tomio2480 または自分のユーザー名
 OWNER=tomio2480
 
+# caller の SHA pin と同じリビジョンから設定を取得する
+# （SHA の解決方法は onboarding-new-repo.md の 1️⃣ を参照）
+SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
+
 # 任意：Bot と同じ結果を見たい場合は中央設定を取得してから lint
-curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.markdownlint-cli2.yaml" -o .markdownlint-cli2.yaml
-curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.textlintrc.json" -o .textlintrc.json
-curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/prh.yml" -o prh.yml
+curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.markdownlint-cli2.yaml" -o .markdownlint-cli2.yaml
+curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.textlintrc.json" -o .textlintrc.json
+curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/prh.yml" -o prh.yml
 
 # textlint のプリセット・プラグインをローカルに用意
 npm install --no-save \
@@ -94,8 +98,9 @@ textlint の場合：
 ```bash
 # 2️⃣ で未取得なら先に取得（既に取得済みならスキップ）
 OWNER=tomio2480
+SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
 for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml; do
-  [ -f "$f" ] || curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
+  [ -f "$f" ] || curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/$f" -o "$f"
 done
 
 # textlint のプリセット・プラグインがローカルに無ければ取得（2️⃣ で済んでいればスキップ）
@@ -129,9 +134,10 @@ override 用の `.textlintrc.json` を作り，しきい値を緩める．
 ```bash
 # OWNER は tomio2480 または自分のユーザー名（onboarding-new-repo.md の設定と揃える）
 OWNER=tomio2480
+SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
 
 curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.textlintrc.json" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.textlintrc.json" \
   > .textlintrc.json
 ```
 
