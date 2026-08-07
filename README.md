@@ -38,9 +38,10 @@ Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自�
 ## 🤖 Claude レビュー workflow（任意）
 
 Markdown lint とは独立した任意機能である．caller を置いたリポジトリの
-PR コメントで `@claude` をメンションすると，
-[claude-code-action](https://github.com/anthropics/claude-code-action) による
-コードレビューが起動する．導入は「caller 1 枚 + secret 1 件」で完了する．
+PR コメントで `@claude` をメンションすると発火する．
+レビュー本体は
+[claude-code-action](https://github.com/anthropics/claude-code-action)
+が実行する．導入は「caller 1 枚 + secret 1 件」で完了する．
 
 ```bash
 OWNER=tomio2480

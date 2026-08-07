@@ -18,7 +18,7 @@
 - 複数リポジトリから `uses:` で呼び出される composite action を管理する（v2 以降）
 - caller テンプレートの既定は SHA pin + バージョンコメント（ `@<SHA> # v2` ）．`.github/actions/markdown-lint/action.yml` や `templates/` の変更は SHA pin 利用者に対し Dependabot 経由で更新 PR が起票される．`@main` 直接参照は Dependabot の追随対象外
 - v1 タグ（reusable workflow 形式）は self-detection bug により動作しない．残置はするがリリースノートで非推奨を明示している
-- `@claude` メンション起動の Claude レビュー用 reusable workflow（`.github/workflows/claude-review.yml`）も配布する（v2.6〜）．中央ファイルを自己参照しないため，v1 の self-detection bug は該当しない
+- `@claude` メンション起動の Claude レビュー用 reusable workflow も配布する（v2.6〜）．実体は `.github/workflows/claude-review.yml` である．中央ファイルを自己参照しないため，v1 の self-detection bug は該当しない
 - reviewdog で PR inline コメントを投稿するため，caller 側に `pull-requests: write` 権限と `github-token` input への明示的な渡しが必要
 - 公開（public）運用される．外部からのフォーク PR は原則マージしない
 
@@ -37,7 +37,7 @@
 
 - secrets は個別に明示して受け渡す（`secrets: inherit` は使わない）
 - permissions は caller テンプレート側の宣言を正とする．called 側の宣言は caller の付与を超えられない
-- third-party action（`claude-code-action` 等）は full commit SHA でピンし，更新は Dependabot に追随させる
+- third-party action（`claude-code-action` 等）は full commit SHA でピンする．更新は Dependabot に追随させる
 - 中央ファイルへの自己参照を持ち込まない．持ち込む場合は composite action 形式への転換を検討する（v1 の self-detection bug の再発防止）
 
 ### テンプレート・設定ファイルの変更
