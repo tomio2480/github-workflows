@@ -1,0 +1,53 @@
+name: Claude Review (reusable)
+
+# @claude メンションで claude-code-action を起動する reusable workflow．
+# 各リポジトリには templates/.github/workflows/claude-review.yml の caller を置き，
+# Secrets の CLAUDE_CODE_OAUTH_TOKEN を渡して呼び出す．
+# 本 workflow は中央リポジトリのファイルを自己参照しないため，
+# v1 md-lint（reusable workflow 形式）の self-detection bug は該当しない．
+#
+# 認証は Max プランの OAuth トークン（claude setup-token で発行）を使う．
+# コメント投稿には Claude GitHub App（https://github.com/apps/claude）の
+# インストールが必要である．
+# permissions は caller 側で宣言する．called 側の宣言は caller の付与を超えない．
+# レビュー専用のため contents は read に絞る．
+# コード修正を Claude に push させる用途では contents: write が必要になる．
+
+on:
+  workflow_call:
+    secrets:
+      claude_code_oauth_token:
+        description: "claude setup-token で発行した OAuth トークン"
+        required: true
+
+jobs:
+  claude:
+    # issue_comment は通常の Issue でも発火するため，PR のコメントに限定する．
+    if: |
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read # PR の CI 結果を Claude が読むために必要
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@9db594c7a0e82298c121c18b7f08aa1579ce7341 # v1.0.185
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          # PR の CI 結果を読む MCP ツールは本入力で有効化される
+          # （workflow 側の actions: read だけでは不足）．
+          additional_permissions: |
+            actions: read
+          # レビュー専用のため，ファイル編集系ツールを禁止する．
+          # Bash 経由の書き込みまでは封じられない点は運用で補う．
+          claude_args: |
+            --disallowedTools "Edit,Write,MultiEdit,NotebookEdit"
