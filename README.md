@@ -182,7 +182,7 @@ curl -fsSL \
   > .github/workflows/md-lint.yml
 ```
 
-以後は自分のフォークを主軸に辞書やルールを育てていく．caller が `@main` を参照していれば自動で反映される．pinning したい利用者向けに `vX.Y.Z` 形式の patch タグと `vX` の major mutable を打つのは任意．詳細は [docs/fork-usage.md](docs/fork-usage.md) を参照．
+以後は自分のフォークを主軸に辞書やルールを育てていく．生成された caller は SHA pin のため，フォークの更新へ追随するには Dependabot 設定か手動更新が要る．即時反映を優先したい場合は `@<SHA>` 部分を `@main` へ書き換える．pinning したい利用者向けに `vX.Y.Z` 形式の patch タグと `vX` の major mutable を打つのは任意．詳細は [docs/fork-usage.md](docs/fork-usage.md) を参照．
 
 ### 導入後の挙動
 

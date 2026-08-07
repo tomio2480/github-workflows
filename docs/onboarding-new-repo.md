@@ -101,7 +101,8 @@ npx -y lefthook install
 `lefthook` のバイナリを別途インストールし，以下のように `lefthook.yml` と 3 つの設定ファイルをまとめてコピーしてから `lefthook install` を実行する．
 
 ```bash
-# 1️⃣ で解決した ${SHA} を再利用し，caller が参照するリビジョンと揃える
+# 1️⃣ で解決した ${OWNER} / ${SHA} を再利用し，caller が参照するリビジョンと揃える
+# （未設定の場合は 1️⃣ の解決手順を先に実行する）
 for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml lefthook.yml; do
   curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/$f" -o "$f"
 done
