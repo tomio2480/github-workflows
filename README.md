@@ -2,7 +2,7 @@
 
 ## 要約
 
-Markdown を書くすべてのリポジトリに，PR にコメントする Bot 型の lint レビューを最小設定で導入するための中央リポジトリである．対象リポジトリは **1 ファイル** の caller workflow を置くだけで運用に乗る．本リポジトリは v2 以降 composite action として配布する．caller workflow は SHA pin + バージョンコメント（ `@<SHA> # v2` ）を既定とし，Dependabot が更新を追随する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．
+Markdown を書くすべてのリポジトリに，PR にコメントする Bot 型の lint レビューを最小設定で導入するための中央リポジトリである．対象リポジトリは **1 ファイル** の caller workflow を置くだけで運用に乗る．本リポジトリは v2 以降 composite action として配布する．caller workflow は SHA pin + バージョンコメント（ `@<SHA> # v2` ）を既定とし，Dependabot が更新を追随する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．v2.6 以降は，`@claude` メンションで起動するレビュー用 reusable workflow も配布する．
 
 > [!IMPORTANT]
 > **v1 タグ（reusable workflow 形式）は self-detection bug により動作しません．** v2 以降の composite action 形式へ移行してください．詳細は [Issue #3](https://github.com/tomio2480/github-workflows/issues/3) およびリリースノートを参照．
@@ -10,6 +10,7 @@ Markdown を書くすべてのリポジトリに，PR にコメントする Bot 
 ## 目次
 
 - 🎯 このリポジトリでできること
+- 🤖 Claude レビュー workflow（任意）
 - 🗂 ディレクトリ構成
 - 🚀 人間向け Quick Start
 - 🤖 AI エージェント向け Quick Start
@@ -34,6 +35,43 @@ Markdown を書くすべてのリポジトリに，PR にコメントする Bot 
 
 Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自前運用する構成である．
 
+## 🤖 Claude レビュー workflow（任意）
+
+Markdown lint とは独立した任意機能である．caller を置いたリポジトリの
+PR コメントで `@claude` をメンションすると発火する．
+レビュー本体は
+[claude-code-action](https://github.com/anthropics/claude-code-action)
+が実行する．導入は「caller 1 枚 + secret 1 件」で完了する．
+
+```bash
+OWNER=tomio2480
+mkdir -p .github/workflows
+
+# SHA pin 用に最新 v2 タグの commit SHA を取得する
+# （annotated タグの注意点は docs/onboarding-new-repo.md を参照）
+SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
+
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/claude-review.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
+  > .github/workflows/claude-review.yml
+gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
+```
+
+生成後に caller を目視確認し，併記の版コメントが実際の版と
+食い違う場合は手で合わせる．
+
+前提は次の 2 点である．
+
+- [Claude GitHub App](https://github.com/apps/claude) をインストール済みであること．
+- Claude Pro / Max 契約で `claude setup-token` のトークンを発行できること．
+
+メンション判定・権限・action の SHA pin は reusable workflow 側へ集約している．
+中央の SHA 更新は，Dependabot 経由により SHA pin の caller へ波及する．
+本 workflow は中央ファイルを自己参照しないため，
+v1 md-lint の self-detection bug は該当しない．
+
 ## 🗂 ディレクトリ構成
 
 ```
@@ -43,6 +81,7 @@ github-workflows/
 │   │   └── markdown-lint/
 │   │       └── action.yml      # composite action 本体（v2）
 │   ├── workflows/
+│   │   ├── claude-review.yml   # Claude レビュー用 reusable workflow（v2.6〜）
 │   │   └── test-self-lint.yml  # 単体／統合テスト用 CI workflow
 │   └── dependabot.yml          # third-party action の自動更新
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
@@ -58,7 +97,8 @@ github-workflows/
 ├── templates/                     # 各リポジトリにコピーするテンプレート
 │   ├── .github/
 │   │   └── workflows/
-│   │       └── md-lint.yml        # 呼び出し側ワークフロー（唯一の必須ファイル）
+│   │       ├── claude-review.yml  # Claude レビュー用 caller（任意）
+│   │       └── md-lint.yml        # 呼び出し側ワークフロー（lint 導入の必須ファイル）
 │   ├── .markdownlint-cli2.yaml    # 中央デフォルト＋override 用
 │   ├── .textlintrc.json           # 中央デフォルト＋override 用
 │   ├── .textlintignore            # 中央 ignore 設定＋override 用

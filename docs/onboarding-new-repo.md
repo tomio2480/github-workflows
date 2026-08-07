@@ -12,6 +12,7 @@
 - 2️⃣ 初回 PR で動作確認
 - 3️⃣ ローカル hook（任意）
 - 4️⃣ コミットと PR
+- 5️⃣ Claude レビュー workflow（任意）
 
 ## 🔧 前提条件
 
@@ -123,3 +124,21 @@ git commit -m "chore: add local markdown lint hook"
 ```
 
 Pull Request は **必ず Draft で作成する**．CLI では `gh pr create --draft` を使う．
+
+## 5️⃣ Claude レビュー workflow（任意）
+
+`@claude` メンションで起動するコードレビューを併せて導入できる．
+配置するものは caller 1 枚と secret 1 件である．
+前提条件と仕組みは [README の該当節](../README.md#-claude-レビュー-workflow任意) を参照．
+
+```bash
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/claude-review.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  > .github/workflows/claude-review.yml
+gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
+```
+
+SHA pin の書き換えは [1️⃣ caller workflow の配置](#1%EF%B8%8F⃣-caller-workflow-の配置) と同じ手順で行う．
+workflow は default ブランチの定義で発火するため，追加した PR 自身では
+メンションが発火しない．動作確認はマージ後の別 PR で行う．
