@@ -46,12 +46,21 @@ PR コメントで `@claude` をメンションすると発火する．
 ```bash
 OWNER=tomio2480
 mkdir -p .github/workflows
+
+# SHA pin 用に最新 v2 タグの commit SHA を取得する
+# （annotated タグの注意点は docs/onboarding-new-repo.md を参照）
+SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
+
 curl -fsSL \
   "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/claude-review.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/claude-review.yml
 gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 ```
+
+生成後に caller を目視確認し，併記の版コメントが実際の版と
+食い違う場合は手で合わせる．
 
 前提は次の 2 点である．
 
