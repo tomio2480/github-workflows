@@ -41,23 +41,23 @@ mkdir -p .github/workflows
 # OWNER は tomio2480 または自分のユーザー名
 OWNER=tomio2480
 
+# SHA pin 用に最新 v2 タグの commit SHA を取得する．
+# 軽量タグなら .object.sha がそのまま commit を指す．
+# annotated タグの場合は .object.type が "tag" になるため，さらに参照展開する．
+SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
+
 curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/md-lint.yml
 
 cat .github/workflows/md-lint.yml
 ```
 
-出力を目視確認する．`uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2` の `OWNER` 部分が `tomio2480` などに置換されていればよい．`<SHA>` 部分は手動で利用したい github-workflows の commit SHA に置き換える．最新の v2 タグが指す commit SHA は以下で取得する．
+出力を目視確認する．`uses:` 行の `OWNER` と `<SHA>` が実際の値に置換されていればよい．併記の版コメント（`# v2` 等）が実際の版と食い違う場合は手で合わせる．テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）に揃えているため，`main` が次版へ進んでいても新旧混在の caller は生成されない．
 
-```bash
-# 軽量タグなら .object.sha がそのまま commit を指す．
-# annotated タグの場合は .object.type が "tag" になるため，さらに参照展開する．
-gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha'
-```
-
-`gh release view v2 --json targetCommitish` は release が作成されたブランチ名（既定 `main`）を返すため commit SHA を保証しない．SHA pin には上記 git refs API を使うこと．
+`gh release view v2 --json targetCommitish` は release が作成されたブランチ名（既定 `main`）を返すため commit SHA を保証しない．SHA 解決には上記 git refs API を使うこと．
 
 ## 2️⃣ 初回 PR で動作確認
 
@@ -88,8 +88,9 @@ npm install -D lefthook \
   textlint-rule-prh
 
 # 中央の設定ファイルと lefthook.yml を一括取得
+# （1️⃣ で解決した ${SHA} を再利用し，caller が参照するリビジョンと揃える）
 for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml lefthook.yml; do
-  curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
+  curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/$f" -o "$f"
 done
 
 npx -y lefthook install
@@ -100,8 +101,9 @@ npx -y lefthook install
 `lefthook` のバイナリを別途インストールし，以下のように `lefthook.yml` と 3 つの設定ファイルをまとめてコピーしてから `lefthook install` を実行する．
 
 ```bash
+# 1️⃣ で解決した ${SHA} を再利用し，caller が参照するリビジョンと揃える
 for f in .markdownlint-cli2.yaml .textlintrc.json prh.yml lefthook.yml; do
-  curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/$f" -o "$f"
+  curl -fsSL "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/$f" -o "$f"
 done
 
 lefthook install
@@ -132,13 +134,15 @@ Pull Request は **必ず Draft で作成する**．CLI では `gh pr create --d
 前提条件と仕組みは [README の該当節](../README.md#-claude-レビュー-workflow任意) を参照．
 
 ```bash
+# 1️⃣ で解決した ${OWNER} / ${SHA} を再利用する
 curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/claude-review.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/claude-review.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/claude-review.yml
 gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 ```
 
-SHA pin の書き換えは [1️⃣ caller workflow の配置](#1%EF%B8%8F⃣-caller-workflow-の配置) と同じ手順で行う．
+`uses:` 行の SHA pin は sed で置換済みとなる．併記の版コメントだけ目視確認する．
 workflow は default ブランチの定義で発火するため，追加した PR 自身では
 メンションが発火しない．動作確認はマージ後の別 PR で行う．

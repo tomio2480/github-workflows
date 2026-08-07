@@ -52,7 +52,7 @@ mkdir -p .github/workflows
 SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
 
 curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/claude-review.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/claude-review.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/claude-review.yml
@@ -144,11 +144,21 @@ github-workflows/
 ```bash
 OWNER=tomio2480
 mkdir -p .github/workflows
+
+# SHA pin 用に最新 v2 タグの commit SHA を取得する
+# （annotated タグの注意点は docs/onboarding-new-repo.md を参照）
+SHA=$(gh api "repos/${OWNER}/github-workflows/git/refs/tags/v2" --jq '.object.sha')
+
 curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/md-lint.yml
 ```
+
+テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）に揃えている．
+`main` が次版へ進んでいても，新テンプレと旧参照の混在は起きない．
+生成後に `uses:` 行を目視確認し，併記の版コメントが実際の版と食い違う場合は手で合わせる．
 
 あとは PR を作るだけ．初回 PR で Actions の実行に権限承認が要求される場合があるので，リポジトリの Settings → Actions から許可する．
 
@@ -161,9 +171,14 @@ gh repo fork tomio2480/github-workflows --clone=false
 # 2. 対象リポジトリでは OWNER を自分の名前に置換して caller を配置
 OWNER=YOUR_USERNAME  # 自分の GitHub ユーザー名に置き換える
 mkdir -p .github/workflows
+
+# フォーク先 main の先頭 commit SHA を取得して pin する（v2 タグは opt-in のため）
+SHA=$(gh api "repos/${OWNER}/github-workflows/commits/main" --jq '.sha')
+
 curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.github/workflows/md-lint.yml" \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/md-lint.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/md-lint.yml
 ```
 
