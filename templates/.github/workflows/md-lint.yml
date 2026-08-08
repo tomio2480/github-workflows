@@ -29,10 +29,15 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: md-lint-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Markdown Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         # actions/checkout v4.3.1
