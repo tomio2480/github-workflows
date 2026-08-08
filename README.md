@@ -72,6 +72,19 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 本 workflow は中央ファイルを自己参照しないため，
 v1 md-lint の self-detection bug は該当しない．
 
+### 既知の警告：cache 書き込み拒否
+
+実行ログに `cache write denied: token has no writable scopes` という警告が
+出ることがある．本 workflow が `issue_comment` で発火するため，
+GitHub の Read-only Actions cache（低信頼トリガー向け）の対象になり，
+`claude-code-action` 内部の `oven-sh/setup-bun` による bun 実行ファイルの
+cache 書き込みが拒否されるために生じる．
+レビュー結果の投稿を含む動作への影響は確認されていない．
+警告を解消するには job へ `actions: write` を付与する必要があるが，
+comment-triggered workflow へこの広い権限を与えることは
+最小権限の方針（[docs/security.md](docs/security.md)）に反するため見送っている．
+詳細は Issue [#76](https://github.com/tomio2480/github-workflows/issues/76) を参照．
+
 ## 🗂 ディレクトリ構成
 
 ```
