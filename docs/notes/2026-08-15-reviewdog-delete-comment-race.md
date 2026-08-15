@@ -34,7 +34,7 @@ reviewdog を実行する．reviewdog は再実行のたびに，自分が過去
 ## 対応
 
 原因は一過性の競合であり，PR の差分内容とは無関係だった．
-失敗した2 job を `gh run rerun --failed` で再実行し，成功した．
+失敗した 2 job を `gh run rerun --failed` で再実行し，成功した．
 
 ## 今後の対応方針
 
