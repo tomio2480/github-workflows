@@ -150,36 +150,20 @@ per-repo の例外は `.textlint-allowlist.yml` で吸収できる（v2.1 以降
 
 指示書ファイル（ですます調）と規律文書（である調）が同一 repo に共存する場合，
 以下 2 つの方法でファイル種別ごとに文体を切り替えられる．
+範囲の狭い方法 A を既定とする．
 
-### 方法 A: overrides による per-path 切り替え
+### 方法 A: ファイル先頭コメントによる当該ルールの無効化
 
-caller root に `.textlintrc.json` を配置し，`overrides` フィールドを使う．
-中央テンプレートの `_example_overrides` キーに使用例を示している．
-`_example_overrides` を `overrides` にリネームして有効化する．
+対象ファイルの先頭に次の 2 行を置く．無効化の理由もコメントで残す．
 
-```json
-{
-  "overrides": [
-    {
-      "files": ["claude/agents/**/*.md"],
-      "rules": {
-        "preset-ja-technical-writing": {
-          "no-mix-dearu-desumasu": {
-            "preferInBody": "ですます",
-            "preferInList": "ですます",
-            "strict": false
-          }
-        }
-      }
-    }
-  ]
-}
+```markdown
+<!-- 本ファイルは指示書のため「ですます調」で書く．この 1 ルールだけ無効化する． -->
+<!-- textlint-disable ja-technical-writing/no-mix-dearu-desumasu -->
 ```
 
-`overrides` 内に `prh.rulePaths` が含まれる場合も `generate-textlint-runtime.py`
-が絶対パスへ解決する．`prh.yml` を caller 側に配置しなければ中央テンプレートが自動採用される．
-
-textlint v15.6.0 以降，`overrides` で preset 由来ルールを上書きする設定が動作することを確認している（Issue #22，`tomio2480/settings` PR #48 で検証）．
+中央テンプレートは `filters.comments: true` を有効にしているため，
+この方法が caller 側の追加設定なしで使える．
+文長・助詞重複・表記ゆれの検査は効いたまま残る．
 
 ### 方法 B: .textlintignore による除外
 
@@ -192,6 +176,29 @@ claude/agents/
 
 ファイル全体が対象外になるため，文体以外のルール（表記ゆれ・助詞重複など）も
 チェックされなくなる点に注意する．
+生成物・外部由来ファイル・英語コンテンツなど，lint 対象外としたいものへ限って使う．
+文体だけを理由に選ばない．
+
+### 使えない方法: overrides による per-path 切り替え
+
+`.textlintrc.json` の `overrides` キーは ESLint 風の per-path 設定である．
+textlint 15.6.0 時点では **本体が実装していない機能** である．
+`@textlint/config-loader` が読むのは `plugins`・`filters`・`rules` の 3 キーのみ．
+`overrides` は無視される．
+経緯は [Issue #85](https://github.com/tomio2480/github-workflows/issues/85) を参照．
+
+かつて本節と中央テンプレートの `_example_overrides` はこの方法を案内していた．
+「動作を確認した」とした根拠は CI が緑になったことだった．
+しかし composite action の既定は `filter-mode: added`・`fail-on-error: false` である．
+差分行以外の指摘は表に出ず，指摘があっても job は失敗しない．
+そのため CI の緑は動作確認にならなかった．
+文体設定の動作確認は，手元で `npx textlint` を直接実行して行う．
+または `filter-mode: nofilter` を一時的に指定し，全指摘を表示させて行う．
+
+`overrides` を含む `.textlintrc.json` を渡した場合の挙動は次のとおり．
+`generate-textlint-runtime.py` は中身を書き換えず素通しする．
+あわせて Actions ログへ `::warning::` アノテーションで効いていない旨を出す．
+textlint 本体に `overrides` が実装された時点で本節を見直す．
 
 ## 🧩 max-kanji-continuous-len と固有名詞の例外
 
