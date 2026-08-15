@@ -232,16 +232,26 @@ composite action は caller の job の中の 1 ステップとして実行さ�
 `concurrency` も `timeout-minutes` も中央の `.github/workflows/claude-review.yml`
 側で持てる．caller は `uses:` の1行を更新するだけで恩恵を受けられる．
 
+ただし `permissions` は reusable workflow でも例外であり，中央だけでは
+完結しない．called workflow は `GITHUB_TOKEN` を caller の許可以上に
+昇格できないためである．`templates/.github/workflows/claude-review.yml`
+自体が必要スコープを宣言する設計を採っているのはこの制約による．
+将来 `claude-review` が新しい権限を要する機能を追加する場合，
+reusable workflow 側の変更だけでは足りず，caller 側の `permissions`
+ブロックの追記が別途必要になる．
+
 表 6b: 変更が caller 側の作業を要するかどうか
 
 | 変更の種類 | composite action（md-lint） | reusable workflow（claude-review） |
 |---|---|---|
 | 設定ファイル（`prh.yml` 等）の中身 | 中央だけで完結．caller 側の作業不要 | 該当なし |
 | action/workflow の inputs 追加（既定値あり） | 中央だけで完結 | 中央だけで完結 |
-| `concurrency` / `timeout-minutes` / `permissions` 等 job・workflow レベルのキー | caller 側の `.github/workflows/md-lint.yml` を書き換えないと反映されない | 中央だけで完結 |
+| `concurrency` / `timeout-minutes` 等 job・workflow レベルのキー | caller 側の `.github/workflows/md-lint.yml` を書き換えないと反映されない | 中央だけで完結 |
+| `permissions`（トークン権限） | caller 側の書き換えが必要 | caller 側の書き換えが必要（called 側は caller の許可を超えられないため） |
 
 新機能を設計する際は，job・workflow レベルの設定が必要になりそうな場合，
 composite action ではなく reusable workflow 形式を優先検討する価値がある．
+ただし `permissions` の追加はどちらの形式でも caller 側の作業を避けられない．
 
 ### 運用でのカバー
 
