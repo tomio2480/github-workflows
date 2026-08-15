@@ -13,6 +13,7 @@
 - 🐶 reviewdog の挙動
 - 📝 lint summary コメントの投稿
 - 🔀 caller → composite action → reviewdog のデータフロー
+- 🔁 caller テンプレートの構造変更が伝播しない問題
 - 🧪 テスト戦略
 - 🧪 トラブルシューティング
 
@@ -208,6 +209,51 @@ reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない
 2. composite action 内で使う GitHub token は **caller が `inputs.github-token` 経由で明示的に渡したトークン**（通常は `${{ secrets.GITHUB_TOKEN }}` ）．composite action では `secrets.*` の自動継承が効かないため input で受け渡す必要がある．reviewdog が PR コメントを投稿する先は caller の PR
 3. caller workflow 側に `permissions: contents: read, pull-requests: write` を明記しないと reviewdog がコメント投稿権限を得られず失敗する．また **外部フォークからの PR では GitHub の制限により `GITHUB_TOKEN` が read-only になり，reviewdog は inline コメントを投稿できない**（本プロジェクトは安全性の観点で `pull_request_target` を使わない方針のため．詳細は [docs/security.md](security.md) 参照）
 4. reviewdog action は内部で `github-pr-review` reporter を使い，PR number とトークンから REST/GraphQL で review comment を投稿する
+
+## 🔁 caller テンプレートの構造変更が伝播しない問題
+
+`templates/.github/workflows/md-lint.yml` の構造そのもの（`concurrency` や
+`timeout-minutes` など，workflow・job レベルのキー）を変更しても，
+既存 caller には自動反映されない．Dependabot が追随するのは
+`uses:` の SHA とバージョンコメントのみであり，caller が自身の
+`.github/workflows/md-lint.yml` に書き写した内容までは追わないためである．
+実測では 33 caller 中 32 件が最新テンプレートの構造変更を反映できていない
+（[Issue #83](https://github.com/tomio2480/github-workflows/issues/83)）．
+
+### composite action と reusable workflow の吸収範囲の違い
+
+この限界は composite action（`markdown-lint`）固有のものである．
+composite action は caller の job の中の 1 ステップとして実行されるため，
+自分を呼んだ job や workflow のキー（`concurrency` ／ `timeout-minutes` ／
+`permissions` など）を宣言できない．caller のファイルを書き換える以外に
+中央から効かせる方法がない．
+
+一方 `claude-review`（v2.6〜）は reusable workflow 形式であるため，
+`concurrency` も `timeout-minutes` も中央の `.github/workflows/claude-review.yml`
+側で持てる．caller は `uses:` の1行を更新するだけで恩恵を受けられる．
+
+表 6b: 変更が caller 側の作業を要するかどうか
+
+| 変更の種類 | composite action（md-lint） | reusable workflow（claude-review） |
+|---|---|---|
+| 設定ファイル（`prh.yml` 等）の中身 | 中央だけで完結．caller 側の作業不要 | 該当なし |
+| action/workflow の inputs 追加（既定値あり） | 中央だけで完結 | 中央だけで完結 |
+| `concurrency` / `timeout-minutes` / `permissions` 等 job・workflow レベルのキー | caller 側の `.github/workflows/md-lint.yml` を書き換えないと反映されない | 中央だけで完結 |
+
+新機能を設計する際は，job・workflow レベルの設定が必要になりそうな場合，
+composite action ではなく reusable workflow 形式を優先検討する価値がある．
+
+### 運用でのカバー
+
+上記の構造的な限界を実装で解消する見込みが立つまでの当面の運用は次のとおり
+（[Issue #83](https://github.com/tomio2480/github-workflows/issues/83) 案 1）．
+
+- caller 側の `.github/workflows/md-lint.yml` の書き換えを要する変更を
+  リリースする際は，GitHub Release のリリースノートに **caller 側対応が
+  必要な旨と，追記すべき内容を明示** する．
+- 32 件の caller への backfill および，composite action が caller との
+  構造差分を lint summary に注記する仕組み（Issue #83 案 2）は，
+  規模が大きいため本 Issue の対応範囲では見送り，選択肢として残す．
 
 ## 🧪 テスト戦略
 
