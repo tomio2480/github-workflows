@@ -47,6 +47,9 @@
 - **major mutable タグ（`v2` 等）は最新 patch に追従させる**．PR マージ後に `git tag -f v2 <new-sha>` で進める．`@v2` pin 利用者は次回 PR で自動的に最新 patch を受け取る
 - 設定構造そのものの変更（既存 inputs の意味変更や required 化）は次の major version 相当として扱う
 - 変更は `docs/` の手順にも反映する．とくに [docs/architecture.md](docs/architecture.md) と [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md) の記述が古くならないこと
+- caller テンプレートの job・workflow レベルのキー変更（`concurrency` 等）は Dependabot が追随しない．
+- リリースノートに caller 側対応の要否を明示すること．
+- 背景は [docs/architecture.md](docs/architecture.md) の該当節（Issue #83）を参照
 
 ### ドキュメントの変更
 
