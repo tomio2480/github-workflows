@@ -59,7 +59,7 @@ composite action ではなく reusable workflow 形式を優先検討する」�
 ## 反映先
 
 - [docs/architecture.md](../architecture.md)：「caller テンプレートの構造変更が
-  伝播しない問題」節を新設し，composite action と reusable workflow の
+  伝播しない問題」節を新設した．composite action と reusable workflow の
   吸収範囲の違いと運用ルールを明文化した．
 - [CLAUDE.md](../../CLAUDE.md)：「テンプレート・設定ファイルの変更」節に，
   job・workflow レベルのキー変更時はリリースノートへ明示する規律を追記した．
