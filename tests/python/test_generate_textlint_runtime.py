@@ -253,71 +253,60 @@ def test_allowlist_filters_non_dict_raises_type_error(tmp_path, non_dict_filters
         _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
 
 
-# ── overrides 内の prh.rulePaths 解決 ──────────────────────────────────────
+# ── overrides は textlint 未実装のため素通し + 警告 ──────────────────────────
+# textlint 15.6.0 の @textlint/config-loader は plugins / filters / rules のみを読む．
+# overrides は無視されるため，本スクリプトも中身を書き換えず，
+# caller へ ::warning:: アノテーションで「効いていない」ことを知らせる（Issue #85）．
 
 
-def test_overrides_prh_rulepaths_resolved_to_absolute(tmp_path):
-    src = _write(
+def _src_with_overrides(tmp_path):
+    return _write(
         tmp_path / "src.json",
         {
-            "rules": {},
+            "rules": {"prh": {"rulePaths": ["./prh.yml"]}},
             "overrides": [
                 {
                     "files": ["claude/agents/**/*.md"],
                     "rules": {
                         "prh": {"rulePaths": ["./prh.yml"]},
                         "preset-ja-technical-writing": {
-                            "no-mix-dearu-desumasu": {
-                                "preferInBody": "ですます",
-                                "preferInList": "ですます",
-                            }
+                            "no-mix-dearu-desumasu": {"preferInBody": "ですます"}
                         },
                     },
                 }
             ],
         },
     )
+
+
+def test_overrides_passed_through_untouched(tmp_path):
+    src = _src_with_overrides(tmp_path)
     prh = _make_prh(tmp_path)
     dest = tmp_path / "runtime.json"
 
     _MODULE.main([str(src), str(prh), str(dest)])
 
     written = json.loads(dest.read_text(encoding="utf-8"))
-    override_prh = written["overrides"][0]["rules"]["prh"]
-    assert override_prh["rulePaths"] == [str(prh.resolve())]
+    # top-level rules.prh は従来どおり絶対パスへ解決される
+    assert written["rules"]["prh"]["rulePaths"] == [str(prh.resolve())]
+    # overrides は一切書き換えない（相対パスのまま，構造も保持）
+    assert written["overrides"] == json.loads(src.read_text(encoding="utf-8"))["overrides"]
 
 
-def test_overrides_without_prh_preserved(tmp_path):
-    src = _write(
-        tmp_path / "src.json",
-        {
-            "rules": {},
-            "overrides": [
-                {
-                    "files": ["claude/agents/**/*.md"],
-                    "rules": {
-                        "preset-ja-technical-writing": {
-                            "no-mix-dearu-desumasu": {"preferInBody": "ですます"}
-                        }
-                    },
-                }
-            ],
-        },
-    )
+def test_overrides_present_emits_github_warning(tmp_path, capsys):
+    src = _src_with_overrides(tmp_path)
     prh = _make_prh(tmp_path)
     dest = tmp_path / "runtime.json"
 
     _MODULE.main([str(src), str(prh), str(dest)])
 
-    written = json.loads(dest.read_text(encoding="utf-8"))
-    override_rules = written["overrides"][0]["rules"]
-    assert "prh" not in override_rules
-    assert override_rules["preset-ja-technical-writing"]["no-mix-dearu-desumasu"] == {
-        "preferInBody": "ですます"
-    }
+    out = capsys.readouterr().out
+    assert out.startswith("::warning::")
+    assert "overrides" in out
+    assert "textlint" in out
 
 
-def test_overrides_absent_no_error(tmp_path):
+def test_overrides_absent_no_warning(tmp_path, capsys):
     src = _write(tmp_path / "src.json", {"rules": {}})
     prh = _make_prh(tmp_path)
     dest = tmp_path / "runtime.json"
@@ -326,9 +315,10 @@ def test_overrides_absent_no_error(tmp_path):
 
     written = json.loads(dest.read_text(encoding="utf-8"))
     assert "overrides" not in written
+    assert capsys.readouterr().out == ""
 
 
-def test_overrides_empty_list_no_error(tmp_path):
+def test_overrides_empty_list_no_warning(tmp_path, capsys):
     src = _write(tmp_path / "src.json", {"rules": {}, "overrides": []})
     prh = _make_prh(tmp_path)
     dest = tmp_path / "runtime.json"
@@ -337,84 +327,4 @@ def test_overrides_empty_list_no_error(tmp_path):
 
     written = json.loads(dest.read_text(encoding="utf-8"))
     assert written["overrides"] == []
-
-
-def test_overrides_prh_false_preserved(tmp_path):
-    src = _write(
-        tmp_path / "src.json",
-        {
-            "rules": {},
-            "overrides": [
-                {
-                    "files": ["docs/**/*.md"],
-                    "rules": {"prh": False},
-                }
-            ],
-        },
-    )
-    prh = _make_prh(tmp_path)
-    dest = tmp_path / "runtime.json"
-
-    _MODULE.main([str(src), str(prh), str(dest)])
-
-    written = json.loads(dest.read_text(encoding="utf-8"))
-    assert written["overrides"][0]["rules"]["prh"] is False
-
-
-def test_overrides_prh_unsupported_type_raises_type_error(tmp_path):
-    src = _write(
-        tmp_path / "src.json",
-        {
-            "rules": {},
-            "overrides": [
-                {
-                    "files": ["docs/**/*.md"],
-                    "rules": {"prh": "string-not-allowed"},
-                }
-            ],
-        },
-    )
-    prh = _make_prh(tmp_path)
-    dest = tmp_path / "runtime.json"
-
-    with pytest.raises(TypeError, match=r"overrides\[0\]\.rules\.prh"):
-        _MODULE.main([str(src), str(prh), str(dest)])
-
-
-def test_overrides_not_list_raises_type_error(tmp_path):
-    src = _write(
-        tmp_path / "src.json",
-        {"rules": {}, "overrides": {"files": ["**/*.md"], "rules": {}}},
-    )
-    prh = _make_prh(tmp_path)
-    dest = tmp_path / "runtime.json"
-
-    with pytest.raises(TypeError, match=r"'overrides' must be an array"):
-        _MODULE.main([str(src), str(prh), str(dest)])
-
-
-def test_overrides_entry_not_dict_raises_type_error(tmp_path):
-    src = _write(
-        tmp_path / "src.json",
-        {"rules": {}, "overrides": ["not-a-dict"]},
-    )
-    prh = _make_prh(tmp_path)
-    dest = tmp_path / "runtime.json"
-
-    with pytest.raises(TypeError, match=r"overrides\[0\]' must be an object"):
-        _MODULE.main([str(src), str(prh), str(dest)])
-
-
-def test_overrides_entry_rules_not_dict_raises_type_error(tmp_path):
-    src = _write(
-        tmp_path / "src.json",
-        {
-            "rules": {},
-            "overrides": [{"files": ["**/*.md"], "rules": "not-a-dict"}],
-        },
-    )
-    prh = _make_prh(tmp_path)
-    dest = tmp_path / "runtime.json"
-
-    with pytest.raises(TypeError, match=r"overrides\[0\]\.rules' must be an object"):
-        _MODULE.main([str(src), str(prh), str(dest)])
+    assert capsys.readouterr().out == ""

@@ -5,8 +5,9 @@
 caller の textlintrc と中央の prh.yml を組み合わせると相対パスが意図どおりに解決されない
 ため，本スクリプトで `.textlintrc.runtime.json` を作成して action から渡す．
 
-rules.prh と overrides[*].rules.prh の両方を対象にパスを解決する．
+rules.prh を対象にパスを解決する．
 caller が prh を意図的に false または未定義にしている場合は尊重し，書き換えない．
+`overrides` は textlint 本体が実装していないため書き換えず，警告のみ出す（Issue #85）．
 
 argv 4 つ目（optional）に caller root の .textlint-allowlist.yml の絶対パスが渡されると，
 その内容を filters.allowlist に inject する．空文字または argv 3 つの呼び出しでは
@@ -19,6 +20,12 @@ import json
 import pathlib
 import sys
 from typing import Sequence
+
+OVERRIDES_WARNING = (
+    "::warning::.textlintrc.json の 'overrides' は textlint が実装していないため無視されます．"
+    "per-path の文体切り替えには <!-- textlint-disable --> コメントか "
+    ".textlintignore を使ってください（docs/rule-rationale.md 参照）．"
+)
 
 
 def _resolve_prh_rule(prh_rule, prh_abs: str, context_path: str) -> None:
@@ -74,16 +81,10 @@ def main(argv: Sequence[str]) -> None:
     prh_abs = str(pathlib.Path(prh).resolve())
     _resolve_prh_rule(rules.get("prh"), prh_abs, "rules.prh")
 
-    overrides = cfg.get("overrides", [])
-    if not isinstance(overrides, list):
-        raise TypeError("textlint config 'overrides' must be an array")
-    for i, override in enumerate(overrides):
-        if not isinstance(override, dict):
-            raise TypeError(f"textlint config 'overrides[{i}]' must be an object")
-        override_rules = override.get("rules", {})
-        if not isinstance(override_rules, dict):
-            raise TypeError(f"textlint config 'overrides[{i}].rules' must be an object")
-        _resolve_prh_rule(override_rules.get("prh"), prh_abs, f"overrides[{i}].rules.prh")
+    if cfg.get("overrides"):
+        # textlint（15.6.0 時点）は overrides を実装していない．書き換えず素通しし，
+        # 「効いていない」ことを Actions アノテーションで caller に知らせる（Issue #85）．
+        print(OVERRIDES_WARNING)
 
     if allowlist_path:
         allowlist = _load_allowlist(allowlist_path)
