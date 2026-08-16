@@ -5,11 +5,15 @@
     - rules.prh が False または未定義のときはそのまま尊重する（書き換えない）
     - rules.prh がそれ以外の型のときは TypeError を上げる
     - rules 自体が dict でないときは TypeError を上げる
-    - 引数は 3 または 4．それ以外のときは ValueError を上げる（誤用時の早期失敗）
+    - 引数は 3〜5．それ以外のときは ValueError を上げる（誤用時の早期失敗）
     - argv 4 つ目（allowlist YAML パス）が空文字のときは filters を変更しない
     - argv 4 つ目が valid なファイルのときは内容を filters.allowlist に inject する
     - argv 4 つ目が指定されたが存在しないファイルのときは ValueError
     - allowlist YAML root が dict でないときは TypeError
+    - argv 5 つ目（caller 追加 prh 辞書パス）が空文字または省略のときは rulePaths は 1 本
+    - argv 5 つ目が valid なファイルのときは rulePaths を [中央, 追加] の 2 本にする
+    - argv 5 つ目が指定されたが存在しないファイルのときは ValueError
+    - rules.prh が False / 未定義なら argv 5 つ目があっても書き換えない
     - JSON ルートが dict でないときは ValueError を上げる
 """
 
@@ -97,11 +101,11 @@ def test_rules_not_object_raises_type_error(tmp_path):
         [],
         ["only-src"],
         ["src", "prh"],
-        ["src", "prh", "dest", "allowlist", "extra"],
+        ["src", "prh", "dest", "allowlist", "prh-extra", "too-many"],
     ],
 )
-def test_argv_must_be_3_or_4_otherwise_value_error(argv):
-    with pytest.raises(ValueError, match=r"3 or 4"):
+def test_argv_must_be_3_to_5_otherwise_value_error(argv):
+    with pytest.raises(ValueError, match=r"3 to 5"):
         _MODULE.main(argv)
 
 
@@ -251,6 +255,101 @@ def test_allowlist_filters_non_dict_raises_type_error(tmp_path, non_dict_filters
 
     with pytest.raises(TypeError, match="filters"):
         _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+
+# ── caller 追加 prh 辞書（.prh-extra.yml）は中央辞書に加算する（Issue #91）─────
+# textlint-rule-prh は rulePaths を配列で受け，同一パターンの衝突は先に並べた辞書が
+# 勝つ（v6.1.0 で実測）．中央を先頭に置き，caller は語を「足す」だけにする．
+
+
+def _make_prh_extra(tmp_path: Path) -> Path:
+    extra = tmp_path / ".prh-extra.yml"
+    extra.write_text(
+        "version: 1\nrules:\n  - expected: ，\n    patterns:\n      - 、\n",
+        encoding="utf-8",
+    )
+    return extra
+
+
+def test_prh_extra_appends_after_central_dictionary(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {"prh": {"rulePaths": ["./relative.yml"]}}},
+    )
+    prh = _make_prh(tmp_path)
+    extra = _make_prh_extra(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest), "", str(extra)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert written["rules"]["prh"]["rulePaths"] == [
+        str(prh.resolve()),
+        str(extra.resolve()),
+    ]
+
+
+def test_prh_extra_empty_string_keeps_single_rulepath(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {"prh": {"rulePaths": ["./relative.yml"]}}},
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest), "", ""])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert written["rules"]["prh"]["rulePaths"] == [str(prh.resolve())]
+
+
+def test_prh_extra_can_combine_with_allowlist(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {"prh": {"rulePaths": ["./relative.yml"]}}, "filters": {}},
+    )
+    prh = _make_prh(tmp_path)
+    extra = _make_prh_extra(tmp_path)
+    allowlist = _make_allowlist(tmp_path, "allow:\n  - 固有名詞\n")
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest), str(allowlist), str(extra)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert written["rules"]["prh"]["rulePaths"] == [
+        str(prh.resolve()),
+        str(extra.resolve()),
+    ]
+    assert written["filters"]["allowlist"] == {"allow": ["固有名詞"]}
+
+
+def test_prh_extra_missing_file_raises_value_error(tmp_path):
+    src = _write(
+        tmp_path / "src.json",
+        {"rules": {"prh": {"rulePaths": ["./relative.yml"]}}},
+    )
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+    missing = tmp_path / "does-not-exist.yml"
+
+    with pytest.raises(ValueError, match="prh"):
+        _MODULE.main([str(src), str(prh), str(dest), "", str(missing)])
+
+
+@pytest.mark.parametrize("prh_value", [False, None])
+def test_prh_extra_is_ignored_when_prh_disabled_or_missing(tmp_path, prh_value):
+    rules = {"other-rule": True}
+    if prh_value is False:
+        rules["prh"] = False
+    src = _write(tmp_path / "src.json", {"rules": rules})
+    prh = _make_prh(tmp_path)
+    extra = _make_prh_extra(tmp_path)
+    dest = tmp_path / "runtime.json"
+
+    _MODULE.main([str(src), str(prh), str(dest), "", str(extra)])
+
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert written["rules"].get("prh") is prh_value
 
 
 # ── overrides は textlint 未実装のため素通し + 警告 ──────────────────────────
