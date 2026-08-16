@@ -6,6 +6,8 @@ description: "reviewdog で markdownlint と textlint を caller 側 PR に inli
 #     アクセスする．`actions/checkout` での自リポジトリ二重取得は不要．
 #   - 呼び出し側に設定ファイル（.markdownlint-cli2.yaml / .textlintrc.json / prh.yml）があれば
 #     そちらを優先する．無ければ中央 templates の同名ファイルを使う．
+#   - 呼び出し側の .textlint-allowlist.yml / .prh-extra.yml は「置き換え」ではなく
+#     「加算」の設定であり，存在するときだけ中央設定へ足す．
 #   - third-party action は full commit SHA でピンする．
 #   - reviewdog の PR レビュー投稿には GITHUB_TOKEN が必要なため caller から `github-token`
 #     input で明示的に受け取る．composite では secrets.* が使えないため．
@@ -90,11 +92,23 @@ runs:
           echo "caller allowlist:    (not configured)"
         fi
 
+        # caller root の .prh-extra.yml も optional（Issue #91）．存在すれば中央 prh.yml に
+        # 加算する追加辞書として絶対パスを渡し，無ければ空文字で「加算なし」を表す．
+        # caller root の prh.yml（置き換え）とは独立に働く．
+        if [ -f .prh-extra.yml ]; then
+          PRH_EXTRA_CFG="$(pwd)/.prh-extra.yml"
+          echo "caller prh extra:    ${PRH_EXTRA_CFG}"
+        else
+          PRH_EXTRA_CFG=""
+          echo "caller prh extra:    (not configured)"
+        fi
+
         echo "mdlint=${MDLINT_CFG}" >> "${GITHUB_OUTPUT}"
         echo "textlint=${TEXTLINT_CFG}" >> "${GITHUB_OUTPUT}"
         echo "textlint_ignore=${TEXTLINT_IGNORE}" >> "${GITHUB_OUTPUT}"
         echo "prh=${PRH_CFG}" >> "${GITHUB_OUTPUT}"
         echo "allowlist=${ALLOWLIST_CFG}" >> "${GITHUB_OUTPUT}"
+        echo "prh_extra=${PRH_EXTRA_CFG}" >> "${GITHUB_OUTPUT}"
         echo "markdownlint config: ${MDLINT_CFG}"
         echo "textlint config:     ${TEXTLINT_CFG}"
         echo "textlint ignore:     ${TEXTLINT_IGNORE}"
@@ -108,6 +122,7 @@ runs:
         SRC: ${{ steps.cfg.outputs.textlint }}
         PRH: ${{ steps.cfg.outputs.prh }}
         ALLOWLIST: ${{ steps.cfg.outputs.allowlist }}
+        PRH_EXTRA: ${{ steps.cfg.outputs.prh_extra }}
         PYYAML_VERSION: ${{ inputs.pyyaml-version }}
       run: |
         set -euo pipefail
@@ -123,7 +138,7 @@ runs:
         fi
 
         python3 "${ACTION_PATH}/../../../scripts/generate-textlint-runtime.py" \
-          "${SRC}" "${PRH}" "${DEST}" "${ALLOWLIST}"
+          "${SRC}" "${PRH}" "${DEST}" "${ALLOWLIST}" "${PRH_EXTRA}"
         echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
     - name: Setup Node.js

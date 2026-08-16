@@ -1,0 +1,14 @@
+# github-workflows 自身の caller 追加 prh 辞書（Issue #91 の dogfooding）．
+# 中央 templates/prh.yml には入れない「このリポジトリだけの規約」を置く．
+# 統合テスト（tests/fixtures/markdown/with-issues.md）が本ファイルの効き目を確認する．
+# 雛形とキーの説明は templates/.prh-extra.yml を参照．
+
+version: 1
+
+rules:
+  # 本リポジトリの日本語ドキュメントは読点を全角コンマ「，」で統一する．
+  # 中央辞書には入れない（読点の流儀は caller ごとに異なる）．
+  - expected: ，
+    patterns:
+      - 、
+    prh: 読点は全角コンマ「，」で統一する（github-workflows の規約）
