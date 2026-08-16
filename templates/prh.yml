@@ -104,7 +104,8 @@ rules:
 
   # LLM 定型句の抑制（Issue #54）
   # LLM が生成しがちな空虚な定型表現を検出する．出典と収録基準は
-  # docs/rule-rationale.md の「LLM 定型句の抑制」節を参照．
+  # https://github.com/tomio2480/github-workflows/blob/main/docs/rule-rationale.md
+  # の「LLM 定型句の抑制」節を参照．
   # 過剰マッチは caller 側 .textlint-allowlist.yml で個別除外できる．
   #
   # 機械置換できる 2 語（不可欠・に他ならない）は expected に置換先を書く．
