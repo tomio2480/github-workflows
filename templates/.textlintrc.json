@@ -1,5 +1,5 @@
 {
-  "_comment": "textlint の標準設定．各リポジトリにコピーして使用する．ファイル別に文体を切り替えたい場合は，対象ファイル先頭の <!-- textlint-disable --> コメントか .textlintignore を使う（overrides キーは textlint が実装していないため効かない．docs/rule-rationale.md の「文体使い分けと no-mix-dearu-desumasu」節を参照）．",
+  "_comment": "textlint の標準設定．各リポジトリにコピーして使用する．ファイル別に文体を切り替えたい場合は，対象ファイル先頭の <!-- textlint-disable --> コメントか .textlintignore を使う（overrides キーは textlint が実装していないため効かない．https://github.com/tomio2480/github-workflows/blob/main/docs/rule-rationale.md の「文体使い分けと no-mix-dearu-desumasu」節を参照）．",
   "rules": {
     "preset-ja-technical-writing": {
       "sentence-length": {
