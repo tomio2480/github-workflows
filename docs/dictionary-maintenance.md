@@ -2,24 +2,24 @@
 
 ## 要約
 
-表記ゆれ辞書 `prh.yml` は **中央リポジトリで一括管理** する．caller が `@main`（既定）を参照していれば，中央へのマージ時点で次回 PR から新辞書が効く．pinning 利用者（`@v2` major mutable / `@v2.2.0` のような patch immutable / SHA pin）は対象タグが移動・新規発行されるまで反映されない．個別リポジトリで辞書を独自運用したい場合のみ repo ローカルに `prh.yml` を置く（override）．
+表記ゆれ辞書 `prh.yml` は **中央リポジトリで一括管理** する．caller が `@main`（既定）を参照していれば，中央へのマージ時点で次回 PR から新辞書が効く．pinning 利用者（`@v2` major mutable・patch immutable・SHA pin）は対象タグが動くまで反映されない．個別リポジトリだけの規則は repo ローカルに `.prh-extra.yml` を置いて中央辞書へ加算する（v2.7〜）．中央辞書を丸ごと差し替えたい場合のみ repo ローカルに `prh.yml` を置く（override）．
 
 ## 目次
 
 - 🎯 辞書を更新する場面
 - 1️⃣ 中央辞書への追記フロー
-- 2️⃣ per-repo の辞書 override
+- 2️⃣ per-repo の辞書追加と override
 - 3️⃣ prh.yml の書き方
 - 4️⃣ バージョニングと影響範囲
-- 5️⃣ prh と caller-side allowlist の使い分け
+- 5️⃣ prh・caller 追加辞書・allowlist の使い分け
 
 ## 🎯 辞書を更新する場面
 
 - 社名・プロダクト名・技術名に表記ゆれがある（`GitHub` vs `github`）
 - 新しい用語を組織で統一したい
-- 特定 repo 固有の専門用語がある
+- 特定 repo 固有の専門用語や書式規則がある
 
-最初の 2 つは中央追記，最後は per-repo override が向く．
+最初の 2 つは中央追記，最後は per-repo の `.prh-extra.yml` が向く．
 
 ## 1️⃣ 中央辞書への追記フロー
 
@@ -45,7 +45,44 @@ Draft PR で `filter-mode: nofilter` で実際に lint を流し，辞書の想�
 
 マージされると `@main` 参照の caller には次回 PR から新辞書が適用される．`@v2` major mutable 利用者には patch tag を切って major mutable を進めたタイミングで反映される．`@v2.2.0` のような patch immutable 利用者は固定のため，新 patch（例: `@v2.2.1`）への明示的な切り替えが必要．SHA pin 利用者には Dependabot が更新 PR を起票する．詳細は後述．
 
-## 2️⃣ per-repo の辞書 override
+## 2️⃣ per-repo の辞書追加と override
+
+repo 固有の規則を扱う手段は 2 つある．まず追加方式を検討し，足りない場合だけ override を選ぶ．
+
+表 1: caller 側で辞書を調整する 2 方式
+
+| 方式 | 置くファイル | 中央辞書との関係 | 向く場面 |
+|---|---|---|---|
+| 追加（v2.7〜） | `.prh-extra.yml` | 中央に加算．中央更新へ追随できる | 読点の流儀など repo 固有の規則を足す |
+| override | `prh.yml` | 中央を無視して全置換 | 中央規則を変えたい・減らしたい |
+
+### 追加方式（`.prh-extra.yml`）
+
+caller root に `.prh-extra.yml` を置くと，composite action が追加辞書として拾う．
+textlint には `rulePaths` を `[中央 prh.yml, .prh-extra.yml]` の 2 本にして渡す．
+中央辞書はそのまま効くため，中央の更新に取り残されない．
+
+```bash
+# OWNER は中央リポジトリのオーナー（fork 運用では自分のユーザー名）
+OWNER=tomio2480
+
+# 対象 repo のルートで雛形を取得し，rules に規則を書く
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/main/templates/.prh-extra.yml" \
+  > .prh-extra.yml
+```
+
+同じパターンを中央辞書と `.prh-extra.yml` の両方に書くこともできる．
+その場合 `textlint-rule-prh` は先に並べた中央辞書の `expected` を採用する（v6.1.0 で実測）．
+追加辞書で中央規則は上書きできない．
+中央の指摘を外したい語は `.textlint-allowlist.yml` の `allow` で除外する．
+中央規則そのものを変えたい場合は次の override 方式を使う．
+
+`prh.yml`（override）と `.prh-extra.yml`（追加）は両方置ける．
+その場合 `rulePaths` は `[caller prh.yml, .prh-extra.yml]` になる．
+つまり置き換え辞書を基点に追加辞書が加算される．
+
+### override 方式（`prh.yml`）
 
 repo 固有の辞書を中央から分離したい場合．
 
@@ -78,7 +115,7 @@ rules:
 
 主要フィールド：
 
-表 1: prh 辞書の主要フィールド
+表 2: prh 辞書の主要フィールド
 
 | フィールド | 役割 |
 |---|---|
@@ -147,7 +184,7 @@ plain string で書くと `JSON Lines` 等の語に誤マッチするため `\bJ
 
 ## 4️⃣ バージョニングと影響範囲
 
-表 2: 参照方式と反映タイミング
+表 3: 参照方式と反映タイミング
 
 | caller の参照先 | 辞書変更が反映されるタイミング |
 |---|---|
@@ -167,7 +204,7 @@ git push -f origin v2
 gh release create v2.2.1 --title "v2.2.1" --notes "..."
 ```
 
-表 3: 変更種別ごとの扱い
+表 4: 変更種別ごとの扱い
 
 | 変更種別 | タグ運用 |
 |---|---|
@@ -178,22 +215,25 @@ gh release create v2.2.1 --title "v2.2.1" --notes "..."
 
 破壊的変更の場合は CLAUDE.md のタグ運用規律に従う．
 
-## 5️⃣ prh と caller-side allowlist の使い分け
+## 5️⃣ prh・caller 追加辞書・allowlist の使い分け
 
 caller root に `.textlint-allowlist.yml` を置くと，固有の例外を textlint 指摘から外せる．
 v2.1 以降の機能で，差分追加方式のため中央設定は変更しない．prh とは目的が異なる．
+v2.7 以降は `.prh-extra.yml` で caller だけの表記ゆれ規則を足せる（2️⃣ 参照）．
 
-表 4: prh と caller-side allowlist の使い分け
+表 5: 中央 prh・caller 追加辞書・caller-side allowlist の使い分け
 
-| 観点 | `templates/prh.yml`（中央） | `.textlint-allowlist.yml`（caller） |
-|---|---|---|
-| 目的 | 表記ゆれの統一 | 固有名詞・法令名等の例外許容 |
-| 対象 | すべての caller | 配置した caller のみ |
-| 例 | `github` → `GitHub` | `電波法施行規則` を `max-kanji-continuous-len` から除外 |
-| 反映 | 中央 PR 経由で全 caller に反映 | caller 単独で完結．中央 PR 不要 |
-| スキーマ | prh 仕様 | [textlint-filter-rule-allowlist 仕様](https://github.com/textlint/textlint-filter-rule-allowlist) |
+| 観点 | `templates/prh.yml`（中央） | `.prh-extra.yml`（caller） | `.textlint-allowlist.yml`（caller） |
+|---|---|---|---|
+| 目的 | 全 caller 共通の表記ゆれ統一 | caller 固有の表記ゆれ統一 | 固有名詞・法令名等の例外許容 |
+| 対象 | すべての caller | 配置した caller のみ | 配置した caller のみ |
+| 例 | `github` → `GitHub` | 読点 `、` → `，` | `電波法施行規則` を `max-kanji-continuous-len` から除外 |
+| 反映 | 中央 PR 経由で全 caller に反映 | caller 単独で完結．中央 PR 不要 | caller 単独で完結．中央 PR 不要 |
+| スキーマ | prh 仕様 | prh 仕様 | [textlint-filter-rule-allowlist 仕様](https://github.com/textlint/textlint-filter-rule-allowlist) |
 
-新しい例外語が出たら，まず「これは表記ゆれか」を確認する．表記ゆれなら中央 prh 追記，固有名詞の特殊事情なら caller 側 allowlist が向く．
+新しい例外語が出たら，まず「これは表記ゆれか」を確認する．
+表記ゆれなら，全 caller に共通する語は中央 prh へ追記し，caller 単独の規則は `.prh-extra.yml` に書く．
+固有名詞の特殊事情なら caller 側 allowlist が向く．
 
 caller 側 allowlist の導入手順は次のとおり．
 

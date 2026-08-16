@@ -95,14 +95,17 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 | `.textlintignore` | 同上．textlint には `--ignore-path` で明示的に渡す |
 | `prh.yml` | 同上 |
 | `.textlint-allowlist.yml` | ① caller root に存在すれば絶対パスを採用 → ② 無ければ空文字（中央フォールバックを持たない optional ファイル．v2.1〜） |
+| `.prh-extra.yml` | 同上（optional．v2.7〜）．存在すれば中央 prh 辞書に加算する追加辞書として渡す |
 
-**ファイル全置換方式** のため，caller に置いたファイルは中央と差分マージされず単独で採用される．部分的に中央を流用したいときは中央の該当ファイルを丸ごとコピーしてから改変する．
+上 4 行は **ファイル全置換方式** のため，caller に置いたファイルは中央と差分マージされず単独で採用される．部分的に中央を流用したいときは中央の該当ファイルを丸ごとコピーしてから改変する．
 
-`.textlint-allowlist.yml` のみ規約から外れる．
+`.textlint-allowlist.yml` と `.prh-extra.yml` は規約から外れる．
 `scripts/resolve-config-path.sh` の「無ければ中央テンプレを返す」抽象には乗らない．
-そのため `action.yml` 内で `[ -f .textlint-allowlist.yml ]` を inline 判定する．
-存在すれば runtime config の `filters.allowlist` に inject される．
+そのため `action.yml` 内で `[ -f <file> ]` を inline 判定する．
+allowlist は存在すれば runtime config の `filters.allowlist` に inject される．
 無ければ中央 `templates/.textlintrc.json` 既定の `"allowlist": {}`（noop）が使われる．
+`.prh-extra.yml` は存在すれば `rules.prh.rulePaths` の 2 本目として追加される．
+無ければ `rulePaths` は解決済み `prh.yml` の 1 本のみで従来どおり動く．
 
 ### lint 対象外パターンと self-test
 
@@ -119,16 +122,21 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 このため workflow は次のステップを挟む．
 
 1. 解決済みの textlint config を読み込む
-2. `rules.prh.rulePaths` を解決済みの prh.yml の絶対パスで上書きする
+2. `rules.prh.rulePaths` を解決済みの prh.yml の絶対パスで上書きする．
+   caller root に `.prh-extra.yml` があれば `[prh.yml, .prh-extra.yml]` の 2 本にする（Issue #91）
 3. caller root の `.textlint-allowlist.yml` があれば PyYAML で読み込み `filters.allowlist` を上書き．
    無ければ中央既定の `"allowlist": {}`（noop）が残る
 4. `.textlintrc.runtime.json` として `RUNNER_TEMP` 配下に書き出す
 5. textlint コマンドにはこの runtime config を渡す
 
-allowlist の inject は `scripts/generate-textlint-runtime.py` で行う．
-argv 4 つ目（optional）で allowlist パスを受け取る．
+allowlist の inject と追加辞書の加算は `scripts/generate-textlint-runtime.py` で行う．
+argv 4 つ目（optional）で allowlist パスを，argv 5 つ目（optional）で追加辞書パスを受け取る．
 argv 3 つの呼び出しは従来動作を厳密維持する．
 PyYAML は遅延 import としており，3 つ呼び出しに依存追加を強要しない．
+
+`textlint-rule-prh`（v6.1.0）は同一パターンの衝突を `rulePaths` の先頭側で解決する（実測）．
+中央辞書を先頭に固定することで，caller の追加辞書は中央規則を上書きできず「足す」だけになる．
+中央規則を変えたい caller は従来どおり `prh.yml` の全置換を使う．
 
 PyYAML は `ubuntu-latest` runner に preinstall されている前提である．
 再現性が必要な caller は `pyyaml-version` input にバージョン番号（例 `6.0.2`）を渡せばよい．

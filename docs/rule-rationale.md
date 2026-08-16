@@ -28,7 +28,12 @@
 - データの整合性に資する
 
 caller 固有の例外は per-repo override で吸収する前提とし，中央側は「広く効く既定」を優先する方針である．
-個別 caller の例外語彙は v2.1（[Issue #14](https://github.com/tomio2480/github-workflows/issues/14) で実装）以降，caller root に `.textlint-allowlist.yml` を置くことで扱える．運用方針は [docs/dictionary-maintenance.md](dictionary-maintenance.md) を参照．
+個別 caller の例外語彙は v2.1 以降，caller root の `.textlint-allowlist.yml` で扱える．
+実装経緯は [Issue #14](https://github.com/tomio2480/github-workflows/issues/14) を参照．
+caller 固有の表記ゆれ規則（読点の流儀など）は v2.7 以降，caller root の `.prh-extra.yml` で中央辞書へ加算できる．
+実装経緯は [Issue #91](https://github.com/tomio2480/github-workflows/issues/91) を参照．
+中央辞書に入れるか caller 追加辞書に置くかは「全 caller に効く既定として妥当か」で決める．
+運用方針は [docs/dictionary-maintenance.md](dictionary-maintenance.md) を参照．
 
 ## 🧩 ja-no-space-around-parentheses の根拠
 

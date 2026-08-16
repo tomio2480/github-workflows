@@ -1,0 +1,25 @@
+# caller リポジトリ root に配置すると，中央 templates/prh.yml を置き換えずに
+# caller 固有の表記ゆれ規則を「加算」できる．composite action が runtime config の
+# rules.prh.rulePaths を [中央 prh.yml, 本ファイル] の 2 本にする（Issue #91）．
+# 配置しない場合は中央辞書 1 本のまま動く．
+#
+# スキーマは prh（textlint-rule-prh）の辞書形式に従う．
+# https://github.com/prh/prh
+#
+# 中央辞書との衝突は先に並べた中央辞書が勝つ．中央規則を弱めたい・変えたい場合は
+# 本ファイルではなく次のいずれかを使う．
+#   - 個別の語を指摘から外す → .textlint-allowlist.yml の allow
+#   - 中央辞書を丸ごと差し替える → caller root の prh.yml（互換のため残る置き換え方式）
+#
+# 用途分担は次のとおり．
+#   - 全 caller で共有したい表記ゆれ → 中央 templates/prh.yml へ PR
+#   - caller 単独で完結する表記ゆれ   → 本ファイル
+#   - 固有名詞・法令名等の例外       → .textlint-allowlist.yml
+
+version: 1
+
+rules: []
+  # - expected: ，
+  #   patterns:
+  #     - 、
+  #   prh: 読点は全角コンマ「，」で統一する（このリポジトリの規約）

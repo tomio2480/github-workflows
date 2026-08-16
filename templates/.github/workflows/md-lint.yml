@@ -19,6 +19,7 @@ name: Markdown Lint
 #
 # 設定ファイル（.markdownlint-cli2.yaml / .textlintrc.json / prh.yml）は
 # 呼び出し側に存在すればそれが優先される．無ければ参照先 commit の標準設定が使われる．
+# .textlint-allowlist.yml / .prh-extra.yml は置き換えではなく加算で，存在するときだけ効く．
 
 on:
   pull_request:
@@ -44,7 +45,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Markdown Lint via composite action
-        uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2.6.12
+        uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2.7.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # 必要に応じて inputs で上書き可能．詳細は中央リポジトリの README を参照．

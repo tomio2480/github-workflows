@@ -12,6 +12,11 @@ caller が prh を意図的に false または未定義にしている場合は�
 argv 4 つ目（optional）に caller root の .textlint-allowlist.yml の絶対パスが渡されると，
 その内容を filters.allowlist に inject する．空文字または argv 3 つの呼び出しでは
 filters は変更しない（後方互換）．
+
+argv 5 つ目（optional）に caller root の .prh-extra.yml の絶対パスが渡されると，
+rules.prh.rulePaths を [中央 prh, 追加辞書] の 2 本にする（Issue #91）．
+textlint-rule-prh は同一パターンの衝突を先に並べた辞書で解決するため，
+中央を先頭に固定し，caller は語を「足す」だけにする．
 """
 
 from __future__ import annotations
@@ -28,12 +33,17 @@ OVERRIDES_WARNING = (
 )
 
 
-def _resolve_prh_rule(prh_rule, prh_abs: str, context_path: str) -> None:
-    """prh_rule が dict なら rulePaths を prh_abs で上書きする．
+def _resolve_prh_rule(
+    prh_rule, prh_abs: str, context_path: str, prh_extra_abs: str = ""
+) -> None:
+    """prh_rule が dict なら rulePaths を prh_abs（と prh_extra_abs）で上書きする．
     None / False のときは caller の意図を尊重して何もしない．それ以外は TypeError．
     """
     if isinstance(prh_rule, dict):
-        prh_rule["rulePaths"] = [prh_abs]
+        rule_paths = [prh_abs]
+        if prh_extra_abs:
+            rule_paths.append(prh_extra_abs)
+        prh_rule["rulePaths"] = rule_paths
     elif prh_rule is None or prh_rule is False:
         pass
     else:
@@ -60,13 +70,25 @@ def _load_allowlist(path_str: str) -> dict:
     return body
 
 
+def _resolve_prh_extra(path_str: str) -> str:
+    """caller 追加辞書のパスを検証し絶対パスを返す．空文字なら空文字のまま返す．"""
+    if not path_str:
+        return ""
+    path = pathlib.Path(path_str)
+    if not path.is_file():
+        raise ValueError(f"prh extra dictionary not found: {path_str}")
+    return str(path.resolve())
+
+
 def main(argv: Sequence[str]) -> None:
-    if len(argv) not in (3, 4):
+    if len(argv) not in (3, 4, 5):
         raise ValueError(
-            f"expected 3 or 4 arguments (src, prh, dest, [allowlist]), got {len(argv)}"
+            "expected 3 to 5 arguments (src, prh, dest, [allowlist], [prh-extra]), "
+            f"got {len(argv)}"
         )
     src, prh, dest = argv[0], argv[1], argv[2]
-    allowlist_path = argv[3] if len(argv) == 4 else ""
+    allowlist_path = argv[3] if len(argv) >= 4 else ""
+    prh_extra_path = argv[4] if len(argv) == 5 else ""
 
     cfg = json.loads(pathlib.Path(src).read_text(encoding="utf-8"))
     if not isinstance(cfg, dict):
@@ -79,7 +101,8 @@ def main(argv: Sequence[str]) -> None:
         raise TypeError("textlint config 'rules' must be an object")
 
     prh_abs = str(pathlib.Path(prh).resolve())
-    _resolve_prh_rule(rules.get("prh"), prh_abs, "rules.prh")
+    prh_extra_abs = _resolve_prh_extra(prh_extra_path)
+    _resolve_prh_rule(rules.get("prh"), prh_abs, "rules.prh", prh_extra_abs)
 
     if cfg.get("overrides"):
         # textlint（15.6.0 時点）は overrides を実装していない．書き換えず素通しし，
