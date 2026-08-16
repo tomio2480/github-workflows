@@ -19,6 +19,7 @@ name: Markdown Lint
 #
 # 設定ファイル（.markdownlint-cli2.yaml / .textlintrc.json / prh.yml）は
 # 呼び出し側に存在すればそれが優先される．無ければ参照先 commit の標準設定が使われる．
+# .textlint-allowlist.yml / .prh-extra.yml は置き換えではなく加算で，存在するときだけ効く．
 
 on:
   pull_request:

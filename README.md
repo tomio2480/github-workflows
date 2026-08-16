@@ -116,6 +116,7 @@ github-workflows/
 │   ├── .textlintrc.json           # 中央デフォルト＋override 用
 │   ├── .textlintignore            # 中央 ignore 設定＋override 用
 │   ├── .textlint-allowlist.yml    # caller-side allowlist のサンプル（v2.1〜，optional）
+│   ├── .prh-extra.yml             # caller-side 追加 prh 辞書のサンプル（v2.7〜，optional）
 │   ├── prh.yml                    # 中央辞書＋override 用
 │   └── lefthook.yml               # ローカル hook（任意）
 ├── docs/                          # 運用ガイド
@@ -270,10 +271,11 @@ curl -fsSL \
 | `.textlintrc.json` | textlint のルールを全置換 |
 | `prh.yml` | 辞書を全置換（中央辞書は無視される） |
 | `.textlint-allowlist.yml` | caller 固有の例外語・例外パターン・例外ルールを差分追加（v2.1〜） |
+| `.prh-extra.yml` | caller 固有の表記ゆれ規則を中央辞書に差分追加（v2.7〜） |
 
-override は **ファイル全置換方式** であり，差分マージはしない．中央を基点にしたいときは中央の該当ファイルをコピーして，必要部分だけ改変する．
+上 3 行の override は **ファイル全置換方式** であり，差分マージはしない．中央を基点にしたいときは中央の該当ファイルをコピーして，必要部分だけ改変する．
 
-`.textlint-allowlist.yml` だけは差分追加方式で，caller 単独で固有名詞や法令名等の false positive を恒久化できる．prh と allowlist の使い分けは [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md) を参照．サンプルは [templates/.textlint-allowlist.yml](templates/.textlint-allowlist.yml) からコピーするとよい．
+`.textlint-allowlist.yml` と `.prh-extra.yml` は差分追加方式で，中央の更新に追随したまま caller 単独の調整ができる．前者は固有名詞や法令名等の false positive を指摘から外し，後者は caller だけの表記ゆれ規則（読点の流儀など）を足す．同じ語を中央辞書と `.prh-extra.yml` の両方に書いた場合は中央が勝つ．中央規則を変えたいときは `prh.yml` の全置換を使う．使い分けは [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md) を参照．サンプルは [templates/.textlint-allowlist.yml](templates/.textlint-allowlist.yml) と [templates/.prh-extra.yml](templates/.prh-extra.yml) からコピーするとよい．
 
 ## 🔀 フォーク運用の手引き
 

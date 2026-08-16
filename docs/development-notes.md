@@ -58,10 +58,12 @@ PR #17 の Gemini review では「常に上書きする方が robust」という
 caller の override 対象ファイルは中央テンプレに同名ファイルが必ず存在する．
 無ければ中央を使う規約のため `scripts/resolve-config-path.sh` で抽象化されている．
 
-一方で `.textlint-allowlist.yml` は中央フォールバックを持たない optional ファイル．
-`resolve-config-path.sh` には流用しない．
-`action.yml` 内で `[ -f .textlint-allowlist.yml ]` を inline 判定する．
+一方で `.textlint-allowlist.yml` と `.prh-extra.yml`（v2.7〜）は中央フォールバックを持たない．
+optional ファイルのため `resolve-config-path.sh` には流用しない．
+`action.yml` 内で `[ -f <file> ]` を inline 判定する．
 存在すれば絶対パスを，無ければ空文字を step output として渡す．
+`generate-textlint-runtime.py` 側は allowlist を 4 つ目，追加辞書を 5 つ目の引数で受ける．
+どちらも空文字を「未設定」と解釈するため，action 側の分岐と 1 対 1 に対応する．
 
 ### 外部ツール依存は preinstall 前提＋ caller opt-in 固定
 
