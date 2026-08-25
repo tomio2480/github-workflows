@@ -23,15 +23,19 @@ usage:
 
 出力（stdout，JSON）:
     {
+      "diff_scoped": bool,
       "markdownlint": {
-        "total": N,
+        "total": N, "repo_total": N,
         "findings": [{"file": str, "line": int, "rule": str, "message": str}, ...]
       },
       "textlint": {
-        "error": N, "warning": N, "info": N, "total": N,
+        "error": N, "warning": N, "info": N, "total": N, "repo_total": N,
         "findings": [{"file": str, "line": int, "severity": str, "rule": str, "message": str}, ...]
       }
     }
+
+    diff_scoped は --diff-files-from による絞り込みの有無．total は絞り込み後，
+    repo_total は絞り込み前（--ignore-glob の除外のみ適用）の全体件数（Issue #104）．
 
 挙動:
     - 入力ファイルが存在しないときは件数 0 / 空 findings として扱う（fail-open）．
@@ -260,11 +264,29 @@ def main(argv: Sequence[str]) -> int:
             if line.strip()
         }
 
+    markdownlint = count_markdownlint(
+        Path(args.markdownlint_txt), ignore_globs, diff_files
+    )
+    textlint = count_textlint(Path(args.textlint_xml), ignore_globs, diff_files)
+
+    # リポジトリ全体件数（Issue #104）．diff 絞り込みだけを外して数え直す．
+    # --ignore-glob の除外は全体件数にも適用する（fixtures 等は数えない）．
+    # 絞り込みが無いときは再パースせず total をそのまま流用する．
+    if diff_files is None:
+        markdownlint["repo_total"] = markdownlint["total"]
+        textlint["repo_total"] = textlint["total"]
+    else:
+        markdownlint["repo_total"] = count_markdownlint(
+            Path(args.markdownlint_txt), ignore_globs
+        )["total"]
+        textlint["repo_total"] = count_textlint(
+            Path(args.textlint_xml), ignore_globs
+        )["total"]
+
     payload = {
-        "markdownlint": count_markdownlint(
-            Path(args.markdownlint_txt), ignore_globs, diff_files
-        ),
-        "textlint": count_textlint(Path(args.textlint_xml), ignore_globs, diff_files),
+        "diff_scoped": diff_files is not None,
+        "markdownlint": markdownlint,
+        "textlint": textlint,
     }
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
