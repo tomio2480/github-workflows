@@ -3,7 +3,10 @@
   "rules": {
     "preset-ja-technical-writing": {
       "sentence-length": {
-        "max": 80
+        "max": 80,
+        "skipPatterns": [
+          "/\\$[^$]*\\$/"
+        ]
       },
       "max-kanji-continuous-len": {
         "max": 6,
