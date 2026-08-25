@@ -477,3 +477,38 @@ FAKE
   grep -q 'BODY: .*warning: 4' "${FAKE_CURL_LOG}"
   grep -q 'BODY: .*info: 1' "${FAKE_CURL_LOG}"
 }
+
+@test "diff_scoped のとき全体件数の列が表に出る（Issue #104）" {
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":0,"repo_total":21,"findings":[]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*この PR の差分.*リポジトリ全体' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*markdownlint | 0 | 21' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*textlint | 0 | 95' "${FAKE_CURL_LOG}"
+  # 差分 0 件でも全体に既存指摘があるときは，その旨を案内する
+  grep -q 'BODY: .*この PR の差分に指摘はありません' "${FAKE_CURL_LOG}"
+}
+
+@test "diff_scoped で全体も 0 件のときは従来どおり指摘なしと出る" {
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":0,"repo_total":0,"findings":[]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":0,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*指摘はありません' "${FAKE_CURL_LOG}"
+  ! grep -q 'BODY: .*この PR の差分に指摘はありません' "${FAKE_CURL_LOG}"
+}
+
+@test "diff_scoped でない payload では全体件数の列を出さない（後方互換）" {
+  _write_summary '{"markdownlint":{"total":2},"textlint":{"error":1,"warning":1,"info":0,"total":2}}'
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  ! grep -q 'BODY: .*リポジトリ全体' "${FAKE_CURL_LOG}"
+}

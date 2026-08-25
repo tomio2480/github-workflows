@@ -248,8 +248,16 @@ def test_main_with_missing_files_returns_zero_totals(capsys, tmp_path):
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload == {
-        "markdownlint": {"total": 0, "findings": []},
-        "textlint": {"error": 0, "warning": 0, "info": 0, "total": 0, "findings": []},
+        "diff_scoped": False,
+        "markdownlint": {"total": 0, "repo_total": 0, "findings": []},
+        "textlint": {
+            "error": 0,
+            "warning": 0,
+            "info": 0,
+            "total": 0,
+            "repo_total": 0,
+            "findings": [],
+        },
     }
 
 
@@ -406,3 +414,67 @@ def test_main_without_diff_files_from_keeps_all_findings(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["textlint"]["total"] == 4
     assert payload["markdownlint"]["total"] == 4
+
+
+# ---- repo_total / diff_scoped (Issue #104: 全体件数の併記) ----
+
+def test_main_diff_scoped_payload_carries_repo_totals(capsys, tmp_path):
+    # --diff-files-from 指定時，total は差分内の件数へ絞られる一方，
+    # repo_total は絞り込み前のリポジトリ全体件数を保持する．
+    diff_list = tmp_path / "diff-files.txt"
+    diff_list.write_text("docs/keep.md\n", encoding="utf-8")
+    rc = _MODULE.main(
+        [
+            str(_FIXTURES / "textlint-reports" / "with-ignored-paths.xml"),
+            str(_FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt"),
+            "--diff-files-from",
+            str(diff_list),
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["diff_scoped"] is True
+    assert payload["textlint"]["total"] == 1
+    assert payload["textlint"]["repo_total"] == 4
+    assert payload["markdownlint"]["total"] == 1
+    assert payload["markdownlint"]["repo_total"] == 4
+
+
+def test_main_repo_total_respects_ignore_globs(capsys, tmp_path):
+    # repo_total は diff 絞り込みの影響を受けないが，--ignore-glob の除外は
+    # 受ける（fixtures 等の lint 対象外 path を全体件数にも数えない）．
+    diff_list = tmp_path / "diff-files.txt"
+    diff_list.write_text("", encoding="utf-8")
+    rc = _MODULE.main(
+        [
+            str(_FIXTURES / "textlint-reports" / "with-ignored-paths.xml"),
+            str(_FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt"),
+            "--ignore-glob",
+            "tests/fixtures/**",
+            "--diff-files-from",
+            str(diff_list),
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    # 差分ファイル 0 件のため total は 0．repo_total は ignore 適用後の全体件数．
+    assert payload["textlint"]["total"] == 0
+    assert payload["textlint"]["repo_total"] == 1
+    assert payload["markdownlint"]["total"] == 0
+    assert payload["markdownlint"]["repo_total"] == 1
+
+
+def test_main_without_diff_files_repo_total_equals_total(capsys):
+    # --diff-files-from 未指定時は絞り込みが無いため repo_total と total は
+    # 一致し，diff_scoped は False になる（後方互換の確認）．
+    rc = _MODULE.main(
+        [
+            str(_FIXTURES / "textlint-reports" / "with-ignored-paths.xml"),
+            str(_FIXTURES / "markdownlint-reports" / "with-ignored-paths.txt"),
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["diff_scoped"] is False
+    assert payload["textlint"]["repo_total"] == payload["textlint"]["total"] == 4
+    assert payload["markdownlint"]["repo_total"] == payload["markdownlint"]["total"] == 4
