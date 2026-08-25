@@ -253,8 +253,8 @@ allowlist の書式は次のとおり．
   `allowRules` は `textlint-filter-rule-allowlist` に無い鍵で，書いても黙って無視される．
   ルールを丸ごと外したいときは `<!-- textlint-disable ルール名 -->` を使う．
   `.textlintignore` はファイル全体の除外であり，全ルールが効かなくなる．
-  文体だけを理由に使わない（帰結の記録は
-  [notes/2026-08-16-issue85-textlint-overrides-unsupported.md](notes/2026-08-16-issue85-textlint-overrides-unsupported.md) を参照）．
+  文体だけを理由に使わない．
+  帰結は [Issue #85 の記録](notes/2026-08-16-issue85-textlint-overrides-unsupported.md) を参照．
 
 `allow` の正規表現は範囲マッチである．マッチした範囲に入る指摘だけが消える．
 図表キャプションの句点指摘を外す実測済みの書き方を次に示す．
