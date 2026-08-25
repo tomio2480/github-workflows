@@ -143,15 +143,14 @@ def test_allowlist_dict_is_injected_into_filters(tmp_path):
     dest = tmp_path / "runtime.json"
     allowlist = _make_allowlist(
         tmp_path,
-        "allow:\n  - 電波法施行規則\nallowRules:\n  - ja-technical-writing/ja-no-mixed-period\n",
+        "allow:\n  - 電波法施行規則\n  - '/(?<=^[表図] [0-9]+[.] .*)[^．]$/m'\n",
     )
 
     _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
 
     written = json.loads(dest.read_text(encoding="utf-8"))
     assert written["filters"]["allowlist"] == {
-        "allow": ["電波法施行規則"],
-        "allowRules": ["ja-technical-writing/ja-no-mixed-period"],
+        "allow": ["電波法施行規則", "/(?<=^[表図] [0-9]+[.] .*)[^．]$/m"],
     }
     # 既存の他 filter（comments）は維持される
     assert written["filters"]["comments"] is True
