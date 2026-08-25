@@ -188,12 +188,12 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 | hidden marker | `<!-- gh-workflows-lint-summary -->`．他 bot（CodeRabbit / Gemini）と衝突しない `gh-workflows-` プレフィックス |
 | 同定方法 | PR コメントを GET（pagination 対応）し marker を含むコメントを検索 |
 | 動作 | 既存あり → PATCH，無し → POST．push のたびに同一コメントが最新化される |
-| 表示内容 | 件数表（textlint は error / warning / info の内訳）と findings 上位 20 件の `<details>`，Actions run へのリンク |
+| 表示内容 | 件数表（textlint は error / warning / info の内訳）と findings 上位 20 件の `<details>`，Actions run へのリンク．差分絞り込みが効いているときはリポジトリ全体の件数列を併記する（[Issue #104](https://github.com/tomio2480/github-workflows/issues/104)） |
 | 失敗時 | 必須 env 不足は execution error．API call 失敗は `::warning::` で annotation し exit 0（fail-open） |
 | fork PR | `pull-requests: write` が降格されるため事前に skip．reviewdog inline コメントの制約と整合 |
 | opt-out | composite action の `post-summary` input に `"false"` を渡せば投稿 step ごと skip．同一 PR で複数 job が同 marker を奪い合うケースの逃げ道．reviewdog の inline コメント投稿には影響しない |
 | 件数フィルタ | composite action の `markdown-ignore` input に path glob を改行区切りで渡すと summary 件数から除外できる．`tests/fixtures/**` のような prefix 形式で相対・絶対両方のパスを除外する．reviewdog の inline コメントは `filter-mode` で別途制御されるため本 input の影響を受けない |
-| 集計スコープ | summary は PR 差分ファイルのみを対象にする（[Issue #59](https://github.com/tomio2480/github-workflows/issues/59)）．取得失敗時はリポジトリ全体スコープにフォールバックする |
+| 集計スコープ | summary の findings 一覧は PR 差分ファイルのみを対象にする（[Issue #59](https://github.com/tomio2480/github-workflows/issues/59)）．取得失敗時はリポジトリ全体スコープにフォールバックする．件数表には差分の件数と全体の件数を併記し，差分に現れない既存指摘の存在を可視化する（Issue #104） |
 
 集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は textlint の checkstyle XML（`textlint-report.xml`）と markdownlint-cli2 のテキストレポート（`markdownlint-report.txt`）から件数と findings 一覧を集計し JSON を stdout に出す．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．markdownlint 側の集計用に composite action 内で markdownlint-cli2 を 1 度再実行するため，reviewdog action と合わせて cli2 が 2 回走る．コストは数秒で軽微．将来的に reviewdog action を自前 `markdownlint-cli2 --reporter rdjson | reviewdog -f rdjson` に置き換えれば一本化できる．
 
