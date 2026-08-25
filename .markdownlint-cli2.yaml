@@ -13,6 +13,9 @@ config:
   MD041: false
   MD024:
     siblings_only: true
+  # MD036: 全角ピリオド ．を punctuation へ追加（templates 側と揃える．Issue #102）
+  MD036:
+    punctuation: ".,;:!?。，；：！？．"
 
 globs:
   - "**/*.md"

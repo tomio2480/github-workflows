@@ -23,6 +23,13 @@ config:
   MD024:
     siblings_only: true
 
+  # MD036: no-emphasis-as-heading
+  # 既定の punctuation は全角ピリオド ．（U+FF0E）を含まない．
+  # 句点を ．で統一する caller で，太字 1 文の段落がすべて誤検出される．
+  # 既定の記号をすべて残し，末尾へ ．を追加する（Issue #102）
+  MD036:
+    punctuation: ".,;:!?。，；：！？．"
+
 # lint 対象パターン
 globs:
   - "**/*.md"
