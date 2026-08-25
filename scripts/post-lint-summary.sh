@@ -15,6 +15,8 @@
 # 仕様:
 #   - hidden marker `<!-- gh-workflows-lint-summary -->` 付きコメントを GET で
 #     検索し，存在すれば PATCH，無ければ POST する（upsert）
+#   - SUMMARY_JSON の diff_scoped が true のとき，表に「リポジトリ全体」列を
+#     併記する（Issue #104）．旧スキーマの payload は従来表示のまま
 #   - 必須 env 不足は execution error として非 0 終了
 #   - GET / POST / PATCH 失敗時は ::warning:: で annotation 化し exit 0
 #     （fail-open．reviewdog 本体は既に投稿済みのため UX nicety で job を
@@ -61,6 +63,12 @@ md_findings = md.get("findings", []) or []
 tx = data.get("textlint", {})
 tx_total = int(tx.get("total", 0))
 tx_findings = tx.get("findings", []) or []
+
+# Issue #104: diff_scoped のとき，diff 絞り込み前のリポジトリ全体件数を併記する．
+# 旧スキーマ（diff_scoped / repo_total なし）の payload では従来表示に落とす．
+diff_scoped = bool(data.get("diff_scoped", False))
+md_repo_total = int(md.get("repo_total", md_total))
+tx_repo_total = int(tx.get("repo_total", tx_total))
 
 text_cell = str(tx_total)
 if tx_total > 0:
@@ -145,15 +153,33 @@ lines = [
     "<!-- gh-workflows-lint-summary -->",
     "### Lint summary",
     "",
-    "| ツール | 指摘 |",
-    "|---|---|",
-    f"| markdownlint | {md_total} |",
-    f"| textlint | {text_cell} |",
-    "",
 ]
+if diff_scoped:
+    lines += [
+        "| ツール | この PR の差分 | リポジトリ全体 |",
+        "|---|---|---|",
+        f"| markdownlint | {md_total} | {md_repo_total} |",
+        f"| textlint | {text_cell} | {tx_repo_total} |",
+        "",
+    ]
+else:
+    lines += [
+        "| ツール | 指摘 |",
+        "|---|---|",
+        f"| markdownlint | {md_total} |",
+        f"| textlint | {text_cell} |",
+        "",
+    ]
 
 if md_total == 0 and tx_total == 0:
-    lines.append("指摘はありません．")
+    if diff_scoped and (md_repo_total + tx_repo_total) > 0:
+        lines.append(
+            "この PR の差分に指摘はありません．"
+            "リポジトリ全体には既存の指摘が残っています．"
+            "内訳は Actions ログから確認してください．"
+        )
+    else:
+        lines.append("指摘はありません．")
 else:
     lines.append(
         "差分行に該当する指摘は inline コメントとして該当行に付きます．"
