@@ -15,6 +15,7 @@
 - 🧩 LLM 定型句の抑制
 - 🧩 文体使い分けと no-mix-dearu-desumasu
 - 🧩 max-kanji-continuous-len と固有名詞の例外
+- 🧩 sentence-length の skipPatterns
 - 📚 参照
 
 ## 🎯 採用方針
@@ -229,6 +230,35 @@ textlint 本体に `overrides` が実装された時点で本節を見直す．
 固有名詞の例外は各 caller リポジトリで per-repo の `.textlintrc.json` に追加する運用とする．
 caller-side の除外方針については
 [docs/dictionary-maintenance.md](dictionary-maintenance.md) の「5️⃣」節も参照する．
+
+## 🧩 sentence-length の skipPatterns
+
+`sentence-length`（`max: 80`）は，読み上げに現れない記法の字数まで数える．
+数式を多く含む原稿では，見かけが 80 字未満の文が大量に誤検出される．
+このため `skipPatterns` でインライン数式 `$…$` を文長から外す
+（[Issue #96](https://github.com/tomio2480/github-workflows/issues/96)）．
+
+```json
+"sentence-length": {
+  "max": 80,
+  "skipPatterns": [
+    "/\\$[^$]*\\$/"
+  ]
+}
+```
+
+適用先リポジトリでの実測では，`sentence-length` の指摘 12 件のうち
+11 件は記法を除けば 80 字未満だった．詳細は Issue #96 を参照．
+
+Issue #96 は索引アンカー `<a id="…"></a>` のパターンも提案していたが，採用しない．
+中央がピンする `textlint-util-to-string` は inline HTML ノードを文字列化から落とす．
+アンカーはもともと文長に数えられておらず，パターンは常に不発になる（本リポジトリで実測）．
+`skipPatterns` は文字列化後のテキストに対して働くため，HTML はそこに現れない．
+効かない設定を残すと「アンカーが数えられている」という誤解を招くため外した．
+
+脚注 `^[…]` も `skipPatterns` では消せない．`sentence-splitter` が
+`[ ]` の中を 1 文として扱い，パターンが文の内側に収まらないためである．
+インライン脚注は参照形式（`[^name]` と定義行）への書き換えで対処する（原稿側の課題）．
 
 ## 📚 参照
 
