@@ -78,4 +78,4 @@ Issue 本文の例（`**半値角** 説明文…` の同一行形式）は実は
 - [Issue #103](https://github.com/tomio2480/github-workflows/issues/103) / [PR #106](https://github.com/tomio2480/github-workflows/pull/106)（v2.9.1）
 - [Issue #104](https://github.com/tomio2480/github-workflows/issues/104) / [PR #107](https://github.com/tomio2480/github-workflows/pull/107)（v2.9.0）
 - [docs/rule-rationale.md](../rule-rationale.md) — MD036 と太字の小見出し
-- [docs/architecture.md](../architecture.md) — 表 5（summary コメントの仕様）
+- [docs/architecture.md](../architecture.md) — 表 6（summary コメントの仕様）

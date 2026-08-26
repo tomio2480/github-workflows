@@ -181,7 +181,7 @@ GitHub API は同一 user × 同一 content の reaction を idempotent に扱�
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 6: reviewdog の主要パラメータ
+表 5: reviewdog の主要パラメータ
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
@@ -204,7 +204,7 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 5: summary コメントの仕様
+表 6: summary コメントの仕様
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
@@ -278,7 +278,7 @@ caller 側の `permissions` ブロックの追記が別途必要になる．
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 6b: 変更が caller 側の作業を要するかどうか
+表 7: 変更が caller 側の作業を要するかどうか
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
@@ -313,7 +313,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 7: テスト 3 層
+表 8: テスト 3 層
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
@@ -329,7 +329,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 8: よくある失敗と対処
+表 9: よくある失敗と対処
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
