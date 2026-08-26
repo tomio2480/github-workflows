@@ -41,7 +41,7 @@ ALLOWLIST_KNOWN_KEYS = frozenset({"allow", "allowlistConfigPaths"})
 ALLOWLIST_UNKNOWN_KEY_WARNING = (
     "::warning::.textlint-allowlist.yml の鍵 '{keys}' は "
     "textlint-filter-rule-allowlist が解釈しないため無視されます．"
-    "有効な鍵は 'allow' と 'allowlistConfigPaths' です（docs/rule-rationale.md 参照）．"
+    "有効な鍵は 'allow' と 'allowlistConfigPaths' です（docs/dictionary-maintenance.md 参照）．"
 )
 
 
