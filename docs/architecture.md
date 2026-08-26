@@ -162,7 +162,7 @@ GitHub API は同一 user × 同一 content の reaction を idempotent に扱�
 
 ## 🐶 reviewdog の挙動
 
-表 6: reviewdog の主要パラメータ
+表 5: reviewdog の主要パラメータ
 
 | パラメータ | デフォルト | 意図 |
 |---|---|---|
@@ -181,7 +181,7 @@ GitHub API は同一 user × 同一 content の reaction を idempotent に扱�
 
 reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投稿しない仕様のため，PR を見たユーザーは「lint が走ったが指摘がなかった」 のか「workflow が起動していない／失敗した」 のかが判別できない．これを補うため composite action は最終 step で件数の summary コメントを 1 件 upsert する．
 
-表 5: summary コメントの仕様
+表 6: summary コメントの仕様
 
 | 項目 | 内容 |
 |---|---|
@@ -251,7 +251,7 @@ caller は `uses:` の 1 行を更新するだけで恩恵を受けられる．
 reusable workflow 側の変更だけでは足りない．
 caller 側の `permissions` ブロックの追記が別途必要になる．
 
-表 6b: 変更が caller 側の作業を要するかどうか
+表 7: 変更が caller 側の作業を要するかどうか
 
 | 変更の種類 | composite action（md-lint） | reusable workflow（claude-review） |
 |---|---|---|
@@ -282,7 +282,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 本リポジトリは composite action の品質保証として 3 層のテストを持つ．
 
-表 7: テスト 3 層
+表 8: テスト 3 層
 
 | 層 | 対象 | 道具 | 配置 | 実行 |
 |---|---|---|---|---|
@@ -294,7 +294,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 ## 🧪 トラブルシューティング
 
-表 8: よくある失敗と対処
+表 9: よくある失敗と対処
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
