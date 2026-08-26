@@ -79,7 +79,11 @@ def _load_allowlist(path_str: str) -> dict:
         raise TypeError(
             f"allowlist YAML root must be a mapping, got {type(body).__name__}"
         )
-    unknown_keys = sorted(set(body) - ALLOWLIST_KNOWN_KEYS)
+    # 引用符なしの数値・真偽値キーは PyYAML が int / bool として読むため，
+    # 混在ソートの TypeError を避ける目的で文字列へそろえてから並べる．
+    unknown_keys = sorted(
+        str(key) for key in body if key not in ALLOWLIST_KNOWN_KEYS
+    )
     if unknown_keys:
         # overrides 警告（Issue #85）と同型．内容は書き換えず素通しし，
         # 「効いていない」ことを Actions アノテーションで caller に知らせる．

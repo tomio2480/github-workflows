@@ -261,6 +261,24 @@ def test_allowlist_multiple_unknown_keys_are_all_listed(tmp_path, capsys):
     assert "allow" in out  # 警告文には有効な鍵の案内も含める
 
 
+def test_allowlist_non_string_unknown_keys_do_not_crash(tmp_path, capsys):
+    # 引用符なしの数値・真偽値キーは PyYAML が int / bool として読む．
+    # str と混在しても TypeError にならず，警告に文字列化して載せる（Codex 指摘）
+    src = _write(tmp_path / "src.json", {"rules": {}})
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+    allowlist = _make_allowlist(
+        tmp_path, "123: value\ntrue: value\nallowRules:\n  - bar\n"
+    )
+
+    _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+    out = capsys.readouterr().out
+    assert out.startswith("::warning::")
+    assert "123" in out
+    assert "allowRules" in out
+
+
 def test_allowlist_known_keys_only_no_warning(tmp_path, capsys):
     src = _write(tmp_path / "src.json", {"rules": {}})
     prh = _make_prh(tmp_path)
