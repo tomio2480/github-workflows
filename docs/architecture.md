@@ -2,7 +2,7 @@
 
 ## 要約
 
-本リポジトリの composite action（v2 以降）が，caller リポジトリ・中央リポジトリ・reviewdog とどのように連携して PR に inline コメントを付けているかを説明する．`$GITHUB_ACTION_PATH` を起点とする自己検出による OWNER 非依存，設定ファイルの解決順序，override のしくみ，テスト戦略を明らかにする．
+本リポジトリの composite action（v2 以降）の連携を説明する．対象は caller リポジトリ・中央リポジトリ・reviewdog で，PR へ inline コメントを付ける流れを扱う．あわせて `$GITHUB_ACTION_PATH` を起点とする自己検出（OWNER 非依存）を説明する．設定ファイルの解決順序，override のしくみ，テスト戦略も明らかにする．
 
 ## 目次
 
@@ -49,7 +49,12 @@ lint 指摘では job を失敗させない（fail_on_error: false）．設定�
 
 上図の `OWNER` は利用する中央リポジトリのオーナーに置換する．tomio2480 を直接利用する場合は `tomio2480`，フォーク運用では自分の GitHub ユーザー名．`<SHA>` は利用したい commit．バージョンコメント `# v2` を併記すると Dependabot が SHA とバージョンを自動追随する．
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）．以降の表も同様． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1: 参照方式ごとの挙動
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 参照形式 | 挙動 | 推奨用途 |
 |---|---|---|
@@ -60,17 +65,21 @@ lint 指摘では job を失敗させない（fail_on_error: false）．設定�
 
 ## 🔍 自己検出のしくみ（`$GITHUB_ACTION_PATH`）
 
-composite action から中央 templates にアクセスするとき，オーナー名やブランチをハードコードすると「フォーク利用者が action 本体を書き換える」必要が出る．これを避けるため，GitHub Actions が composite action に提供する `github.action_path`（環境変数 `$GITHUB_ACTION_PATH`）から自分のチェックアウト先絶対パスを取り，そこからの相対参照で中央 templates にアクセスする．
+composite action から中央 templates にアクセスする場面を考える．オーナー名やブランチをハードコードすると，「フォーク利用者が action 本体を書き換える」必要が出る．これを避けるため，`github.action_path`（環境変数 `$GITHUB_ACTION_PATH`）から自分のチェックアウト先絶対パスを取る．この値は GitHub Actions が composite action に提供する．そこからの相対参照で中央 templates にアクセスする．
 
-`$GITHUB_ACTION_PATH` の値例（runner 上）：
+`$GITHUB_ACTION_PATH` の値例（runner 上）を示す．
 
 ```text
 /home/runner/work/_actions/tomio2480/github-workflows/<sha>/.github/actions/markdown-lint
 ```
 
-action.yml は `.github/actions/markdown-lint/` に置かれているため，`${GITHUB_ACTION_PATH}/../../../` がリポジトリルート，さらに `templates/` を結合すれば中央 templates ディレクトリが得られる．
+action.yml は `.github/actions/markdown-lint/` に置かれている．このため `${GITHUB_ACTION_PATH}/../../../` がリポジトリルートになる．さらに `templates/` を結合すれば中央 templates ディレクトリが得られる．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 2: 自己検出で得られる値
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 変数 | 値の例 | 用途 |
 |---|---|---|
@@ -78,15 +87,19 @@ action.yml は `.github/actions/markdown-lint/` に置かれているため，`$
 | `${GITHUB_ACTION_PATH}/../../../templates` | 同上 + `templates/` | 中央 templates 絶対パス |
 | `${GITHUB_ACTION_PATH}/../../../scripts` | 同上 + `scripts/` | 抽出済みスクリプトの絶対パス |
 
-`actions/checkout` での中央 repo の二重取得は不要．caller workflow 側で 1 度だけ caller repo を checkout すれば，composite action は GitHub Actions が自動展開した自リポジトリ全体にアクセスできる．
+`actions/checkout` での中央 repo の二重取得は不要．caller workflow 側で caller repo を 1 度だけ checkout すればよい．composite action は，GitHub Actions が自動展開した自リポジトリ全体にアクセスできる．
 
-これにより **フォーク運用者は composite action 本体を触らなくてよい**．`alice/github-workflows@<sha>` から呼び出されれば `alice/github-workflows` の templates が，`bob/github-workflows@<sha>` から呼び出されれば `bob/github-workflows` の templates が自動で使われる．
+これにより **フォーク運用者は composite action 本体を触らなくてよい**．`alice/github-workflows@<sha>` からの呼び出しでは `alice/github-workflows` の templates が使われる．`bob/github-workflows@<sha>` なら `bob/github-workflows` の templates になる．
 
 ## 📁 設定ファイルの解決順序
 
 `Resolve config file paths` ステップは以下のロジックで config パスを決める．
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 3: 解決対象ファイルと解決ロジック
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | ファイル | 解決順序 |
 |---|---|
@@ -109,9 +122,9 @@ allowlist は存在すれば runtime config の `filters.allowlist` に inject �
 
 ### lint 対象外パターンと self-test
 
-中央 `templates/.markdownlint-cli2.yaml` の `ignores` および `templates/.textlintignore` は `tests/fixtures/` を既定で除外する．これは **故意に違反を含む fixture が caller PR レビューに大量の指摘として流れ込むのを防ぐ** ためである．`ignores` は CLI で明示 glob を渡しても適用される（明示 glob で fixture を指定しても ignore がかかれば 0 件になる）．
+中央 `templates/.markdownlint-cli2.yaml` の `ignores` は `tests/fixtures/` を既定で除外する．`templates/.textlintignore` も同様である．これは **故意に違反を含む fixture が caller PR レビューに大量の指摘として流れ込むのを防ぐ** ためである．`ignores` は CLI で明示 glob を渡しても適用される（明示 glob で fixture を指定しても ignore がかかれば 0 件になる）．
 
-本リポジトリの自己統合テスト（`integration-action` job）は composite action を fixture に対して実行して指摘検出を確認する必要があるため，リポジトリルートに `.markdownlint-cli2.yaml` と `.textlintignore` の override を置き，caller-first 解決でこちらを優先採用させている．override 内容は中央 templates と同等で，`tests/fixtures/` の ignore のみ外している．caller 側で個別に fixture を ignore したくない場合も同じ手法を取ればよい．
+本リポジトリの自己統合テスト（`integration-action` job）を考える．composite action を fixture に対して実行し，指摘検出を確認する必要がある．そのためリポジトリルートに `.markdownlint-cli2.yaml` と `.textlintignore` の override を置く．caller-first 解決でこちらを優先採用させている．override 内容は中央 templates と同等で，`tests/fixtures/` の ignore のみ外している．caller 側で個別に fixture を ignore したくない場合も同じ手法を取ればよい．
 
 ### textlint 用 runtime config 生成
 
@@ -148,9 +161,13 @@ caller 単独で固有名詞や法令名等の例外も差分追加できる．
 
 ## 👀 review 開始の可視化（PR reaction）
 
-`pull_request` イベントで起動した場合，composite action は最初の step として PR 本文に 👀 reaction を付与する．これは「workflow は起動済みで，これから lint review を行う」状態を caller 側で即座に判別するための UX nicety である．reaction を付ける前に lint config 解決などで失敗した場合は reaction 自体が現れない．ただし reaction の API call が失敗した場合（後述の fail-open）も reaction は付かないため，「reaction 無し」だけで workflow 未起動かどうかは確定しない．最終的な切り分けは reviewdog コメントの有無や Actions の実行ログを併せて判断する．
+`pull_request` イベントで起動した場合，composite action は最初の step で PR 本文へ 👀 reaction を付与する．これは「workflow は起動済みで，これから lint review を行う」状態を示す．caller 側で即座に判別するための UX nicety である．reaction を付ける前に lint config 解決などで失敗した場合は reaction 自体が現れない．ただし reaction の API call が失敗した場合（後述の fail-open）も reaction は付かない．そのため「reaction 無し」だけで workflow 未起動かどうかは確定しない．最終的な切り分けは reviewdog コメントの有無や Actions の実行ログを併せて判断する．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 4: reaction による状態識別
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 状態 | 見え方 |
 |---|---|
@@ -158,11 +175,15 @@ caller 単独で固有名詞や法令名等の例外も差分追加できる．
 | 👀 reaction あり | composite action が正常に動き始めた．以後 reviewdog の inline コメントを待つ |
 | 👀 + reviewdog コメント | review 完了 |
 
-GitHub API は同一 user × 同一 content の reaction を idempotent に扱うため，rerun や複数回実行でも reaction が重複生成されることはない．reaction の API call が失敗しても review 本体は続行する（fail open）．caller token に対する権限要件は既存の reviewdog コメント投稿と同じ `pull-requests: write` で十分．
+GitHub API は同一 user × 同一 content の reaction を idempotent に扱う．そのため rerun や複数回実行でも reaction が重複生成されることはない．reaction の API call が失敗しても review 本体は続行する（fail open）．caller token に対する権限要件は既存の reviewdog コメント投稿と同じ `pull-requests: write` で十分．
 
 ## 🐶 reviewdog の挙動
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 6: reviewdog の主要パラメータ
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | パラメータ | デフォルト | 意図 |
 |---|---|---|
@@ -173,15 +194,19 @@ GitHub API は同一 user × 同一 content の reaction を idempotent に扱�
 
 `filter-mode` を `nofilter` にすれば既存ファイルの全指摘が PR に流れる．棚卸し用の一時的設定として caller 側で上書き可能．
 
-`reporter` を `github-check` に切り替えれば PR でないイベント（push など）でも lint 結果を check として表示できるが，本リポジトリのデフォルトは `github-pr-review` のみ対応．push 起動で lint したい場合は caller 側で `on: push` トリガーを追加し，本 composite action を改修するか caller 内で処理を書くことになる．
+`reporter` を `github-check` に切り替えれば，PR でないイベント（push など）でも lint 結果を check として表示できる．ただし本リポジトリのデフォルトは `github-pr-review` のみ対応．push 起動で lint したい場合は，caller 側で `on: push` トリガーを追加する．そのうえで本 composite action を改修するか，caller 内で処理を書くことになる．
 
-`github-check` reporter を使う場合は caller workflow の `permissions` に **`checks: write` を追加** する必要がある．デフォルトの `github-pr-review` では `pull-requests: write` のみでよいが，check 作成権限は別枠のため付け忘れると権限エラーで失敗する．
+`github-check` reporter を使う場合は追加権限が要る．caller workflow の `permissions` に **`checks: write` を追加** する．デフォルトの `github-pr-review` では `pull-requests: write` のみでよい．check 作成権限は別枠のため，付け忘れると権限エラーで失敗する．
 
 ## 📝 lint summary コメントの投稿
 
-reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投稿しない仕様のため，PR を見たユーザーは「lint が走ったが指摘がなかった」 のか「workflow が起動していない／失敗した」 のかが判別できない．これを補うため composite action は最終 step で件数の summary コメントを 1 件 upsert する．
+reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投稿しない仕様である．このため PR を見たユーザーは「lint が走ったが指摘がなかった」のか「workflow が起動していない／失敗した」のかを判別できない．これを補うため composite action は最終 step で件数の summary コメントを 1 件 upsert する．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 5: summary コメントの仕様
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 項目 | 内容 |
 |---|---|
@@ -195,17 +220,17 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 | 件数フィルタ | composite action の `markdown-ignore` input に path glob を改行区切りで渡すと summary 件数から除外できる．`tests/fixtures/**` のような prefix 形式で相対・絶対両方のパスを除外する．reviewdog の inline コメントは `filter-mode` で別途制御されるため本 input の影響を受けない |
 | 集計スコープ | summary の findings 一覧は PR 差分ファイルのみを対象にする（[Issue #59](https://github.com/tomio2480/github-workflows/issues/59)）．取得失敗時はリポジトリ全体スコープにフォールバックする．件数表には差分の件数と全体の件数を併記し，差分に現れない既存指摘の存在を可視化する（Issue #104） |
 
-集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は textlint の checkstyle XML（`textlint-report.xml`）と markdownlint-cli2 のテキストレポート（`markdownlint-report.txt`）から件数と findings 一覧を集計し JSON を stdout に出す．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．markdownlint 側の集計用に composite action 内で markdownlint-cli2 を 1 度再実行するため，reviewdog action と合わせて cli2 が 2 回走る．コストは数秒で軽微．将来的に reviewdog action を自前 `markdownlint-cli2 --reporter rdjson | reviewdog -f rdjson` に置き換えれば一本化できる．
+集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は件数と findings 一覧を集計し，JSON を stdout に出す．入力は textlint の checkstyle XML（`textlint-report.xml`）である．加えて `markdownlint-cli2` のテキストレポート（`markdownlint-report.txt`）も読む．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．`markdownlint` 側の集計用に，composite action 内で `markdownlint-cli2` を 1 度再実行する．このため reviewdog action と合わせて cli2 が 2 回走る．コストは数秒で軽微．将来的に reviewdog action を置き換えれば一本化できる．置き換え先は自前の `markdownlint-cli2 --reporter rdjson | reviewdog -f rdjson` である．
 
-`markdown-glob`（既定 `**/*.md`）はリポジトリ全体を走査するため，textlint・markdownlint の実行結果自体はリポジトリ全体分の findings を含む．reviewdog の `filter-mode`（既定 `added`）は **inline コメント投稿のみ** を diff 行に絞る機構であり，summary 集計の対象範囲には影響しない．そのため対策前は「本 PR の差分ファイルは 1 件なのに summary は数百件」という事象が起きていた（Issue #59）．
+`markdown-glob`（既定 `**/*.md`）はリポジトリ全体を走査する．そのため textlint・`markdownlint` の実行結果自体は，リポジトリ全体分の findings を含む．reviewdog の `filter-mode`（既定 `added`）は **inline コメント投稿のみ** を diff 行に絞る機構である．summary 集計の対象範囲には影響しない．そのため対策前は「本 PR の差分ファイルは 1 件なのに summary は数百件」という事象が起きていた（Issue #59）．
 
-対策として，composite action に `List PR diff files (for summary scoping)` step を追加した．[scripts/list-pr-diff-files.sh](../scripts/list-pr-diff-files.sh) が `GET /repos/:owner/:repo/pulls/:pr/files` で PR の差分ファイル一覧を取得し，`count-lint-findings.py` の `--diff-files-from` にファイルパスとして渡す．これにより summary は PR 差分ファイルのみを対象にする．GitHub API 呼び出しが失敗した場合は `::warning::` を出しつつ `--diff-files-from` を渡さず，従来どおりリポジトリ全体スコープにフォールバックする（fail-open）．`--diff-files-from` は `count-lint-findings.py` 単体の後方互換のため未指定時は従来どおりリポジトリ全体を対象にする仕様のままである．
+対策として，composite action に `List PR diff files (for summary scoping)` step を追加した．[scripts/list-pr-diff-files.sh](../scripts/list-pr-diff-files.sh) が PR の差分ファイル一覧を取得する．API は `GET /repos/:owner/:repo/pulls/:pr/files` である．取得結果は `count-lint-findings.py` の `--diff-files-from` へファイルパスとして渡す．これにより summary は PR 差分ファイルのみを対象にする．GitHub API 呼び出しが失敗した場合は，`::warning::` を出しつつ `--diff-files-from` を渡さない．従来どおりリポジトリ全体スコープにフォールバックする（fail-open）．`--diff-files-from` は `count-lint-findings.py` 単体の後方互換を保つ．未指定時は従来どおりリポジトリ全体を対象にする仕様のままである．
 
-reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない指摘を inline 化しない．このため「集計件数 N 件あるのに inline コメントが 0 件」 という見え方が起こりうる．この差を埋めるため summary コメントには以下を含める．
+reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない指摘を inline 化しない．このため「集計件数 N 件あるのに inline コメントが 0 件」という見え方が起こりうる．この差を埋めるため summary コメントには以下を含める．
 
-- 文言で「inline 化されない指摘がある」 旨を明示
+- 文言で「inline 化されない指摘がある」旨を明示
 - findings の上位 20 件を `<details>` で展開可能な形で列挙（file:line / severity / rule / message）
-- Actions の workflow run へのリンク（`GITHUB_SERVER_URL` `GITHUB_REPOSITORY` `GITHUB_RUN_ID` `GITHUB_RUN_ATTEMPT` から組み立て）
+- Actions の workflow run へのリンク．`GITHUB_SERVER_URL` と `GITHUB_REPOSITORY` で URL の前半を組み立てる．`GITHUB_RUN_ID` と `GITHUB_RUN_ATTEMPT` で run 部分を続ける
 
 これにより，filter-mode='added' で除外された指摘も PR コメントから直接辿れる．
 
@@ -213,10 +238,10 @@ reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない
 
 ## 🔀 caller → composite action → reviewdog のデータフロー
 
-1. caller の `.github/workflows/md-lint.yml` が `pull_request` などで起動し，job 内の step で本 composite action を `uses:` で呼び出す
-2. composite action 内で使う GitHub token は **caller が `inputs.github-token` 経由で明示的に渡したトークン**（通常は `${{ secrets.GITHUB_TOKEN }}` ）．composite action では `secrets.*` の自動継承が効かないため input で受け渡す必要がある．reviewdog が PR コメントを投稿する先は caller の PR
-3. caller workflow 側に `permissions: contents: read, pull-requests: write` を明記しないと reviewdog がコメント投稿権限を得られず失敗する．また **外部フォークからの PR では GitHub の制限により `GITHUB_TOKEN` が read-only になり，reviewdog は inline コメントを投稿できない**（本プロジェクトは安全性の観点で `pull_request_target` を使わない方針のため．詳細は [docs/security.md](security.md) 参照）
-4. reviewdog action は内部で `github-pr-review` reporter を使い，PR number とトークンから REST/GraphQL で review comment を投稿する
+1. caller の `.github/workflows/md-lint.yml` が `pull_request` などで起動する．job 内の step で本 composite action を `uses:` で呼び出す
+2. composite action 内で使う GitHub token は，**caller が明示的に渡したトークン** である．受け口は `inputs.github-token` input で，通常は `${{ secrets.GITHUB_TOKEN }}` を渡す．composite action では `secrets.*` の自動継承が効かないため，input での受け渡しを要する．reviewdog が PR コメントを投稿する先は caller の PR
+3. caller workflow 側には `permissions: contents: read, pull-requests: write` を明記する．明記しないと reviewdog がコメント投稿権限を得られず失敗する．また **外部フォークからの PR では reviewdog が inline コメントを投稿できない**．GitHub の制限で `GITHUB_TOKEN` が read-only になるためである．本プロジェクトは安全性の観点で `pull_request_target` を使わない方針のためである．詳細は [docs/security.md](security.md) を参照
+4. reviewdog action は内部で `github-pr-review` reporter を使う．PR number とトークンから REST/GraphQL で review comment を投稿する
 
 ## 🔁 caller テンプレートの構造変更が伝播しない問題
 
@@ -251,7 +276,11 @@ caller は `uses:` の 1 行を更新するだけで恩恵を受けられる．
 reusable workflow 側の変更だけでは足りない．
 caller 側の `permissions` ブロックの追記が別途必要になる．
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 6b: 変更が caller 側の作業を要するかどうか
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 変更の種類 | composite action（md-lint） | reusable workflow（claude-review） |
 |---|---|---|
@@ -275,14 +304,18 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
   **caller 側対応の要否と，追記すべき内容** を GitHub Release に書く．
 - 32 件の caller への backfill は，今回のセッションでは見送る．
   composite action が caller との構造差分を lint summary に注記する
-  仕組み（Issue #83 案 2）も同様に見送る．
+  仕組み（Issue #83 案 2）も見送る．
   規模が大きいため，選択肢として Issue に残す．
 
 ## 🧪 テスト戦略
 
 本リポジトリは composite action の品質保証として 3 層のテストを持つ．
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 7: テスト 3 層
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 層 | 対象 | 道具 | 配置 | 実行 |
 |---|---|---|---|---|
@@ -294,7 +327,11 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 ## 🧪 トラブルシューティング
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 8: よくある失敗と対処
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 症状 | 原因 | 対処 |
 |---|---|---|

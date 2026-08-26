@@ -9,8 +9,8 @@
 
 PR #16 と #17 の経験を主な題材としている．
 PR #23 と #25 の経験で得た知見も追記している．
-PR #28 の経験で得た「機械生成 Markdown と bot レビュー対応」 の知見も追記している．
-PR #30 と #31 で進めた dogfooding の経験から「scope 分割」「設計 pivot」「複数 reviewer 判断割れ」の知見も追記している．
+PR #28 の経験で得た「機械生成 Markdown と bot レビュー対応」の知見も追記している．
+PR #30・#31 の dogfooding の経験から「scope 分割」「設計 pivot」「複数 reviewer 判断割れ」の知見も追記している．
 PR #35 の prh 否定先読み修正と，Issue #34（SHA 直上バージョンコメント bump 漏れ再発防止）の知見も追記している．
 PR #40 の textlint v15 互換性検証と，PR #43 の Gemini SHA 誤検知の知見も追記している．
 類似タスクに着手するセッションが過去判断を辿れるようにする．
@@ -79,10 +79,10 @@ description で `==` 等の指定子混入を許すと `pyyaml====6.0.2` のよ�
 PR #28 で導入した summary コメント機構は集計と表示を分離して実装した．
 
 - 集計：[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は raw な件数 / findings 一覧の JSON を出す
-- 表示：[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) の Python heredoc が JSON を Markdown 本文に rendering する
+- 表示：[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) の Python heredoc が担う．JSON を Markdown 本文に rendering する
 
 表示用の正規化（path 相対化・rule prefix strip・改行畳み込み）は表示層に閉じる．
-JSON 側は「集計の事実」 として汎用に保つ．
+JSON 側は「集計の事実」として汎用に保つ．
 将来別の出力先（Slack 等）を足すとき，集計層を再利用できる．
 
 bats テストは fake curl + JSON fixture で書きやすい．
@@ -92,35 +92,39 @@ bats テストは fake curl + JSON fixture で書きやすい．
 ### 集計件数と表示件数のギャップは UI 側で吸収する
 
 reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない指摘を inline 化しない．
-このため「summary が 13 件と表示するが inline コメントは 0 件」 という見え方が起こりうる．
+このため「summary が 13 件と表示するが inline コメントは 0 件」という見え方が起こりうる．
 
-PR #28 では summary 本文を以下の構成にして「件数の意味」 を明示した．
+PR #28 では summary 本文を以下の構成にして「件数の意味」を明示した．
 
 - 文言：「差分行に該当する指摘は inline，filter-mode で inline 化されない指摘は下記 details と Actions ログを参照」
 - `<details>` 展開：findings 上位 20 件を file:line / severity / rule / message 形式で列挙
 - 末尾：Actions workflow run へのリンク
 
-集計件数と表示件数にギャップが出る UI を設計するときは「件数の意味」 と「漏れた分の参照経路」 を本文に組み込む．
-数字だけ見せると利用者は「何が見えていないか」 を判断できない．
+集計件数と表示件数にギャップが出る UI を設計するときは「件数の意味」と「漏れた分の参照経路」を本文に組み込む．
+数字だけ見せると利用者は「何が見えていないか」を判断できない．
 
 ### 独立した変更は scope を割って小刻みに進める
 
-PR #30（v2.4.0：post-summary opt-out）と PR #31（v2.5.0：markdown-ignore + dogfooding workflow）は連続した狙いを持つが scope を分けた．
+PR #30 と PR #31 は連続した狙いを持つが，scope を分けた．
+前者は v2.4.0（`post-summary` opt-out）である．
+後者は v2.5.0（`markdown-ignore` + dogfooding workflow）である．
 
 判断軸は次のとおり．
 
 - v2.4.0 は self-test の summary 競合を予防する基盤．caller 形式の md-lint.yml を入れる前段として独立して価値がある
 - v2.5.0 は応用層．`markdown-ignore` の設計と dogfooding workflow 追加が同時並行する規模．レビュー観点も多い
-- 1 本の PR にすると change 量が膨らみレビューサイクルが長引く．2 段に分けると Red-Green の単位が小さくなり bot レビューの指摘も焦点が絞れる
+- 1 本の PR にまとめると change 量が膨らみ，レビューサイクルも長引く．2 段に分けると Red-Green の単位が小さくなり bot レビューの指摘も焦点が絞れる
 
 scope の境界判定は **「単独で価値が生まれるか」** を基準にする．
-v2.4.0 単独でも「self-test の race 整理」 として merge 可能だった．
+v2.4.0 単独でも「self-test の race 整理」として merge 可能だった．
 そのまま放置せずに v2.5.0 で応用層を載せた経緯となる．
 
 ### プランは investigation 後に再評価する．動かして判明する制約は素直に受け入れる
 
-PR #31 の当初計画では `markdown-glob` を multi-line（改行区切り）に拡張し `#tests/fixtures/**` を混ぜる案だった．
-着手して reviewdog/action-markdownlint への配列展開が YAML expression で困難な点に気付き，**`markdown-ignore` 別 input** に変更した．
+PR #31 の当初計画では `markdown-glob` を multi-line（改行区切り）へ拡張する案だった．
+そこへ `#tests/fixtures/**` を混ぜる想定である．
+着手後，`reviewdog/action-markdownlint` への配列展開が YAML expression では困難だと気付いた．
+そこで **`markdown-ignore` 別 input** へ変更した．
 
 教訓は次のとおり．
 
@@ -132,14 +136,17 @@ PR #31 の当初計画では `markdown-glob` を multi-line（改行区切り）
 
 ### upsert + hidden marker は単一プロセスで使う前提
 
-[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) は `<!-- gh-workflows-lint-summary -->` 付きコメントを GET → 既存あり PATCH，無し POST で upsert する．
+[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) は marker 付きコメントを upsert する．
+marker は `<!-- gh-workflows-lint-summary -->` である．
+動作は GET → 既存あり PATCH，無し POST である．
 `gh-workflows-` プレフィックスで他 bot（CodeRabbit / Gemini）と衝突しない．
 
 落とし穴は同一 PR で複数 job が同 marker を使うときの race である．
-PR #28 では計画段階で `integration-action-clean-only` job を追加して指摘ゼロケースを別 job で目視確認する案を入れていたが，途中で race の懸念に気付き drop した．
-代替として「指摘ゼロ」 ケースは pytest / bats で網羅した．
+PR #28 の計画段階では，`integration-action-clean-only` job で指摘ゼロケースを別 job として目視確認する案があった．
+途中で race の懸念に気付き drop した．
+代替として「指摘ゼロ」ケースは pytest / bats で網羅した．
 
-upsert + 単一 marker は前提として「同一スコープで 1 プロセスだけ書く」 を要求する．
+upsert + 単一 marker は前提として「同一スコープで 1 プロセスだけ書く」を要求する．
 matrix や複数 job を導入する設計では marker をスコープ別に分けるか upsert を諦める．
 
 詳細な判断ログは [docs/notes/2026-05-02-lint-summary-comment.md](notes/2026-05-02-lint-summary-comment.md) を参照．
@@ -233,27 +240,27 @@ PR #23 / #25 では Gemini と CodeRabbit から多項目を含む 1 コメン�
 
 ### bot レビューが古い commit を見るパターンの返信定型
 
-複数回 push する PR では，bot の指摘が「既に対応済み」 のケースが頻発する．
+複数回 push する PR では，bot の指摘が「既に対応済み」のケースが頻発する．
 PR #28 では同パターンが 1 件発生した．
 返信は次の構造で書くと相手と将来の自分の双方が辿りやすい．
 
 - 冒頭：先行対応済みである旨と該当 commit SHA
 - 中段：実装の場所（ファイル + 関数名）と test の場所
-- 末尾：「最新 commit 以降を確認してほしい」 旨
+- 末尾：「最新 commit 以降を確認してほしい」旨
 
 定型化すると返信草案を `review-responder` agent で量産できる．
-採用 / 却下とは別軸の「先行対応済」 という第 3 の返信パターンとして明示する．
+採用 / 却下とは別軸の「先行対応済」という第 3 の返信パターンとして明示する．
 
 ### 複数 reviewer の判断割れは decision log に残す
 
-self-reviewer agent と Gemini で同じコードに対する判断が分かれることがある．
+self-reviewer agent と Gemini で，同じコードに対する判断が割れる場合もある．
 PR #31 では `_path_matches_ignore` の `endswith("/" + prefix)` 分岐の必要性で割れた．
 
-- self-reviewer：「findings は常にファイル path だから dead」 → 削除推奨
-- Gemini：「docstring 網羅性と防御性から残すべき」 → 復活推奨
+- self-reviewer：「findings は常にファイル path だから dead」→ 削除推奨
+- Gemini：「docstring 網羅性と防御性から残すべき」→ 復活推奨
 
 最終判断は docstring 整合と防御性を優先して Gemini 案を採った．
-削除直後に復活させる流れになり commit 履歴に「削除 → 復活」 の往復が残った．
+削除の直後，復活させる流れとなった．commit 履歴には「削除 → 復活」の往復が残った．
 
 採用 / 却下とは別軸の **「複数 reviewer 間の判断割れ」を 4 つ目の対応形態** として明示する．
 returned commit message と返信に「どちらの観点を優先したか」と「直前の自己判断と異なる結論にした理由」を残すと往復を抑えられる．
@@ -271,8 +278,10 @@ returned commit message と返信に「どちらの観点を優先したか」�
 PR #28 でも mktemp / trap / retry 系の指摘は来なかった．
 都度の指摘を後から潰すより，先回りでレビューサイクルを節約する方針が効く．
 
-機械生成 Markdown 固有の sanitization 規律（改行・パイプ・絶対パス・フレームワーク内部 prefix の正規化）は本リポジトリ単独では先回りしきれない観点である．
-[tomio2480/settings#28](https://github.com/tomio2480/settings/issues/28) に meta Issue として起票し，code-quality Skill / implementer prompt 側で先回りする方針とした．
+機械生成 Markdown 固有の sanitization 規律は，本リポジトリ単独では先回りしきれない観点である．
+内容は改行・パイプ・絶対パス・フレームワーク内部 prefix の正規化である．
+[tomio2480/settings#28](https://github.com/tomio2480/settings/issues/28) に meta Issue として起票した．
+code-quality Skill / implementer prompt 側で先回りする方針とした．
 
 ### prh の pattern 合成挙動による落とし穴
 
@@ -320,7 +329,7 @@ npx --yes -p textlint@14 \
 rm .textlintrc.runtime.json
 ```
 
-### markdownlint をローカルで再現
+### `markdownlint` をローカルで再現
 
 ```bash
 npx --yes markdownlint-cli2 <対象ファイル>
@@ -402,16 +411,17 @@ patch リリース直後には次の 3 領域のフォローアップを習慣�
 
 ### template バージョンコメント bump をチェックリスト化する
 
-`templates/.github/workflows/md-lint.yml` の caller workflow サンプルには `uses: ... @<SHA> # v2.x.y` 形式のバージョンコメントがある．
+caller workflow のサンプルは `templates/.github/workflows/md-lint.yml` にある．
+そこには `uses: ... @<SHA> # v2.x.y` 形式のバージョンコメントが入る．
 release ごとにこれを更新する規律はあるが PR #28（v2.3.0）と PR #30（v2.4.0）の両方で更新漏れが Gemini に指摘された．
 release 作業のチェックリストとして次を組み込む．
 
 1. PR で release 予定のバージョンを確認する（minor / patch）
 2. `templates/.github/workflows/md-lint.yml` の `# v2.x.y` を該当バージョンに揃える
-3. 「v2.x.0+」 のような未来形表記を残さない．明確な版指定にする
+3. 「v2.x.0+」のような未来形表記を残さない．明確な版指定にする
 
-template バージョンコメントは「同 release で発行されるバージョン」 を指すのが整合的である．
-古いバージョンを残すと利用者が「新 input を持たない古い tag」 を copy する事故につながる．
+template バージョンコメントは「同 release で発行されるバージョン」を指すのが整合的である．
+古いバージョンを残すと利用者が「新 input を持たない古い tag」を copy する事故につながる．
 チェックリスト化の経緯と Gemini レビューの実例は [docs/notes/2026-05-02-v2.5.0-postmortem.md](notes/2026-05-02-v2.5.0-postmortem.md) を参照．
 
 ### Dependabot 更新時の SHA 直上コメント手動補正
