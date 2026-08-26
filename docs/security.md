@@ -62,9 +62,9 @@
 
 | 項目 | 設定値 |
 |---|---|
-| Actions permissions | Allow select actions を推奨．最低でも Allow all は避ける |
+| `Actions permissions` | Allow select actions を推奨．最低でも Allow all は避ける |
 | `Fork pull request workflows from outside collaborators` | **Require approval for all outside collaborators** |
-| Workflow permissions | **Read repository contents and packages permissions**（デフォルト read） |
+| `Workflow permissions` | **Read repository contents and packages permissions**（デフォルト read） |
 | `Allow GitHub Actions to create and approve pull requests` | **OFF** |
 
 ### Settings → Branches
@@ -78,12 +78,12 @@
 | 項目 | 設定 |
 |---|---|
 | `Require a pull request before merging` | 有効 |
-| Require approvals | 1 以上（個人 repo でもセルフレビュー推奨） |
+| `Require approvals` | 1 以上（個人 repo でもセルフレビュー推奨） |
 | `Dismiss stale pull request approvals when new commits are pushed` | 有効 |
-| Require status checks to pass before merging | 有効 |
-| Do not allow bypassing the above settings | 有効 |
-| Allow force pushes | 無効 |
-| Allow deletions | 無効 |
+| `Require status checks to pass before merging` | 有効 |
+| `Do not allow bypassing the above settings` | 有効 |
+| `Allow force pushes` | 無効 |
+| `Allow deletions` | 無効 |
 
 ### Settings → Security
 

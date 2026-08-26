@@ -2,7 +2,7 @@
 
 ## 要約
 
-このリポジトリで Claude Code / Claude Desktop 等の AI エージェントが作業するときの規律．通常の開発規律（`code-quality` / `github-dev` / `docs-quality` Skill）に加えるルールをまとめる．中央リポジトリとして多数の caller に影響を与える性質に由来する．`reviewdog` による Bot 型 PR レビューを提供するため，公開運用時のセキュリティ配慮も必須．本リポジトリは composite action として配布する形式（v2 以降）．v1 は self-detection bug により動作しません．v2.6 以降は Claude レビュー用 reusable workflow（`claude-review`）も配布する．
+このリポジトリで Claude Code / Claude Desktop 等の AI エージェントが作業するときの規律．通常の開発規律（`code-quality` / `github-dev` / `docs-quality` Skill）に加えるルールをまとめる．追加分は，中央リポジトリとして多数の caller に影響を与える性質に由来する．`reviewdog` による Bot 型 PR レビューを提供するため，公開運用時のセキュリティ配慮も必須．本リポジトリは composite action として配布する形式（v2 以降）．v1 は self-detection bug により動作しません．v2.6 以降は Claude レビュー用 reusable workflow（`claude-review`）も配布する．
 
 ## 目次
 
