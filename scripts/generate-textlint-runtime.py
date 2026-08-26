@@ -12,6 +12,8 @@ caller が prh を意図的に false または未定義にしている場合は�
 argv 4 つ目（optional）に caller root の .textlint-allowlist.yml の絶対パスが渡されると，
 その内容を filters.allowlist に inject する．空文字または argv 3 つの呼び出しでは
 filters は変更しない（後方互換）．
+allowlist に `allow` と `allowlistConfigPaths` 以外の鍵があれば，内容は素通ししつつ
+警告のみ出す（Issue #98）．
 
 argv 5 つ目（optional）に caller root の .prh-extra.yml の絶対パスが渡されると，
 rules.prh.rulePaths を [中央 prh, 追加辞書] の 2 本にする（Issue #91）．
@@ -30,6 +32,16 @@ OVERRIDES_WARNING = (
     "::warning::.textlintrc.json の 'overrides' は textlint が実装していないため無視されます．"
     "per-path の文体切り替えには <!-- textlint-disable --> コメントか "
     ".textlintignore を使ってください（docs/rule-rationale.md 参照）．"
+)
+
+# textlint-filter-rule-allowlist が解釈する鍵．これ以外は黙って無視されるため，
+# 誤記（例: allowRules）を caller へ警告で知らせる（Issue #98）．
+ALLOWLIST_KNOWN_KEYS = frozenset({"allow", "allowlistConfigPaths"})
+
+ALLOWLIST_UNKNOWN_KEY_WARNING = (
+    "::warning::.textlint-allowlist.yml の鍵 '{keys}' は "
+    "textlint-filter-rule-allowlist が解釈しないため無視されます．"
+    "有効な鍵は 'allow' と 'allowlistConfigPaths' です（docs/rule-rationale.md 参照）．"
 )
 
 
@@ -67,6 +79,15 @@ def _load_allowlist(path_str: str) -> dict:
         raise TypeError(
             f"allowlist YAML root must be a mapping, got {type(body).__name__}"
         )
+    # 引用符なしの数値・真偽値キーは PyYAML が int / bool として読むため，
+    # 混在ソートの TypeError を避ける目的で文字列へそろえてから並べる．
+    unknown_keys = sorted(
+        str(key) for key in body if key not in ALLOWLIST_KNOWN_KEYS
+    )
+    if unknown_keys:
+        # overrides 警告（Issue #85）と同型．内容は書き換えず素通しし，
+        # 「効いていない」ことを Actions アノテーションで caller に知らせる．
+        print(ALLOWLIST_UNKNOWN_KEY_WARNING.format(keys="', '".join(unknown_keys)))
     return body
 
 

@@ -250,7 +250,9 @@ allowlist の書式は次のとおり．
 
 - `allow:`：文字列または `/regex/` の配列．マッチ範囲に入る指摘を除外する．
 - ルール単位の無効化オプションは存在しない（Issue #97）．
-  `allowRules` は `textlint-filter-rule-allowlist` に無い鍵で，書いても黙って無視される．
+  `allowRules` は `textlint-filter-rule-allowlist` に無い鍵で，フィルタは解釈しない．
+  `allow` と `allowlistConfigPaths` 以外の鍵を書くと，
+  実行時に `::warning::` アノテーションで無視される旨を知らせる（Issue #98）．
   ルールを丸ごと外したいときは `<!-- textlint-disable ルール名 -->` を使う．
   `.textlintignore` はファイル全体の除外であり，全ルールが効かなくなる．
   文体だけを理由に使わない．
