@@ -2,7 +2,7 @@
 
 ## 要約
 
-本リポジトリは public 運用される．中央リポジトリとして多数の caller に影響を与える性質上，供給網攻撃・承認なしフォーク PR 実行などのリスクを理解したうえで運用する．設計段階で `pull_request_target` や `secrets: inherit` を使わない方針を徹底し，third-party action は full commit SHA でピンする．オーナーが承認していない PR はマージしないことが最大の防御である．
+本リポジトリは public 運用される．中央リポジトリとして多数の caller に影響を与える性質上，供給網攻撃・承認なしフォーク PR 実行などのリスクを理解したうえで運用する．設計段階で `pull_request_target` や `secrets: inherit` を使わない方針を徹底する．third-party action は full commit SHA でピンする．オーナーが承認していない PR はマージしないことが最大の防御である．
 
 ## 目次
 
@@ -14,13 +14,18 @@
 
 ## 🎯 脅威モデル
 
-前提：
+前提は次のとおり．
 
 - オーナーは単独（共同メンテナーなし）
 - 外部からの PR は原則マージしない
 - 機密情報（API キー等）は本リポジトリに置かない
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）．以降の表も同様． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1: 攻撃シナリオと評価
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | # | シナリオ | 評価 | 主な対策 |
 |---|---|---|---|
@@ -30,7 +35,7 @@
 | 4 | third-party action が侵害される | 実在 | full commit SHA でピン．Dependabot で更新追跡 |
 | 5 | Secrets 漏洩 | 不成立 | `secrets: inherit` 不使用．caller から `inputs.github-token` で `GITHUB_TOKEN` を明示渡し |
 | 6 | 共有タグ（`v2` など）の改竄 | 低（オーナーのみ書き込み可） | アカウントの 2FA と保護 |
-| 7 | npm 供給網汚染（markdownlint-cli2 等） | 残存リスク | action 内部で管理．個別対策困難．受容 |
+| 7 | npm 供給網汚染（`markdownlint-cli2` 等） | 残存リスク | action 内部で管理．個別対策困難．受容 |
 | 8 | 社会工学攻撃（typo 修正を装う） | 低〜中 | 外部 PR は原則マージしない |
 | 9 | caller 側から見た破壊的変更 | 運用ミス | タグ運用（[CLAUDE.md](../CLAUDE.md)） |
 | 10 | claude-review（`issue_comment` 発火）で cache 書き込み拒否警告 | 影響なし・受容 | `actions: write` 付与は見送り．最小権限を優先し警告を受容（Issue [#76](https://github.com/tomio2480/github-workflows/issues/76)） |
@@ -49,24 +54,32 @@
 
 ### Settings → Actions → General
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 2: Actions 設定
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 項目 | 設定値 |
 |---|---|
 | Actions permissions | Allow select actions を推奨．最低でも Allow all は避ける |
-| Fork pull request workflows from outside collaborators | **Require approval for all outside collaborators** |
+| `Fork pull request workflows from outside collaborators` | **Require approval for all outside collaborators** |
 | Workflow permissions | **Read repository contents and packages permissions**（デフォルト read） |
-| Allow GitHub Actions to create and approve pull requests | **OFF** |
+| `Allow GitHub Actions to create and approve pull requests` | **OFF** |
 
 ### Settings → Branches
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 3: `main` のブランチ保護
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 項目 | 設定 |
 |---|---|
-| Require a pull request before merging | 有効 |
+| `Require a pull request before merging` | 有効 |
 | Require approvals | 1 以上（個人 repo でもセルフレビュー推奨） |
-| Dismiss stale pull request approvals when new commits are pushed | 有効 |
+| `Dismiss stale pull request approvals when new commits are pushed` | 有効 |
 | Require status checks to pass before merging | 有効 |
 | Do not allow bypassing the above settings | 有効 |
 | Allow force pushes | 無効 |
@@ -85,7 +98,7 @@
 
 ## 🧪 運用ルール
 
-- 外部からの PR は **原則マージしない**．typo 修正の名目でも `.github/workflows/` ・ `.github/actions/` ・ `dependabot.yml` が変わっていないか確認
+- 外部からの PR は **原則マージしない**．typo 修正の名目でも `.github/workflows/`・`.github/actions/`・`dependabot.yml` が変わっていないか確認
 - third-party action の SHA は Dependabot PR を通してのみ更新．手動書き換えは避ける
 - `v2` などの共有タグを動かすときは以下を事前に行う：
   - 影響する caller repository の一覧化と影響範囲評価

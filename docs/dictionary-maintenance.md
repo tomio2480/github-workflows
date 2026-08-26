@@ -49,7 +49,12 @@ Draft PR で `filter-mode: nofilter` で実際に lint を流し，辞書の想�
 
 repo 固有の規則を扱う手段は 2 つある．まず追加方式を検討し，足りない場合だけ override を選ぶ．
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）．以降の表も同様． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1: caller 側で辞書を調整する 2 方式
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 方式 | 置くファイル | 中央辞書との関係 | 向く場面 |
 |---|---|---|---|
@@ -96,7 +101,7 @@ curl -fsSL \
   > prh.yml
 ```
 
-取得した `prh.yml` を編集・コミットすれば，その repo だけ override が効く．中央との乖離を許容する運用になる点に注意．
+取得した `prh.yml` を編集・コミットすれば，その repo だけ override が効く．中央との乖離を許容する運用となる点に注意．
 
 ## 3️⃣ prh.yml の書き方
 
@@ -113,9 +118,13 @@ rules:
     prh: github は GitHub と表記する
 ```
 
-主要フィールド：
+主要フィールドは次のとおり．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 2: prh 辞書の主要フィールド
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | フィールド | 役割 |
 |---|---|
@@ -184,7 +193,11 @@ plain string で書くと `JSON Lines` 等の語に誤マッチするため `\bJ
 
 ## 4️⃣ バージョニングと影響範囲
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 3: 参照方式と反映タイミング
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | caller の参照先 | 辞書変更が反映されるタイミング |
 |---|---|
@@ -204,7 +217,11 @@ git push -f origin v2
 gh release create v2.2.1 --title "v2.2.1" --notes "..."
 ```
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 4: 変更種別ごとの扱い
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 変更種別 | タグ運用 |
 |---|---|
@@ -221,7 +238,11 @@ caller root に `.textlint-allowlist.yml` を置くと，固有の例外を text
 v2.1 以降の機能で，差分追加方式のため中央設定は変更しない．prh とは目的が異なる．
 v2.7 以降は `.prh-extra.yml` で caller だけの表記ゆれ規則を足せる（2️⃣ 参照）．
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 5: 中央 prh・caller 追加辞書・caller-side allowlist の使い分け
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 観点 | `templates/prh.yml`（中央） | `.prh-extra.yml`（caller） | `.textlint-allowlist.yml`（caller） |
 |---|---|---|---|

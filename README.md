@@ -1,8 +1,8 @@
-# 📚 github-workflows
+# 📚 `github-workflows`
 
 ## 要約
 
-Markdown を書くすべてのリポジトリに，PR にコメントする Bot 型の lint レビューを最小設定で導入するための中央リポジトリである．対象リポジトリは **1 ファイル** の caller workflow を置くだけで運用に乗る．本リポジトリは v2 以降 composite action として配布する．caller workflow は SHA pin + バージョンコメント（ `@<SHA> # v2` ）を既定とし，Dependabot が更新を追随する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．v2.6 以降は，`@claude` メンションで起動するレビュー用 reusable workflow も配布する．
+Markdown を書くすべてのリポジトリに，PR にコメントする Bot 型の lint レビューを最小設定で導入するための中央リポジトリである．対象リポジトリは **1 ファイル** の caller workflow を置くだけで運用に乗る．本リポジトリは v2 以降 composite action として配布する．caller workflow は SHA pin + バージョンコメント（`@<SHA> # v2`）を既定とし，Dependabot が更新を追随する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．v2.6 以降は，`@claude` メンションで起動するレビュー用 reusable workflow も配布する．
 
 > [!IMPORTANT]
 > **v1 タグ（reusable workflow 形式）は self-detection bug により動作しません．** v2 以降の composite action 形式へ移行してください．詳細は [Issue #3](https://github.com/tomio2480/github-workflows/issues/3) およびリリースノートを参照．
@@ -75,13 +75,13 @@ v1 md-lint の self-detection bug は該当しない．
 ### 既知の警告：cache 書き込み拒否
 
 実行ログに `cache write denied: token has no writable scopes` という警告が
-出ることがある．本 workflow が `issue_comment` で発火するため，
-GitHub の Read-only Actions cache（低信頼トリガー向け）の対象になり，
-`claude-code-action` 内部の `oven-sh/setup-bun` による bun 実行ファイルの
-cache 書き込みが拒否されるために生じる．
+出る場合もある．本 workflow は `issue_comment` で発火する．
+このため GitHub の Read-only Actions cache（低信頼トリガー向け）の対象になる．
+その結果，`claude-code-action` 内部で cache 書き込みが拒否され，警告が生じる．
+拒否されるのは `oven-sh/setup-bun` による bun 実行ファイルの cache 書き込みである．
 レビュー結果の投稿を含む動作への影響は確認されていない．
-警告を解消するには job へ `actions: write` を付与する必要があるが，
-comment-triggered workflow へこの広い権限を与えることは
+警告を解消するには job へ `actions: write` を付与する必要がある．
+ただし comment-triggered workflow へこの広い権限を与えるのは避けたい．
 最小権限の方針（[docs/security.md](docs/security.md)）に反するため見送っている．
 詳細は Issue [#76](https://github.com/tomio2480/github-workflows/issues/76) を参照．
 
@@ -139,7 +139,12 @@ github-workflows/
 
 導入のパターンは 2 つある．どちらでも配置するファイルは caller workflow 1 枚だけ．
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）．以降の表も同様． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1: 導入パターンの比較
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 観点 | (A) tomio2480 を直接参照 | (B) フォークして独立運用 |
 |---|---|---|
@@ -149,9 +154,9 @@ github-workflows/
 | アップデート（`@main`） | 中央 main へのマージで次回 PR から即反映 | 自分でフォーク先に上流同期すると反映 |
 | おすすめ対象 | Tomio さん本人 / ルールに異存がない利用者 | 組織運用 / ルールを独自カスタムしたい利用者 |
 
-参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2.2.0` 形式の SHA pin で，Dependabot が SHA とバージョンを自動追随する．即時反映を優先したい場合は `@main` を，caller 自身で明示的に追従したい場合は `@v2`（major mutable，patch ごとに進む）または `@v2.2.0`（patch immutable）を pin する．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
+参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2.2.0` 形式の SHA pin で，Dependabot が SHA とバージョンを自動追随する．即時反映を優先したい場合は `@main` を pin する．caller 自身で明示的に追従したい場合は `@v2`（major mutable）か `@v2.2.0`（patch immutable）を選ぶ．`@v2` は patch リリースごとに進む．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
 
-### パターン (A)：tomio2480/github-workflows を直接参照
+### パターン (A)：`tomio2480/github-workflows` を直接参照
 
 対象リポジトリのルートで以下を実行する．`OWNER` を 1 箇所だけ設定すれば URL と caller ファイル内部の両方に反映される．
 
@@ -174,7 +179,7 @@ curl -fsSL \
 `main` が次版へ進んでいても，新テンプレと旧参照の混在は起きない．
 生成後に `uses:` 行を目視確認し，併記の版コメントが実際の版と食い違う場合は手で合わせる．
 
-あとは PR を作るだけ．初回 PR で Actions の実行に権限承認が要求される場合があるので，リポジトリの Settings → Actions から許可する．
+あとは PR を作るだけ．初回 PR では Actions の実行に権限承認を要求される場合がある．その際はリポジトリの Settings → Actions から許可する．
 
 ### パターン (B)：自分のアカウントへフォーク
 
@@ -202,7 +207,7 @@ curl -fsSL \
 
 1. PR を作成すると Actions が走る
 2. Actions は本リポジトリを checkout して設定を読み，caller repo の Markdown を lint する
-3. 問題が見つかった行に，reviewdog が **PR レビューコメント** として自動投稿する（`filter-mode: added` のため，PR で追加・変更された行のみ）
+3. 問題が見つかった行に，reviewdog が **PR レビューコメント** として自動投稿する．対象は PR で追加・変更された行のみ（`filter-mode: added`）
 4. lint 指摘だけでは CI を失敗させない（マージをブロックしない）．checkout・設定解決・setup 等の実行エラーは通常どおり失敗する．指摘はあくまで提案
 
 ## 🤖 AI エージェント向け Quick Start
@@ -222,7 +227,7 @@ curl -fsSL \
 1. 対象リポジトリのサイズと既存 Markdown の量を確認（`git ls-files '*.md' | wc -l`）
    - 新規または少数 → [docs/onboarding-new-repo.md](docs/onboarding-new-repo.md)
    - 多数 → [docs/onboarding-existing-repo.md](docs/onboarding-existing-repo.md)
-2. ユーザーに **導入パターン** を確認する（(A) 直接参照か (B) フォークか）．判定迷うなら個人用途は (A)，組織用途は (B) を推奨
+2. ユーザーに **導入パターン** を確認する（(A) 直接参照 / (B) フォーク）．判定に迷うときの推奨は，個人用途 → (A)，組織用途 → (B)
 3. 該当する onboarding ドキュメントの手順を実行
 4. **push は指示があるまで行わない**．Pull Request は必ず Draft で作成する
 5. 導入後の挙動をユーザーに説明する（初回 PR で reviewdog コメントが付くこと）
@@ -231,7 +236,7 @@ curl -fsSL \
 
 1. 対象が中央の辞書か repo 個別の辞書かを確認
 2. 中央辞書であれば [docs/dictionary-maintenance.md](docs/dictionary-maintenance.md)
-3. repo 個別であれば，対象 repo に `prh.yml` / `.markdownlint-cli2.yaml` / `.textlintrc.json` を置いて override
+3. repo 個別であれば override を使う．対象 repo に `prh.yml` / `.markdownlint-cli2.yaml` / `.textlintrc.json` を置く
 
 ### 3. 自分が判断してよいことと，してはいけないこと
 
@@ -247,7 +252,11 @@ curl -fsSL \
 
 ## 🧩 仕組みの概略
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 2: 各レイヤーの責務
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | レイヤー | 何をするか | いつ |
 |---|---|---|
@@ -263,11 +272,15 @@ curl -fsSL \
 
 対象リポジトリのルートに同名ファイルを置くと，そのファイルが中央設定より優先される．
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 3: override 対象ファイル
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 置くファイル | 効果 |
 |---|---|
-| `.markdownlint-cli2.yaml` | markdownlint のルールを全置換 |
+| `.markdownlint-cli2.yaml` | `markdownlint` のルールを全置換 |
 | `.textlintrc.json` | textlint のルールを全置換 |
 | `prh.yml` | 辞書を全置換（中央辞書は無視される） |
 | `.textlint-allowlist.yml` | caller 固有の例外語・例外パターン・例外ルールを差分追加（v2.1〜） |
@@ -279,9 +292,13 @@ curl -fsSL \
 
 ## 🔀 フォーク運用の手引き
 
-フォーク後に **composite action 本体（ `.github/actions/markdown-lint/action.yml` ）は一切変更する必要がない**．`$GITHUB_ACTION_PATH` を起点にした相対参照で中央 templates を解決する設計のため，フォーク先からも本体を変えずに使える．利用者は caller 側で `OWNER` を自分のユーザー名に，`@<SHA>` を自分のフォークの commit SHA に置き換えるだけでよい．
+フォーク後も **composite action 本体（`.github/actions/markdown-lint/action.yml`）は変更不要** である．`$GITHUB_ACTION_PATH` を起点にした相対参照で中央 templates を解決する設計のため，フォーク先からも本体を変えずに使える．利用者は caller 側で `OWNER` を自分のユーザー名に，`@<SHA>` を自分のフォークの commit SHA に置き換えるだけでよい．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 4: フォーク利用時の作業
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 作業 | 頻度 |
 |---|---|
@@ -311,7 +328,11 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 
 ## 📚 ドキュメント一覧
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 5: ドキュメント一覧
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | ファイル | 用途 | 主な読者 |
 |---|---|---|

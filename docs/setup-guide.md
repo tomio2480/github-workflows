@@ -35,7 +35,7 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 
 本リポジトリをフォーク元として使う場合は `gh repo fork` が最速．新規に立てる場合は [パッケージ](https://github.com/tomio2480/markdown-lint-package) 相当の一式（現行リポジトリ構成に合わせて配置する）を用意する．
 
-配置対象：
+配置対象は次のとおり．
 
 - `.github/actions/markdown-lint/action.yml`（composite action 本体）
 - `.github/workflows/test-self-lint.yml`（単体／統合テスト CI）
@@ -50,8 +50,8 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 
 必ず [docs/security.md](security.md) を読んで以下を実施する．
 
-- Settings → Actions → General → 「Require approval for all outside collaborators」
-- Settings → Actions → General → Workflow permissions 「Read repository contents」
+- Settings → Actions → General →「Require approval for all outside collaborators」
+- Settings → Actions → General → Workflow permissions「Read repository contents」
 - Settings → Actions → General → Allow Actions to create PRs → **OFF**
 - Settings → Branches → Branch protection on `main`
 - Settings → Security → Dependabot alerts / security updates → **ON**
@@ -70,11 +70,11 @@ npm install --no-save bats
 npx bats tests/bash
 ```
 
-GitHub Actions 上でも `.github/workflows/test-self-lint.yml` の `unit-python` / `unit-bash` job が同じ単体テストを，`integration-action` job が composite action の統合テストを走らせる．ローカルが緑でも CI が真の判定．
+GitHub Actions 上でも `.github/workflows/test-self-lint.yml` が同じ検証を走らせる．`unit-python` / `unit-bash` job が単体テストを，`integration-action` job が統合テストを担う．ローカルが緑でも CI が真の判定．
 
 ## 5️⃣ v2 タグを打つ（任意）
 
-caller テンプレートの既定は SHA pin + バージョンコメント（ `@<SHA> # v2` ）．main に commit を積むと SHA pin 利用者には Dependabot 経由で更新 PR が起票される．`@main` 直接参照の利用者には次回 PR から即時反映される．
+caller テンプレートの既定は SHA pin + バージョンコメント（`@<SHA> # v2`）．main に commit を積むと SHA pin 利用者には Dependabot 経由で更新 PR が起票される．`@main` 直接参照の利用者には次回 PR から即時反映される．
 
 安定点（milestone）でタグを残したい場合は以下のように打つ．
 
@@ -94,9 +94,9 @@ gh release create v2 \
 
 任意のテストリポジトリを用意し，[docs/onboarding-new-repo.md](onboarding-new-repo.md) に従って caller workflow を配置．PR を作って reviewdog コメントが付くことを確認する．
 
-確認ポイント：
+確認ポイントは次のとおり．
 
-- `Resolve config file paths` ステップで `${GITHUB_ACTION_PATH}/../../../templates/` 配下のパスが解決されているか
-- `Generate runtime textlint config with resolved prh path` で `${RUNNER_TEMP}/textlintrc.runtime.json` が生成されているか
-- reviewdog の markdownlint・textlint コメントが PR に投稿されているか
+- `Resolve config file paths` ステップの確認．`${GITHUB_ACTION_PATH}/../../../templates/` 配下のパスが解決されているか
+- `Generate runtime textlint config with resolved prh path` ステップの確認．`${RUNNER_TEMP}/textlintrc.runtime.json` が生成されているか
+- reviewdog の `markdownlint`・textlint コメントが PR に投稿されているか
 - CI ステータスが緑で終わっているか（`fail_on_error: false` のため）

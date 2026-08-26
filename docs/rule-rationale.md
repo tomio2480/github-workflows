@@ -57,8 +57,9 @@ caller 固有の表記ゆれ規則（読点の流儀など）は v2.7 以降，c
 plain string で `JS` と書くと substring match が効き，`JSON Lines` のような語にも誤マッチするため避ける．
 
 `ユーザー`・`サーバー`・`コンピューター` ルールも同根の問題を回避している．
-長音「ー」で終わる語を plain string で書くと，正しい表記（例: `サーバー`）内の
-部分文字列（例: `サーバ`）にも substring match して誤検出する．
+長音「ー」で終わる語を plain string で書く場合を考える．
+正しい表記（例: `サーバー`）内の部分文字列（例: `サーバ`）にも
+substring match して誤検出する．
 否定先読み `(?!ー)` で長音が続く場合を除外する設計で統一する
 （[Issue #33](https://github.com/tomio2480/github-workflows/issues/33)・[Issue #48](https://github.com/tomio2480/github-workflows/issues/48)）．
 
@@ -136,8 +137,8 @@ v1 は次の 7 語を収録する．
 
 機械置換できる 2 語（`不可欠` → `必要`，`に他ならない` → `である`）を除き，
 expected は（）付きのガイダンス文字列である．自動置換には適さない．
-中央 composite action は `--fix` を起動せず，CI 経路（checkstyle → reviewdog）では
-fix 情報を使わないため影響はない．
+中央 composite action は `--fix` を起動しない．
+CI 経路（checkstyle → reviewdog）では fix 情報を使わないため影響はない．
 caller 独自パイプラインで `--fix` を有効化する場合は本節ルールの diff 確認が必要になる．
 
 per-repo の例外は `.textlint-allowlist.yml` で吸収できる（v2.1 以降）．
@@ -210,7 +211,7 @@ textlint 本体に `overrides` が実装された時点で本節を見直す．
 ## 🧩 max-kanji-continuous-len と固有名詞の例外
 
 `max-kanji-continuous-len` は漢字が連続する文字数を制限するルールで，既定値は `max: 6` である．
-固有名詞など，意味を損なわずに分割できない語が誤検出される場合がある．
+固有名詞など，意味を損なわずに分割できない語は誤検出される場合がある．
 `allow` オプションで例外を文字列配列として指定することで回避できる
 （[Issue #49](https://github.com/tomio2480/github-workflows/issues/49)）．
 
