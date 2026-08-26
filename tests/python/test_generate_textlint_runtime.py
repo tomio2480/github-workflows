@@ -10,6 +10,8 @@
     - argv 4 つ目が valid なファイルのときは内容を filters.allowlist に inject する
     - argv 4 つ目が指定されたが存在しないファイルのときは ValueError
     - allowlist YAML root が dict でないときは TypeError
+    - allowlist に allow / allowlistConfigPaths 以外の鍵があると警告を出す
+      （内容は書き換えず素通しする．Issue #98）
     - argv 5 つ目（caller 追加 prh 辞書パス）が空文字または省略のときは rulePaths は 1 本
     - argv 5 つ目が valid なファイルのときは rulePaths を [中央, 追加] の 2 本にする
     - argv 5 つ目が指定されたが存在しないファイルのときは ValueError
@@ -225,6 +227,51 @@ def test_allowlist_root_must_be_dict_otherwise_type_error(tmp_path, yaml_body):
 
     with pytest.raises(TypeError, match="allowlist"):
         _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+
+def test_allowlist_unknown_key_emits_github_warning(tmp_path, capsys):
+    src = _write(tmp_path / "src.json", {"rules": {}})
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+    allowlist = _make_allowlist(tmp_path, "allowRules:\n  - some-rule\n")
+
+    _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+    out = capsys.readouterr().out
+    assert out.startswith("::warning::")
+    assert "allowRules" in out
+    # 警告のみで挙動は変えない．内容はそのまま inject する（素通し）
+    written = json.loads(dest.read_text(encoding="utf-8"))
+    assert written["filters"]["allowlist"] == {"allowRules": ["some-rule"]}
+
+
+def test_allowlist_multiple_unknown_keys_are_all_listed(tmp_path, capsys):
+    src = _write(tmp_path / "src.json", {"rules": {}})
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+    allowlist = _make_allowlist(
+        tmp_path, "allow:\n  - foo\nallowRules:\n  - bar\ntypo: true\n"
+    )
+
+    _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+    out = capsys.readouterr().out
+    assert "allowRules" in out
+    assert "typo" in out
+    assert "allow" in out  # 警告文には有効な鍵の案内も含める
+
+
+def test_allowlist_known_keys_only_no_warning(tmp_path, capsys):
+    src = _write(tmp_path / "src.json", {"rules": {}})
+    prh = _make_prh(tmp_path)
+    dest = tmp_path / "runtime.json"
+    allowlist = _make_allowlist(
+        tmp_path, "allow:\n  - foo\nallowlistConfigPaths:\n  - ./extra.yml\n"
+    )
+
+    _MODULE.main([str(src), str(prh), str(dest), str(allowlist)])
+
+    assert capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize(
