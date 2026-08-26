@@ -1,8 +1,8 @@
-# 🤖 CLAUDE.md — github-workflows での作業指示
+# 🤖 CLAUDE.md — `github-workflows` での作業指示
 
 ## 要約
 
-このリポジトリで Claude Code / Claude Desktop 等の AI エージェントが作業するときの規律．通常の開発規律（`code-quality` / `github-dev` / `docs-quality` Skill）に加え，中央リポジトリとして多数の caller に影響を与える性質に由来するルールをまとめる．`reviewdog` による Bot 型 PR レビューを提供するため，公開運用時のセキュリティ配慮も必須．本リポジトリは composite action として配布する形式（v2 以降）．v1 は self-detection bug により動作しません．v2.6 以降は Claude レビュー用 reusable workflow（`claude-review`）も配布する．
+このリポジトリで Claude Code / Claude Desktop 等の AI エージェントが作業するときの規律．通常の開発規律（`code-quality` / `github-dev` / `docs-quality` Skill）に加えるルールをまとめる．追加分は，中央リポジトリとして多数の caller に影響を与える性質に由来する．`reviewdog` による Bot 型 PR レビューを提供するため，公開運用時のセキュリティ配慮も必須．本リポジトリは composite action として配布する形式（v2 以降）．v1 は self-detection bug により動作しません．v2.6 以降は Claude レビュー用 reusable workflow（`claude-review`）も配布する．
 
 ## 目次
 
@@ -16,10 +16,10 @@
 ## 📋 このリポジトリの性質
 
 - 複数リポジトリから `uses:` で呼び出される composite action を管理する（v2 以降）
-- caller テンプレートの既定は SHA pin + バージョンコメント（ `@<SHA> # v2` ）．`.github/actions/markdown-lint/action.yml` や `templates/` の変更は SHA pin 利用者に対し Dependabot 経由で更新 PR が起票される．`@main` 直接参照は Dependabot の追随対象外
+- caller テンプレートの既定は SHA pin + バージョンコメント（`@<SHA> # v2`）．変更が SHA pin 利用者へ届く経路は Dependabot の更新 PR である．対象は `.github/actions/markdown-lint/action.yml` や `templates/` の変更である．`@main` 直接参照は Dependabot の追随対象外
 - v1 タグ（reusable workflow 形式）は self-detection bug により動作しない．残置はするがリリースノートで非推奨を明示している
 - `@claude` メンション起動の Claude レビュー用 reusable workflow も配布する（v2.6〜）．実体は `.github/workflows/claude-review.yml` である．中央ファイルを自己参照しないため，v1 の self-detection bug は該当しない
-- reviewdog で PR inline コメントを投稿するため，caller 側に `pull-requests: write` 権限と `github-token` input への明示的な渡しが必要
+- reviewdog で PR inline コメントを投稿するため，caller 側に 2 点が必要．`pull-requests: write` 権限と，`github-token` input への明示的な渡しである
 - 公開（public）運用される．外部からのフォーク PR は原則マージしない
 
 ## 🚨 変更時の注意
@@ -73,12 +73,12 @@
 - Pull Request は **必ず Draft** で作成する
 - ワークフローおよび composite action の変更は `act` 等でローカル検証，またはテスト用リポジトリから呼び出して動作確認する．本リポジトリには [.github/workflows/test-self-lint.yml](.github/workflows/test-self-lint.yml) で composite action の単体／統合テストが組まれている
 - `scripts/` 配下に新規ロジックを追加する場合は `tests/` で test-first で書く．Red → Green → Refactor の順を守る
-- コミットは論理単位で分ける（テスト追加／実装／テンプレ変更／ドキュメント更新 など）
+- コミットは論理単位で分ける（テスト追加／実装／テンプレ変更／ドキュメント更新など）
 
 ## 🔀 フォーク利用と OWNER プレースホルダー
 
 - composite action 本体は **オーナー名をハードコードしない**．`$GITHUB_ACTION_PATH` から自リポジトリのチェックアウト先絶対パスを取得し，そこから中央 templates へ相対参照する設計
-- `templates/.github/workflows/md-lint.yml` には `OWNER/github-workflows` プレースホルダーを残す．`tomio2480` 直接利用者もフォーク利用者も同じテンプレを使える
+- `templates/.github/workflows/md-lint.yml` には `OWNER/github-workflows` プレースホルダーを残す．`tomio2480` 直接利用者とフォーク利用者のどちらも同じテンプレを使える
 - ドキュメントやコメントで例として `tomio2480` を使うのは OK．ただし「フォーク利用時はここを自分のユーザー名に」と必ず注意書きする
 
 ## 📚 関連ドキュメント

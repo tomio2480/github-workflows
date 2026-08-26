@@ -22,7 +22,12 @@
 
 ## 🔀 導入パターンの選択
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1: 2 つの導入パターン
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | パターン | 説明 | 向いているケース |
 |---|---|---|
@@ -57,7 +62,7 @@ cat .github/workflows/md-lint.yml
 
 出力を目視確認する．`uses:` 行の `OWNER` と `<SHA>` が実際の値に置換されていればよい．併記の版コメント（`# v2` 等）が実際の版と食い違う場合は手で合わせる．テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）に揃えているため，`main` が次版へ進んでいても新旧混在の caller は生成されない．
 
-`gh release view v2 --json targetCommitish` は release が作成されたブランチ名（既定 `main`）を返すため commit SHA を保証しない．SHA 解決には上記 git refs API を使うこと．
+`gh release view v2 --json targetCommitish` は，release が作成されたブランチ名（既定 `main`）を返す．このため commit SHA を保証しない．SHA 解決には上記 git refs API を使うこと．
 
 ## 2️⃣ 初回 PR で動作確認
 
@@ -75,7 +80,7 @@ Draft PR を作成すると Actions が起動し，変更された `.md` 行に�
 
 手元で `git push` を弾く pre-push hook が欲しい場合のみ．一人運用ならスキップしてよい．
 
-ローカル hook で走る `markdownlint-cli2` と `textlint` が CI と同じ結果を出すためには，`lefthook.yml` だけでなく設定ファイル（`.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml`）もローカルに必要．導入時は 4 ファイルまとめて取得する．
+ローカル hook で走る `markdownlint-cli2` や `textlint` に，CI と同じ結果を出させたい．それには `lefthook.yml` だけでなく設定ファイルもローカルに必要である．対象は `.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml` の 3 つ．導入時は 4 ファイルまとめて取得する．
 
 ### Node.js プロジェクト
 
@@ -98,7 +103,7 @@ npx -y lefthook install
 
 ### 非 Node.js プロジェクト
 
-`lefthook` のバイナリを別途インストールし，以下のように `lefthook.yml` と 3 つの設定ファイルをまとめてコピーしてから `lefthook install` を実行する．
+`lefthook` のバイナリを別途インストールする．以下のように `lefthook.yml` と 3 つの設定ファイルをまとめてコピーし，`lefthook install` を実行する．
 
 ```bash
 # 1️⃣ で解決した ${OWNER} / ${SHA} を再利用し，caller が参照するリビジョンと揃える

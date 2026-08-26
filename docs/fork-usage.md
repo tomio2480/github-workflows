@@ -24,7 +24,7 @@
 - 破壊的変更のタイミングを自分で制御したい
 - 上流の lint ルールと合わない部分がある
 
-個人で Tomio さんのルールに異存がない利用者は [パターン (A) の直接参照](onboarding-new-repo.md) のほうが保守コストが低い．
+個人で Tomio さんのルールに異存のない利用者には，[パターン (A) の直接参照](onboarding-new-repo.md) のほうが保守コストは低い．
 
 ## 1️⃣ フォークを作成
 
@@ -38,7 +38,7 @@ UI から行う場合は GitHub の `https://github.com/tomio2480/github-workflo
 
 ## 2️⃣ v2 タグを打つ（任意）
 
-caller テンプレートの既定は SHA pin + バージョンコメント（ `@<SHA> # v2` ）．フォーク直後でも commit SHA さえ控えれば即運用可能．タグは Dependabot の major version 追随や release notes 管理を簡単にしたい場合に opt-in で打つ．
+caller テンプレートの既定は SHA pin + バージョンコメント（`@<SHA> # v2`）．フォーク直後でも commit SHA さえ控えれば即運用可能．タグは Dependabot の major version 追随や release notes 管理を簡単にしたいとき，opt-in で打つ．
 
 ```bash
 # 安定点での milestone として（推奨）
@@ -49,7 +49,7 @@ gh release create v2 \
   --notes "Forked from tomio2480/github-workflows v2 (composite action)"
 ```
 
-`@main` 参照の caller は main 更新に自動で追随するため，タグを打たなくても最新ルールは届く．破壊的変更（inputs 互換性の変更など）をする場合は `@main` 利用者にも影響するので事前に周知し，pinning 利用者を増やしたいときのみ `v2` タグを用意する．さらに破壊的変更を重ねる場合は `v3` を新規に切って `v2` は旧状態で残す．
+`@main` 参照の caller は main 更新に自動で追随するため，タグを打たなくても最新ルールは届く．破壊的変更（inputs 互換性の変更など）は `@main` 利用者にも影響するので事前に周知する．pinning 利用者を増やしたいときのみ `v2` タグを用意する．さらに破壊的変更を重ねる場合は `v3` を新規に切って `v2` は旧状態で残す．
 
 > [!WARNING]
 > 上流の `v1` タグ（reusable workflow 形式）は self-detection bug により動作しません．フォークしても `v1` タグを引き継いだり打ち直したりしないでください．composite action 形式の v2 以降を採用してください．
@@ -116,7 +116,12 @@ gh release create v2.2.1 --title "v2.2.1" --notes "..."
 
 フォーク先で `templates/prh.yml` 等を自由に編集すればよい．caller は変更なしで，`@main` 参照なら次回 PR から新辞書が効く．SHA pin 利用者には Dependabot の更新 PR で伝わる．
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1: 主なカスタム箇所
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | ファイル | 主な変更ポイント |
 |---|---|
@@ -125,7 +130,7 @@ gh release create v2.2.1 --title "v2.2.1" --notes "..."
 | `templates/.markdownlint-cli2.yaml` | 組織として許容したい記法 |
 | `.github/actions/markdown-lint/action.yml` | reviewdog の reporter / filter mode のデフォルト変更や step 追加 |
 
-破壊的変更（既存 caller で急に指摘が増える，inputs の互換性が変わるなど）を入れるときは新メジャータグ（`v3`）を切り，caller 側で `@<新 SHA> # v3` へ切り替えてもらう運用にする．
+破壊的変更（既存 caller で急に指摘が増える，inputs の互換性が変わるなど）を入れるときは新メジャータグ（`v3`）を切る．caller 側で `@<新 SHA> # v3` へ切り替えてもらう運用にする．
 
 ## 📚 参考
 

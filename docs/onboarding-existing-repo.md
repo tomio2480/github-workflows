@@ -2,7 +2,7 @@
 
 ## 要約
 
-既存リポジトリに Bot 型 Markdown lint を後付け導入する手順．新規導入と違うのは **既存の Markdown ファイルが大量の指摘を出す可能性がある** 点だけ．reviewdog の `filter-mode: added` により PR で変更された行のみコメントされるため，既存ファイルが一斉にコメントで埋まる事態は起きない．ただし既存品質を底上げしたい場合の戦略も提示する．
+既存リポジトリに Bot 型 Markdown lint を後付け導入する手順．新規導入と違うのは **既存の Markdown ファイルが大量の指摘を出す可能性がある** 点だけ．reviewdog の `filter-mode: added` により，PR で変更された行のみコメントされる．このため既存ファイルが一斉にコメントで埋まる事態は起きない．ただし既存品質を底上げしたい場合の戦略も提示する．
 
 ## 目次
 
@@ -28,7 +28,7 @@
 
 既存ファイル全体を lint して指摘を一覧化する．
 
-**注意**：この時点で caller repo には中央設定ファイル（`.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml`）が無いため，`npx -y` コマンドは各ツールのデフォルト設定で動作する．中央設定の結果と一致させたい場合は，事前に中央テンプレートを取得してから lint を走らせる．また textlint は `.textlintrc.json` で指定されたプリセット・プラグインがローカルの `node_modules` に存在している必要があるため，事前に `npm install --no-save` で取得しておく．
+**注意**：この時点の caller repo には中央設定ファイルが無い．対象は `.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml` である．このため `npx -y` コマンドは各ツールのデフォルト設定で動作する．中央設定の結果と一致させたい場合は，事前に中央テンプレートを取得してから lint を走らせる．また textlint は，`.textlintrc.json` が指定するプリセット・プラグインをローカルの `node_modules` から読む必要がある．事前に `npm install --no-save` で取得しておく．
 
 ```bash
 # OWNER は tomio2480 または自分のユーザー名
@@ -63,7 +63,12 @@ npx -y textlint "**/*.md" 2>&1 | tee textlint-report.txt
 
 指摘を以下 3 分類でトリアージする．
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1: トリアージ分類
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 分類 | 対応 |
 |---|---|
@@ -73,7 +78,7 @@ npx -y textlint "**/*.md" 2>&1 | tee textlint-report.txt
 
 ### インライン例外の書き方
 
-markdownlint の場合：
+`markdownlint` の場合は次のとおり．
 
 ```markdown
 <!-- markdownlint-disable MD013 -->
@@ -81,7 +86,7 @@ markdownlint の場合：
 <!-- markdownlint-enable MD013 -->
 ```
 
-textlint の場合：
+textlint の場合は次のとおり．
 
 ```markdown
 <!-- textlint-disable preset-ja-technical-writing/sentence-length -->
@@ -93,7 +98,7 @@ textlint の場合：
 
 自動修正可能な指摘をまず潰す．
 
-**重要**：`--fix` はファイルを実際に書き換えるため，中央設定が手元に無い状態で実行するとツールのデフォルトルールで修正されてしまい，CI（Bot）と整合しない変更が大量に入る可能性がある．2️⃣ で中央 config を取得していない場合は事前に取得しておくこと．
+**重要**：`--fix` はファイルを実際に書き換える．中央設定が手元に無い状態で実行すると，ツールのデフォルトルールで修正されてしまう．結果として CI（Bot）と整合しない変更が大量に入る可能性がある．2️⃣ で中央 config を取得していない場合は事前に取得しておくこと．
 
 ```bash
 # 2️⃣ で未取得なら先に取得（既に取得済みならスキップ）
@@ -121,7 +126,7 @@ npx -y textlint --fix "**/*.md" || true
 git diff --stat
 ```
 
-`|| true` を付けているのは，残指摘で終了コード非ゼロで落ちてもスクリプトを止めないため．
+`|| true` を付けているのは，残指摘による非ゼロ終了でもスクリプトを止めないため．
 
 はてなブログ独自記法など自動修正で壊れる箇所はある．差分を目視確認し，意図しない書き換えは個別に revert する．
 
@@ -141,7 +146,7 @@ curl -fsSL \
   > .textlintrc.json
 ```
 
-`.textlintrc.json` で `sentence-length.max` を緩和：
+`.textlintrc.json` で `sentence-length.max` を緩和する．
 
 ```json
 {
