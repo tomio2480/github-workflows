@@ -71,10 +71,8 @@ reusable workflow 形式を優先検討する．
 
 ## 反映先
 
-- [docs/architecture.md](../architecture.md) を更新した．
-  「caller テンプレートの構造変更が伝播しない問題」節を新設した．
+- [docs/architecture.md](../architecture.md) を更新した．「caller テンプレートの構造変更が伝播しない問題」節を新設した．
   composite action と reusable workflow の吸収範囲の違いを明文化した．
   併せて運用ルールも明文化した．
-- [CLAUDE.md](../../CLAUDE.md) を更新した．
-  「テンプレート・設定ファイルの変更」節に規律を追記した．
+- [CLAUDE.md](../../CLAUDE.md) を更新した．「テンプレート・設定ファイルの変更」節に規律を追記した．
   対象は job・workflow レベルのキー変更時の運用である．

@@ -18,7 +18,7 @@ Dependabot が textlint 14.8.4 → 15.6.0 の更新 PR（#40）を起票した�
 ### 検証手順
 
 1. tmpdir を 2 つ用意し，v14.8.4 と v15.6.0 を独立インストール
-2. 実際の使用パッケージ構成（`textlint-filter-rule-comments`・`textlint-rule-preset-ja-technical-writing` v12 等）をそのまま再現
+2. 実際の使用パッケージ構成をそのまま再現．対象は `textlint-filter-rule-comments` や `preset-ja-technical-writing` v12 等
 3. `scripts/generate-textlint-runtime.py` で runtime config を生成
 4. `tests/fixtures/markdown/with-issues.md` を両バージョンで実行して出力を比較
 
@@ -33,8 +33,8 @@ Dependabot が textlint 14.8.4 → 15.6.0 の更新 PR（#40）を起票した�
 
 ## 誤解の根拠推測
 
-コメント当時の "No rules found" は v15 自体の制約ではなく，
-`textlint-filter-rule-comments` が install されていなかったことによる既知の挙動だった可能性が高い．
+コメント当時の "No rules found" は v15 自体の制約ではないとみられる．
+`textlint-filter-rule-comments` の install 漏れによる既知の挙動だった可能性が高い．
 
 action.yml 同ステップの直後のコメントに以下の記述があり，この不具合は以前から把握されていた．
 
@@ -47,19 +47,19 @@ v13 以降の `createLinter` は `import()` ベースのローダーを採用し
 
 ## Gemini SHA 誤検知のパターン
 
-PR #43（setup-node v4.4.0 → v6.4.0 bump）の review で，
-Gemini が SHA `48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` を
-「v4.2.0 相当」と誤指摘した（v4.2.0 の実 SHA は `1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a`）．
+PR #43（setup-node v4.4.0 → v6.4.0 bump）の review で誤指摘が出た．
+Gemini は SHA `48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` を「v4.2.0 相当」と指摘した．
+v4.2.0 の実 SHA は `1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a` である．
 
-GitHub API `repos/actions/setup-node/git/ref/tags/v6.4.0` で
-`refs/tags/v6.4.0` と mutable `refs/tags/v6` の双方が当該 SHA を指すことを確認し，却下した．
+GitHub API `repos/actions/setup-node/git/ref/tags/v6.4.0` で確認した．
+`refs/tags/v6.4.0` と mutable `refs/tags/v6` の双方が当該 SHA を指していたため，却下した．
 
 Bot レビューが SHA とバージョンの対応を誤って指摘するケースがある．
 指摘を受けた場合は GitHub API で一次確認してから採否を判断する．
 
 ## 代替案と棄却理由
 
-- **上流（preset-ja-technical-writing）の ESM 対応を待つ**: 直近 6 か月はメンテが限定的で ESM 対応 Issue もなく，待機コストが高い．v15 が CJS を拒否しない以上，上流変更は不要．棄却．
+- **上流（preset-ja-technical-writing）の ESM 対応を待つ**: 直近 6 か月はメンテが限定的で ESM 対応 Issue もない．待機コストが高い．v15 が CJS を拒否しない以上，上流変更は不要．棄却．
 - **v14 系の継続運用**: Node.js 24 がデフォルト LTS になった現在，v14 は Node.js 20 必須（v15 は 20+）なので差はない．v14 は 2025-06-22 で最終リリース済みで将来的なセキュリティ対応が期待できない．棄却．
 
 ## 参照

@@ -37,7 +37,7 @@ Issue を経緯保管として継続する判断に至った．
 ## レビュー指摘の出典突合
 
 `gemini-code-assist` から PR #58 に「図番号 `3.5.-1` はタイポではないか」
-という指摘を受けた．該当箇所は techbook 側 Issue からの引用であり，
+という指摘を受けた．該当箇所は techbook 側 Issue からの引用である．
 [techbook PR #15](https://github.com/tomio2480/techbook-introduction-to-electronics-basic-led/pull/15)
 で決定した独自の採番規則（`図X.Y.-Z`）に基づく表記だった．
 
