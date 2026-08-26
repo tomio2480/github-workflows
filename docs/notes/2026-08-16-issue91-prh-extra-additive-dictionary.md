@@ -43,7 +43,12 @@ caller root の `prh.yml` は中央辞書を全置換する規約のため，1 �
 `rulePaths` の順序を入れ替えると `expected` も入れ替わったため，衝突は **先頭の辞書が勝つ** ．
 prh は複数辞書を読み込み順にマージし，同一パターンは先に登録された規則を保持する．
 
+<!-- 図表キャプションは体言止めとするため，この 1 行のみ許容する（Issue #57 の方針）． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1. 衝突時の実測結果
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | `rulePaths` の順序 | `Github` への指摘 |
 |---|---|
