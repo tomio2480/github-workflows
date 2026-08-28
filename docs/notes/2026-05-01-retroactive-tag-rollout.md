@@ -71,7 +71,7 @@ gh release create v2.2.1 --latest --title "v2.2.1" --notes "..."
 
 `gh release create v2.0.0 --target 8382b97 ...` は次のエラーで失敗する．
 
-```
+```text
 HTTP 422: Validation Failed
 Release.target_commitish is invalid
 ```

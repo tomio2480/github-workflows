@@ -64,6 +64,6 @@ Bot レビューが SHA とバージョンの対応を誤って指摘するケ�
 
 ## 参照
 
-- Issue #42（setup-node Node.js 24 対応）: https://github.com/tomio2480/github-workflows/issues/42
-- PR #40（textlint v15.6.0 bump）: https://github.com/tomio2480/github-workflows/pull/40
-- PR #43（setup-node v6.4.0 bump）: https://github.com/tomio2480/github-workflows/pull/43
+- Issue #42（setup-node Node.js 24 対応）: <https://github.com/tomio2480/github-workflows/issues/42>
+- PR #40（textlint v15.6.0 bump）: <https://github.com/tomio2480/github-workflows/pull/40>
+- PR #43（setup-node v6.4.0 bump）: <https://github.com/tomio2480/github-workflows/pull/43>
