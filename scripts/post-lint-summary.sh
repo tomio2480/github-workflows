@@ -11,6 +11,13 @@
 #   REPO         - owner/repo 形式のリポジトリ識別子（必須）
 #   PR_NUMBER    - PR 番号（必須）
 #   SUMMARY_JSON - count-lint-findings.py が出した JSON ファイルのパス（必須）
+#   LINT_BASE_SHA / LINT_HEAD_SHA - 検査対象コミットの併記用（任意）．
+#     両方揃ったときだけ本文へ「検査対象」行を出す（Issue #119）．
+#     PR の lint はマージコミット（head を base へ merge した木）を checkout
+#     して走るため，「リポジトリ全体」の件数は main の現在値ではなく
+#     その時点の base に対する値である．どの base を数えたかを summary に
+#     残すことで，解消済みの件数が古い base のせいで残って見えるケースを
+#     summary 単体で判別できるようにする．
 #
 # 仕様:
 #   - hidden marker `<!-- gh-workflows-lint-summary -->` 付きコメントを GET で
@@ -168,6 +175,18 @@ else:
         "|---|---|",
         f"| markdownlint | {md_total} |",
         f"| textlint | {text_cell} |",
+        "",
+    ]
+
+# Issue #119: どのコミットを検査したかを 1 行併記する．全体件数は checkout
+# した木（PR のマージコミット）の base 時点の値であり，main の現在値と
+# 取り違えられやすいため，base を明示して summary 単体で判別可能にする．
+base_sha = os.environ.get("LINT_BASE_SHA", "")
+head_sha = os.environ.get("LINT_HEAD_SHA", "")
+if base_sha and head_sha:
+    lines += [
+        f"検査対象: `Merge {head_sha[:7]} into {base_sha[:7]}`"
+        f"（base: `{base_sha[:7]}`）",
         "",
     ]
 

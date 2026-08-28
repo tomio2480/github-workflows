@@ -372,6 +372,13 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
         MARKDOWN_IGNORE: ${{ inputs.markdown-ignore }}
         DIFF_FILES_PATH: ${{ steps.diff_files.outputs.path }}
+        # 検査対象コミットの併記用（Issue #119）．lint はマージコミット
+        # （head を base へ merge した木）に対して走るため，全体件数の基準に
+        # なった base を summary へ明示する．step は pull_request イベントに
+        # ガード済みのため両 SHA は常に取れる想定だが，取れない場合は
+        # post-lint-summary.sh 側が行ごと省略する（後方互換）．
+        LINT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        LINT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         set -uo pipefail
         # ワークスペース非汚染のため RUNNER_TEMP 配下に置く（pr-diff-files.txt と同じ規約）．
