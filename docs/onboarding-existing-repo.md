@@ -80,11 +80,17 @@ npx -y textlint "**/*.md" 2>&1 | tee textlint-report.txt
 
 `markdownlint` の場合は次のとおり．
 
+<!-- 下のフェンス内の disable/enable 例は markdownlint に実際に解釈される． -->
+<!-- capture/restore で例の前後の設定状態を退避・復元する． -->
+<!-- markdownlint-capture -->
+
 ```markdown
 <!-- markdownlint-disable MD013 -->
 長い行を含むテーブルなど
 <!-- markdownlint-enable MD013 -->
 ```
+
+<!-- markdownlint-restore -->
 
 textlint の場合は次のとおり．
 
