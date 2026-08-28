@@ -8,6 +8,8 @@
 #     REPO         - owner/repo（必須）
 #     PR_NUMBER    - PR 番号（必須）
 #     SUMMARY_JSON - count-lint-findings.py が出した JSON ファイルのパス（必須）
+#     LINT_BASE_SHA / LINT_HEAD_SHA - 検査対象コミットの併記用（任意．
+#       両方揃ったときだけ本文へ「検査対象」行を出す．Issue #119）
 #   動作
 #     - <!-- gh-workflows-lint-summary --> を marker として既存コメントを GET → find
 #     - 一致あれば PATCH /repos/:owner/:repo/issues/comments/:id
@@ -280,6 +282,44 @@ PY
   grep -q 'BODY: .*Actions run: https://github\.com/acme/repo/actions/runs/9999/attempts/1' "${FAKE_CURL_LOG}"
 
   unset GITHUB_SERVER_URL GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_RUN_ATTEMPT
+}
+
+@test "検査対象の env が揃っていれば本文に検査対象の行を含む（Issue #119）" {
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":0,"repo_total":21,"findings":[]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+  export LINT_HEAD_SHA="cf537c9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+  export LINT_BASE_SHA="d7c9173bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  # SHA は短縮 7 桁で表示され，base がどのコミットかを summary 単体で判別できる
+  grep -q 'BODY: .*検査対象: `Merge cf537c9 into d7c9173`（base: `d7c9173`）' "${FAKE_CURL_LOG}"
+
+  unset LINT_HEAD_SHA LINT_BASE_SHA
+}
+
+@test "検査対象の env が無ければ検査対象の行を出さない（後方互換）" {
+  _write_summary '{"markdownlint":{"total":0},"textlint":{"error":0,"warning":0,"info":0,"total":0}}'
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  ! grep -q 'BODY: .*検査対象' "${FAKE_CURL_LOG}"
+}
+
+@test "検査対象の env が片方だけのときは検査対象の行を出さない" {
+  _write_summary '{"markdownlint":{"total":0},"textlint":{"error":0,"warning":0,"info":0,"total":0}}'
+  export FAKE_CURL_GET_BODY='[]'
+  export LINT_HEAD_SHA="cf537c9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  ! grep -q 'BODY: .*検査対象' "${FAKE_CURL_LOG}"
+
+  unset LINT_HEAD_SHA
 }
 
 @test "findings が MAX を超えるとき details 末尾に「他 X 件」 と出る" {

@@ -213,14 +213,14 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 | hidden marker | `<!-- gh-workflows-lint-summary -->`．他 bot（CodeRabbit / Gemini）と衝突しない `gh-workflows-` プレフィックス |
 | 同定方法 | PR コメントを GET（pagination 対応）し marker を含むコメントを検索 |
 | 動作 | 既存あり → PATCH，無し → POST．push のたびに同一コメントが最新化される |
-| 表示内容 | 件数表（textlint は error / warning / info の内訳）と findings 上位 20 件の `<details>`，Actions run へのリンク．差分絞り込みが効いているときはリポジトリ全体の件数列を併記する（[Issue #104](https://github.com/tomio2480/github-workflows/issues/104)） |
+| 表示内容 | 件数表（textlint は error / warning / info の内訳）と findings 上位 20 件の `<details>`，Actions run へのリンク．差分絞り込みが効いているときはリポジトリ全体の件数列を併記する（[Issue #104](https://github.com/tomio2480/github-workflows/issues/104)）．検査対象コミット（`Merge <head> into <base>` と base）も 1 行併記し，全体件数が古い base 由来かを summary 単体で判別できるようにする（[Issue #119](https://github.com/tomio2480/github-workflows/issues/119)） |
 | 失敗時 | 必須 env 不足は execution error．API call 失敗は `::warning::` で annotation し exit 0（fail-open） |
 | fork PR | `pull-requests: write` が降格されるため事前に skip．reviewdog inline コメントの制約と整合 |
 | opt-out | composite action の `post-summary` input に `"false"` を渡せば投稿 step ごと skip．同一 PR で複数 job が同 marker を奪い合うケースの逃げ道．reviewdog の inline コメント投稿には影響しない |
 | 件数フィルタ | composite action の `markdown-ignore` input に path glob を改行区切りで渡すと summary 件数から除外できる．`tests/fixtures/**` のような prefix 形式で相対・絶対両方のパスを除外する．reviewdog の inline コメントは `filter-mode` で別途制御されるため本 input の影響を受けない |
 | 集計スコープ | summary の findings 一覧は PR 差分ファイルのみを対象にする（[Issue #59](https://github.com/tomio2480/github-workflows/issues/59)）．取得失敗時はリポジトリ全体スコープにフォールバックする．件数表には差分の件数と全体の件数を併記し，差分に現れない既存指摘の存在を可視化する（Issue #104） |
 
-集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は件数と findings 一覧を集計し，JSON を stdout に出す．入力は textlint の checkstyle XML（`textlint-report.xml`）である．加えて `markdownlint-cli2` のテキストレポート（`markdownlint-report.txt`）も読む．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．`markdownlint` の実行は composite action 内の `markdownlint-cli2` 1 回である．結果テキストを reviewdog への入力（errorformat 経由の inline 投稿）と summary 集計の両方で共用する（v2.11.0 で一本化．[Issue #117](https://github.com/tomio2480/github-workflows/issues/117)）．
+集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は件数と findings 一覧を集計し，JSON を stdout に出す．入力は textlint の checkstyle XML（`textlint-report.xml`）である．加えて `markdownlint-cli2` のテキストレポート（`markdownlint-report.txt`）も読む．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．`markdownlint` の実行は composite action 内の `markdownlint-cli2` 1 回である．結果テキストは reviewdog への入力（errorformat 経由の inline 投稿）と summary 集計で共用する．v2.11.0 で一本化した（[Issue #117](https://github.com/tomio2480/github-workflows/issues/117)）．
 
 `markdown-glob`（既定 `**/*.md`）はリポジトリ全体を走査する．そのため textlint・`markdownlint` の実行結果自体は，リポジトリ全体分の findings を含む．reviewdog の `filter-mode`（既定 `added`）は **inline コメント投稿のみ** を diff 行に絞る機構である．summary 集計の対象範囲には影響しない．そのため対策前は「本 PR の差分ファイルは 1 件なのに summary は数百件」という事象が起きていた（Issue #59）．
 
