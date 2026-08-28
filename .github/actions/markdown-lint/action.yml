@@ -147,14 +147,17 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Count markdownlint findings (for summary)
-      # reviewdog/action-markdownlint は件数を outputs で公開しないため，summary
-      # 投稿のためだけに markdownlint-cli2 を再実行して結果テキストを残す．
+    - name: Run markdownlint (markdownlint-cli2)
+      # markdownlint の実行は markdownlint-cli2 の 1 回へ統一する（Issue #117）．
+      # 以前は reviewdog/action-markdownlint（markdownlint-cli v0.41.0）と
+      # markdownlint-cli2 の 2 系統が走っていたが，cli は cli2 形式の設定
+      # （config: / globs: / ignores: キー）を解釈できず，無効化済み規則の
+      # 誤検出をそのまま PR へ inline 投稿していた．本ステップの結果テキストを
+      # reviewdog への入力（次々ステップ）と summary 集計
+      # （scripts/count-lint-findings.py）の両方で使う．
       # findings ありで非ゼロ終了するため continue-on-error と `|| true` で吸収．
-      # 出力の各 finding 行は `path:line[:col] RULE/...` 形式であり，
-      # scripts/count-lint-findings.py が同形式の正規表現で件数を集計する．
-      id: mdlint_count
-      if: github.event_name == 'pull_request'
+      # 出力の各 finding 行は `path:line[:col] RULE/...` 形式である．
+      id: mdlint_report
       shell: bash
       continue-on-error: true
       env:
@@ -167,25 +170,38 @@ runs:
           "${MARKDOWN_GLOB}" "#node_modules" \
           > markdownlint-report.txt 2>&1 || true
 
-    - name: Run markdownlint with reviewdog
-      # reviewdog/action-markdownlint v0.26.2
-      uses: reviewdog/action-markdownlint@3667398db9118d7e78f7a63d10e26ce454ba5f58
-      with:
-        github_token: ${{ inputs.github-token }}
-        reporter: github-pr-review
-        level: ${{ inputs.level }}
-        # fail_on_error は v0.26.0 で deprecated．boolean 入力を fail_level の文字列にマップする．
-        # fail-on-error=true のとき，`level` 以上の指摘で job を失敗させる．
-        fail_level: ${{ inputs.fail-on-error == 'true' && inputs.level || 'none' }}
-        filter_mode: ${{ inputs.filter-mode }}
-        markdownlint_flags: '--config ${{ steps.cfg.outputs.mdlint }} "${{ inputs.markdown-glob }}" "#node_modules"'
-
     - name: Setup reviewdog
       # reviewdog/action-setup v1.5.0
       uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f
       with:
         # reviewdog 本体は再現性のため tag を固定．Dependabot の対象外なため version up は別 issue で扱う．
         reviewdog_version: v0.21.0
+
+    - name: Report markdownlint findings with reviewdog
+      # markdownlint-report.txt を errorformat で reviewdog へ流し込み，PR の
+      # inline コメントとして投稿する．finding 行は `path:line[:col] RULE 説明`
+      # 形式のため，列ありと列なしの 2 つの -efm で受ける．banner・Summary 等の
+      # 非 finding 行はどちらにも一致せず無視される．
+      # -fail-on-error の使い方は後続の textlint ステップと揃える．
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
+        RD_LEVEL: ${{ inputs.level }}
+        RD_FILTER_MODE: ${{ inputs.filter-mode }}
+        RD_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+      run: |
+        set -uo pipefail
+        # 前ステップが実行失敗した場合もレポート欠如で壊さない（fail-open）．
+        [ -f markdownlint-report.txt ] || : > markdownlint-report.txt
+        reviewdog \
+          -efm="%f:%l:%c %m" \
+          -efm="%f:%l %m" \
+          -name="markdownlint" \
+          -reporter=github-pr-review \
+          -level="${RD_LEVEL}" \
+          -fail-on-error="${RD_FAIL_ON_ERROR}" \
+          -filter-mode="${RD_FILTER_MODE}" \
+          < markdownlint-report.txt
 
     - name: Install textlint and rule packages (isolated in tmpdir)
       # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
