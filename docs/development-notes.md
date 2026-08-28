@@ -336,7 +336,8 @@ npx --yes markdownlint-cli2 <対象ファイル>
 ```
 
 ただし `markdownlint-cli2` の最新版は composite action 内蔵版と差がある．
-composite action は `reviewdog/action-markdownlint` を SHA pin している．
+composite action は `markdownlint-cli2@^0.13.0` を `npx` で実行している
+（v2.11.0 で reviewdog 経路も cli2 へ統一．Issue #117）．
 新しい rule（例 MD060）が最新版で追加されていることがある．
 **新規エラーが自分の変更で発生したか既存 baseline かを切り分け**て扱う．
 迷ったら `git stash` で変更を退避して baseline を確認するとよい．
