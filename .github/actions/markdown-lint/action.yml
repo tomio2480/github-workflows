@@ -186,6 +186,13 @@ runs:
             exit "${MDLINT_EXIT}"
           fi
         fi
+        # 「本当に 0 件」と「glob が 1 ファイルも拾わなかった」をログで切り分け
+        # られるようにする（Issue #118）．全出力をレポートへ落とす設計のため，
+        # ここで要点だけをログへ写す．Linting 行が走査ファイル数，Summary 行が
+        # 指摘件数を示す．どちらも無い場合は既知の出力形式と異なるため警告する．
+        echo "markdownlint-report.txt: $(wc -l < markdownlint-report.txt) lines (exit=${MDLINT_EXIT})"
+        grep -E '^(Linting|Summary): ' markdownlint-report.txt \
+          || echo "::warning::markdownlint-cli2 output has no Linting/Summary lines; report may be malformed"
 
     - name: Setup reviewdog
       # reviewdog/action-setup v1.5.0
