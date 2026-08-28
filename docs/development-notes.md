@@ -336,9 +336,9 @@ npx --yes markdownlint-cli2 <対象ファイル>
 ```
 
 ただし `markdownlint-cli2` の最新版は composite action 内蔵版と差がある．
-composite action は `package-lock.json` で固定した `markdownlint-cli2` を実行する
-（v2.11.0 で reviewdog 経路も cli2 へ統一（Issue #117）．
-Issue #121 で floating semver の `npx` 実行から lockfile 管理へ移行）．
+composite action は `package-lock.json` で固定した `markdownlint-cli2` を実行する．
+v2.11.0 で reviewdog 経路も cli2 へ統一した（Issue #117）．
+Issue #121 で floating semver の `npx` 実行から lockfile 管理へ移行した．
 固定中のバージョンは
 [.github/actions/markdown-lint/package.json](../.github/actions/markdown-lint/package.json)
 を参照する．
