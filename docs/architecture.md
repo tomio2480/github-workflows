@@ -213,7 +213,7 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 | hidden marker | `<!-- gh-workflows-lint-summary -->`．他 bot（CodeRabbit / Gemini）と衝突しない `gh-workflows-` プレフィックス |
 | 同定方法 | PR コメントを GET（pagination 対応）し marker を含むコメントを検索 |
 | 動作 | 既存あり → PATCH，無し → POST．push のたびに同一コメントが最新化される |
-| 表示内容 | 件数表（textlint は error / warning / info の内訳）と findings 上位 20 件の `<details>`，Actions run へのリンク．差分絞り込みが効いているときはリポジトリ全体の件数列を併記する（[Issue #104](https://github.com/tomio2480/github-workflows/issues/104)） |
+| 表示内容 | 件数表（textlint は error / warning / info の内訳）と findings 上位 20 件の `<details>`，Actions run へのリンク．差分絞り込みが効いているときはリポジトリ全体の件数列を併記する（[Issue #104](https://github.com/tomio2480/github-workflows/issues/104)）．検査対象コミット（`Merge <head> into <base>` と base）も 1 行併記し，全体件数が古い base 由来かを summary 単体で判別できるようにする（[Issue #119](https://github.com/tomio2480/github-workflows/issues/119)） |
 | 失敗時 | 必須 env 不足は execution error．API call 失敗は `::warning::` で annotation し exit 0（fail-open） |
 | fork PR | `pull-requests: write` が降格されるため事前に skip．reviewdog inline コメントの制約と整合 |
 | opt-out | composite action の `post-summary` input に `"false"` を渡せば投稿 step ごと skip．同一 PR で複数 job が同 marker を奪い合うケースの逃げ道．reviewdog の inline コメント投稿には影響しない |
