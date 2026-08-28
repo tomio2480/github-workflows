@@ -37,8 +37,8 @@ composite action（本リポジトリ）
   │ 4. scripts/generate-textlint-runtime.py で prh の絶対パスを埋め込んだ
   │    .textlintrc.runtime.json を生成
   │ 5. Node.js setup
-  │ 6. markdownlint-cli2 を集計用に再実行（件数取得．markdownlint-report.txt）
-  │ 7. reviewdog/action-markdownlint → PR レビューコメント
+  │ 6. markdownlint-cli2 を実行（markdownlint-report.txt．summary 集計と共用）
+  │ 7. レポートを errorformat で reviewdog へ渡す → PR レビューコメント
   │ 8. textlint を tmpdir に install して実行 → reviewdog で PR レビューコメント
   │ 9. 件数を集計して PR に summary コメントを upsert（hidden marker）
   ▼
@@ -220,7 +220,7 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 | 件数フィルタ | composite action の `markdown-ignore` input に path glob を改行区切りで渡すと summary 件数から除外できる．`tests/fixtures/**` のような prefix 形式で相対・絶対両方のパスを除外する．reviewdog の inline コメントは `filter-mode` で別途制御されるため本 input の影響を受けない |
 | 集計スコープ | summary の findings 一覧は PR 差分ファイルのみを対象にする（[Issue #59](https://github.com/tomio2480/github-workflows/issues/59)）．取得失敗時はリポジトリ全体スコープにフォールバックする．件数表には差分の件数と全体の件数を併記し，差分に現れない既存指摘の存在を可視化する（Issue #104） |
 
-集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は件数と findings 一覧を集計し，JSON を stdout に出す．入力は textlint の checkstyle XML（`textlint-report.xml`）である．加えて `markdownlint-cli2` のテキストレポート（`markdownlint-report.txt`）も読む．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．`markdownlint` 側の集計用に，composite action 内で `markdownlint-cli2` を 1 度再実行する．このため reviewdog action と合わせて cli2 が 2 回走る．コストは数秒で軽微．将来的に reviewdog action を置き換えれば一本化できる．置き換え先は自前の `markdownlint-cli2 --reporter rdjson | reviewdog -f rdjson` である．
+集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は件数と findings 一覧を集計し，JSON を stdout に出す．入力は textlint の checkstyle XML（`textlint-report.xml`）である．加えて `markdownlint-cli2` のテキストレポート（`markdownlint-report.txt`）も読む．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．`markdownlint` の実行は composite action 内の `markdownlint-cli2` 1 回である．結果テキストを reviewdog への入力（errorformat 経由の inline 投稿）と summary 集計の両方で共用する（v2.11.0 で一本化．[Issue #117](https://github.com/tomio2480/github-workflows/issues/117)）．
 
 `markdown-glob`（既定 `**/*.md`）はリポジトリ全体を走査する．そのため textlint・`markdownlint` の実行結果自体は，リポジトリ全体分の findings を含む．reviewdog の `filter-mode`（既定 `added`）は **inline コメント投稿のみ** を diff 行に絞る機構である．summary 集計の対象範囲には影響しない．そのため対策前は「本 PR の差分ファイルは 1 件なのに summary は数百件」という事象が起きていた（Issue #59）．
 
@@ -241,7 +241,7 @@ reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない
 1. caller の `.github/workflows/md-lint.yml` が `pull_request` などで起動する．job 内の step で本 composite action を `uses:` で呼び出す
 2. composite action 内で使う GitHub token は，**caller が明示的に渡したトークン** である．受け口は `inputs.github-token` input で，通常は `${{ secrets.GITHUB_TOKEN }}` を渡す．composite action では `secrets.*` の自動継承が効かないため，input での受け渡しを要する．reviewdog が PR コメントを投稿する先は caller の PR
 3. caller workflow 側には `permissions: contents: read, pull-requests: write` を明記する．明記しないと reviewdog がコメント投稿権限を得られず失敗する．また **外部フォークからの PR では reviewdog が inline コメントを投稿できない**．GitHub の制限で `GITHUB_TOKEN` が read-only になるためである．本プロジェクトは安全性の観点で `pull_request_target` を使わない方針のためである．詳細は [docs/security.md](security.md) を参照
-4. reviewdog action は内部で `github-pr-review` reporter を使う．PR number とトークンから REST/GraphQL で review comment を投稿する
+4. reviewdog は `github-pr-review` reporter を使う．PR number とトークンから REST/GraphQL で review comment を投稿する
 
 ## 🔁 caller テンプレートの構造変更が伝播しない問題
 
