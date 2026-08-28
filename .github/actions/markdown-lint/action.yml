@@ -157,6 +157,8 @@ runs:
       # （scripts/count-lint-findings.py）の両方で使う．
       # findings ありで非ゼロ終了するため continue-on-error と `|| true` で吸収．
       # 出力の各 finding 行は `path:line[:col] RULE/...` 形式である．
+      # PR イベント限定にしない（textlint ステップと同じ扱い）．非 PR では
+      # reviewdog が投稿先を持たないだけで，lint 実行自体はログとして有用．
       id: mdlint_report
       shell: bash
       continue-on-error: true
