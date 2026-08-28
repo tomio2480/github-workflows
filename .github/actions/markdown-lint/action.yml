@@ -147,6 +147,27 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
+    - name: Install lint dependencies (isolated in tmpdir)
+      # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
+      # markdownlint-cli2 と textlint 一式を同じ package-lock.json で管理する（Issue #121）．
+      # 以前 markdownlint-cli2 は `npx -y -p markdownlint-cli2@^0.13.0` の floating semver で
+      # 実行のたびに registry から解決していたが，未レビューの新版が caller runner 上で
+      # 走りうるため lockfile 固定へ移行した．
+      #
+      # textlint-filter-rule-comments は中央 .textlintrc.json の filters.comments: true に対応する
+      # 必須依存．これが install されていないと @textlint/config-loader の loadFilterRules で
+      # ReferenceError が発生し，TextlintrcLoader.js が ok:false を受けて空 rule で fallback する．
+      # 結果として rules セクションも含めて全 rule が silent に破棄され "No rules found" になる．
+      #
+      # package.json / package-lock.json を action ディレクトリから tmpdir にコピーして npm ci を
+      # 実行する．これにより registry の状態に依存しない再現可能なインストールを保証する．
+      # バージョン更新は Dependabot（.github/dependabot.yml の npm エコシステム設定）が追跡する．
+      id: lint_install
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "${ACTION_PATH}/../../../scripts/install-lint-deps.sh"
+
     - name: Run markdownlint (markdownlint-cli2)
       # markdownlint の実行は markdownlint-cli2 の 1 回へ統一する（Issue #117）．
       # 以前は reviewdog/action-markdownlint（markdownlint-cli v0.41.0）と
@@ -163,16 +184,17 @@ runs:
       env:
         MDLINT_CFG: ${{ steps.cfg.outputs.mdlint }}
         MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
+        LINT_BIN: ${{ steps.lint_install.outputs.bin }}
       run: |
         set -uo pipefail
         # 「実行失敗」と「指摘あり」を区別する（textlint ステップと同方針）．
-        # cli2 は指摘ありのとき exit 1 で終了する．一方 npm/npx の実行失敗も
+        # cli2 は指摘ありのとき exit 1 で終了する．一方，設定不正等の実行失敗も
         # exit 1 を返しうるため，終了コードだけでは区別できない．cli2 は起動に
         # 成功すると必ず banner 行（markdownlint-cli2 vX.Y.Z）を出力するので，
         # 「exit 1 かつ banner あり」だけを指摘ありの正常系として扱い，
-        # それ以外の非ゼロ終了（npx 不達・設定不正等）は step を失敗させる．
+        # それ以外の非ゼロ終了は step を失敗させる．
         MDLINT_EXIT=0
-        npx -y -p markdownlint-cli2@^0.13.0 markdownlint-cli2 \
+        "${LINT_BIN}/markdownlint-cli2" \
           --config "${MDLINT_CFG}" \
           "${MARKDOWN_GLOB}" "#node_modules" \
           > markdownlint-report.txt 2>&1 || MDLINT_EXIT=$?
@@ -228,23 +250,6 @@ runs:
           -filter-mode="${RD_FILTER_MODE}" \
           < markdownlint-report.txt
 
-    - name: Install textlint and rule packages (isolated in tmpdir)
-      # 一時ディレクトリで install することで caller の node_modules / package.json を汚染しない．
-      #
-      # textlint-filter-rule-comments は中央 .textlintrc.json の filters.comments: true に対応する
-      # 必須依存．これが install されていないと @textlint/config-loader の loadFilterRules で
-      # ReferenceError が発生し，TextlintrcLoader.js が ok:false を受けて空 rule で fallback する．
-      # 結果として rules セクションも含めて全 rule が silent に破棄され "No rules found" になる．
-      #
-      # package.json / package-lock.json を action ディレクトリから tmpdir にコピーして npm ci を
-      # 実行する．これにより registry の状態に依存しない再現可能なインストールを保証する．
-      # バージョン更新は Dependabot（.github/dependabot.yml の npm エコシステム設定）が追跡する．
-      id: textlint_install
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      run: bash "${ACTION_PATH}/../../../scripts/install-textlint-deps.sh"
-
     - name: Run textlint with reviewdog
       shell: bash
       env:
@@ -255,8 +260,8 @@ runs:
         RD_LEVEL: ${{ inputs.level }}
         RD_FILTER_MODE: ${{ inputs.filter-mode }}
         RD_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
-        TEXTLINT_BIN: ${{ steps.textlint_install.outputs.bin }}
-        TEXTLINT_MODULES: ${{ steps.textlint_install.outputs.modules }}
+        TEXTLINT_BIN: ${{ steps.lint_install.outputs.bin }}
+        TEXTLINT_MODULES: ${{ steps.lint_install.outputs.modules }}
       run: |
         set -uo pipefail
         # NODE_PATH に tmpdir/node_modules を加えて，textlint の require が rule package を

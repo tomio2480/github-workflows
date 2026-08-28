@@ -4,7 +4,9 @@ version: 2
 # SHA ピンしているアクションも Dependabot が自動で PR を起票する．
 #
 # npm エコシステム: .github/actions/markdown-lint/ の package-lock.json を追跡する．
-# textlint 等の npm パッケージバージョンを固定し，Dependabot で更新 PR を自動起票する．
+# markdownlint-cli2・textlint 等の npm パッケージバージョンを固定し，
+# Dependabot で更新 PR を自動起票する．group は lint 系統ごとに分け，
+# 片系統の挙動変化をもう片方の更新と切り離してレビューできるようにする．
 #
 # 更新 PR は手動レビューのうえマージする．第三者アクションの挙動変化に注意．
 
@@ -26,3 +28,6 @@ updates:
       textlint:
         patterns:
           - "textlint*"
+      markdownlint:
+        patterns:
+          - "markdownlint*"
