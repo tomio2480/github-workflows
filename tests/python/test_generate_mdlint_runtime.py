@@ -13,6 +13,9 @@
       （PyYAML の YAML 1.1 往復による型崩れ（on / yes の bool 化等）を避ける．
       PyYAML は検出・検証のみに使う）
     - block style・flow style（1 行値）・引用符付きキーのいずれも除去できる
+    - インデントなしの block sequence（列 0 の `- ` エントリ）も値として消費する
+    - 生成物は parse し直し，root のキー集合が「元 − outputFormatters」と
+      一致することを検証する（壊れた runtime を黙って渡さない）
     - 検出はできたがテキスト除去でキー行を特定できないとき（flow style の
       root mapping 等）は ValueError を上げる（fail-closed．黙って型崩れさせない）
     - 除去したときは '::warning::' で始まる警告を 1 行 stdout へ出す
@@ -118,6 +121,38 @@ def test_quoted_key_is_removed(tmp_path, github_output):
 
     runtime = Path(_outputs(github_output)["generated"])
     assert runtime.read_text(encoding="utf-8") == "config:\n  MD041: true\n"
+
+
+def test_indentationless_sequence_value_is_fully_consumed(
+    tmp_path, github_output
+):
+    # 列 0 の `- ` エントリはキーの値に属する正当な YAML（indentationless
+    # block sequence）．キー行だけ落とすと壊れた YAML が残る．
+    src = _write(
+        tmp_path / "src.yaml",
+        "outputFormatters:\n"
+        "- [markdownlint-cli2-formatter-json]\n"
+        "- [markdownlint-cli2-formatter-junit]\n"
+        "config: {}\n",
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "config: {}\n"
+
+
+def test_dash_prefixed_plain_key_after_sequence_is_kept(tmp_path, github_output):
+    # `-foo:`（ダッシュ直後に空白なし）は sequence エントリではなく通常のキー．
+    src = _write(
+        tmp_path / "src.yaml",
+        "outputFormatters:\n- [x]\n-foo: 1\n",
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "-foo: 1\n"
 
 
 def test_yaml11_scalars_survive_verbatim(tmp_path, github_output):
