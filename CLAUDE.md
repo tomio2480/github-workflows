@@ -33,12 +33,13 @@
 - inputs の互換性を変える場合は major version cut を伴う
 - third-party action の参照は **full commit SHA でピン**．タグ参照（`@v1`）への書き換えは供給網リスクを上げるため行わない
 
-### reusable workflow（claude-review）の変更
+### reusable workflow の変更
 
 - secrets は個別に明示して受け渡す（`secrets: inherit` は使わない）
 - permissions は caller テンプレート側の宣言を正とする．called 側の宣言は caller の付与を超えられない
 - third-party action（`claude-code-action` 等）は full commit SHA でピンする．更新は Dependabot に追随させる
 - 中央ファイルへの自己参照を持ち込まない．持ち込む場合は composite action 形式への転換を検討する（v1 の self-detection bug の再発防止）
+- Shell quality は tool setup と repo-local gate の呼び出しだけを担う．caller 固有の lint・test ロジックを中央へ移さない
 
 ### テンプレート・設定ファイルの変更
 

@@ -13,6 +13,7 @@
 - 3️⃣ ローカル hook（任意）
 - 4️⃣ コミットと PR
 - 5️⃣ Claude レビュー workflow（任意）
+- 6️⃣ Shell quality workflow（任意）
 
 ## 🔧 前提条件
 
@@ -152,3 +153,30 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 `uses:` 行の SHA pin は sed で置換済みとなる．併記の版コメントだけ目視確認する．
 workflow は default ブランチの定義で発火するため，追加した PR 自身では
 メンションが発火しない．動作確認はマージ後の別 PR で行う．
+
+## 6️⃣ Shell quality workflow（任意）
+
+PowerShell または bash を持つリポジトリが対象である．
+ShellCheck，shfmt，PSScriptAnalyzer，Bats-core，Pester を共通 setup する．
+CLI ブラックボックステストを含む reusable workflow を導入できる．
+詳細は [Shell / CLI 品質ゲート](shell-quality.md) を参照する．
+
+対象リポジトリには，中央 workflow を呼ぶ caller と，リポジトリ固有の
+`bin/verify-shell.py` を置く．`--require-all` は blocking gate とする．
+必要なツールが欠けた場合や，検査が失敗した場合は非ゼロで終了する．
+中央リポジトリに対象 repo 固有の検査ロジックは置かない．
+
+```bash
+# 1️⃣ で解決した ${OWNER} / ${SHA} を再利用する
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/shell-quality.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
+  > .github/workflows/shell-quality.yml
+
+python bin/verify-shell.py --require-all
+```
+
+caller の `verify-script` と `paths` は，同じ検査スクリプトを指すように
+更新する．導入 PR ではローカルの `--require-all` と GitHub Actions の
+両方が成功することを確認する．

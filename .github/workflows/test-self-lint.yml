@@ -2,9 +2,10 @@ name: Self test (composite action)
 
 # composite action の TDD 検証用 CI workflow．
 #
-# 3 jobs:
+# 4 jobs:
 #   - unit-python: scripts/*.py の pytest
 #   - unit-bash: scripts/*.sh の bats
+#   - shell-quality-reusable: reusable workflow の tool setup と caller contract
 #   - integration-action: ./.github/actions/markdown-lint を fixture に対して走らせる
 #
 # integration-action は reviewdog で PR inline コメントを投稿するため pull_request のみで動く．
@@ -25,6 +26,12 @@ permissions:
   pull-requests: write
 
 jobs:
+  shell-quality-reusable:
+    name: Reusable Shell quality workflow
+    uses: ./.github/workflows/shell-quality.yml
+    with:
+      verify-script: tests/fixtures/shell-quality/verify-shell.py
+
   unit-python:
     name: Python script unit tests
     runs-on: ubuntu-latest

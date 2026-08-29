@@ -12,6 +12,7 @@
 - 3️⃣ 自動修正の一括適用（任意）
 - 4️⃣ ルールを段階的に厳しくする戦略
 - 5️⃣ コミットと PR
+- 6️⃣ Shell quality workflow（任意）
 
 ## 🔧 前提条件
 
@@ -189,3 +190,15 @@ git commit -m "chore: add per-repo markdown lint overrides"
 ```
 
 Pull Request は **必ず Draft で作成する**．
+
+## 6️⃣ Shell quality workflow（任意）
+
+PowerShell または bash がある場合も同じ gate を利用できる．
+導入方法は
+[新規リポジトリ向けの Shell quality 手順](onboarding-new-repo.md#6️⃣-shell-quality-workflow任意)
+と共通である．既存リポジトリでは，最初に `--require-all` を実行する．
+既存スクリプトの指摘と不足しているテストを棚卸しする．
+
+既存の不具合を導入 PR に混ぜると差分が大きくなる場合は，先に修正 PR を
+分けるか，対象 `paths` を段階的に広げる．ただし有効化した検査は
+blocking gate とし，ツール不足を成功扱いにはしない．
