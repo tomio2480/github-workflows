@@ -14,6 +14,9 @@
       PyYAML は検出・検証のみに使う）
     - block style・flow style（1 行値）・引用符付きキーのいずれも除去できる
     - インデントなしの block sequence（列 0 の `- ` エントリ）も値として消費する
+    - 消費中の列 0 コメント行（`#` 始まり）は読み飛ばす（コメント除去は
+      runtime の意味を変えない）
+    - UTF-8 BOM 付きの src も受理する（utf-8-sig で読む．生成物は BOM なし）
     - 生成物は parse し直し，root のキー集合が「元 − outputFormatters」と
       一致することを検証する（壊れた runtime を黙って渡さない）
     - 検出はできたがテキスト除去でキー行を特定できないとき（flow style の
@@ -153,6 +156,36 @@ def test_dash_prefixed_plain_key_after_sequence_is_kept(tmp_path, github_output)
 
     runtime = Path(_outputs(github_output)["generated"])
     assert runtime.read_text(encoding="utf-8") == "-foo: 1\n"
+
+
+def test_comment_lines_within_sequence_are_consumed(tmp_path, github_output):
+    # 列 0 のコメント行が key 行直後やエントリ間にあっても値の消費を止めない．
+    src = _write(
+        tmp_path / "src.yaml",
+        "outputFormatters:\n"
+        "# formatter note\n"
+        "- [x]\n"
+        "# between entries\n"
+        "- [y]\n"
+        "config: {}\n",
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "config: {}\n"
+
+
+def test_utf8_bom_prefixed_src_is_accepted(tmp_path, github_output):
+    src = tmp_path / "src.yaml"
+    src.write_bytes(
+        ("﻿" + "outputFormatters: []\nconfig: {}\n").encode("utf-8")
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_bytes() == b"config: {}\n"
 
 
 def test_yaml11_scalars_survive_verbatim(tmp_path, github_output):
