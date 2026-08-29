@@ -13,6 +13,8 @@
       （PyYAML の YAML 1.1 往復による型崩れ（on / yes の bool 化等）を避ける．
       PyYAML は検出・検証のみに使う）
     - block style・flow style（1 行値）・引用符付きキーのいずれも除去できる
+    - root mapping が一様にインデントされていても，そのインデントを検出して
+      照合・消費する（列 0 固定にしない）
     - インデントなしの block sequence（列 0 の `- ` エントリ）も値として消費する
     - 消費中の列 0 コメント行（`#` 始まり）は読み飛ばす（コメント除去は
       runtime の意味を変えない）
@@ -156,6 +158,31 @@ def test_dash_prefixed_plain_key_after_sequence_is_kept(tmp_path, github_output)
 
     runtime = Path(_outputs(github_output)["generated"])
     assert runtime.read_text(encoding="utf-8") == "-foo: 1\n"
+
+
+def test_uniformly_indented_root_mapping_is_handled(tmp_path, github_output):
+    # root mapping 全体が一様にインデントされた正当な YAML でも除去できる．
+    src = _write(
+        tmp_path / "src.yaml",
+        "  outputFormatters: []\n  config:\n    MD041: false\n",
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "  config:\n    MD041: false\n"
+
+
+def test_indented_root_with_sequence_entries_is_handled(tmp_path, github_output):
+    src = _write(
+        tmp_path / "src.yaml",
+        "  outputFormatters:\n  - [x]\n  - [y]\n  config: {}\n",
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "  config: {}\n"
 
 
 def test_comment_lines_within_sequence_are_consumed(tmp_path, github_output):
