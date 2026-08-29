@@ -180,7 +180,8 @@ suffix は cli2 の `--config` が受理する規約に合わせる．
 PyYAML（YAML 1.1）の往復は，引用符なしの `on` / `yes` 等を bool へ変える．
 cli2 の js-yaml 4 と型がずれ，lint 挙動が変わりうるためである．
 生成物は parse し直し，他のトップレベルキーが保たれたことを検証する．
-生成物は `markdownlint` 実行ステップが使用後に削除する（ワークスペース非汚染）．
+生成物は composite 末尾の `always()` ステップが削除する．
+中間ステップの失敗やキャンセルでも残置しない（ワークスペース非汚染）．
 独自 formatter が必要な caller は，本 action と別のワークフローで実行する．
 
 この組み立てにより，override 組み合わせ（caller 辞書＋中央 textlintrc など）でも path が破綻しない．

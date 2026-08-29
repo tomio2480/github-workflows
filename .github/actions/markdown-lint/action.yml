@@ -156,8 +156,8 @@ runs:
       # ファイルを上書きしない．suffix は cli2 の --config が受理する規約に合わせる．
       # 除去はトップレベルキーのテキスト除去で行い，PyYAML 往復による YAML 1.1
       # スカラー型崩れ（on / yes の bool 化等）を避ける（いずれも同レビュー指摘）．
-      # 生成物は markdownlint 実行ステップが generated output を見て削除する
-      # （ワークスペース非汚染）．
+      # 生成物は末尾の always() クリーンアップステップが generated output を
+      # 見て削除する（ワークスペース非汚染．中間ステップの失敗でも残置しない）．
       # 採用パスの分岐もスクリプト側が GITHUB_OUTPUT へ書く．pytest で全経路を検証済み．
       # PyYAML は ubuntu-latest プリインストール．pyyaml-version input による固定は
       # 前段の textlint runtime ステップが済ませている．
@@ -212,7 +212,6 @@ runs:
       shell: bash
       env:
         MDLINT_CFG: ${{ steps.mdlint_runtime.outputs.config }}
-        MDLINT_GENERATED: ${{ steps.mdlint_runtime.outputs.generated }}
         MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
         LINT_BIN: ${{ steps.lint_install.outputs.bin }}
       run: |
@@ -228,10 +227,6 @@ runs:
           --config "${MDLINT_CFG}" \
           "${MARKDOWN_GLOB}" "#node_modules" \
           > markdownlint-report.txt 2>&1 || MDLINT_EXIT=$?
-        # outputFormatters 除去で生成した runtime config は caller config と同じ
-        # ディレクトリ（多くは caller workspace）に置かれるため，用済み次第
-        # 削除して workspace を汚さない．パススルー時は空文字で何もしない．
-        if [ -n "${MDLINT_GENERATED}" ]; then rm -f "${MDLINT_GENERATED}"; fi
         if [ "${MDLINT_EXIT}" -ne 0 ]; then
           if [ "${MDLINT_EXIT}" -ne 1 ] || \
              ! grep -q '^markdownlint-cli2 v' markdownlint-report.txt; then
@@ -440,3 +435,19 @@ runs:
           ${DIFF_FILES_ARGS[@]+"${DIFF_FILES_ARGS[@]}"} > "${SUMMARY_JSON_PATH}"
         SUMMARY_JSON="${SUMMARY_JSON_PATH}" \
           bash "${ACTION_PATH}/../../../scripts/post-lint-summary.sh"
+
+    - name: Clean up generated runtime config
+      # outputFormatters 除去で生成した runtime config は caller config と同じ
+      # ディレクトリ（多くは caller workspace）に置かれる．中間ステップの失敗や
+      # キャンセルでも残置しないよう，always() の末尾ステップで削除する
+      # （PR #129 の Codex 指摘．self-hosted runner での蓄積と，後続 always()
+      # ステップからの観測を防ぐ）．パススルー時は空文字で何もしない．
+      # ハードキャンセルで always() 自体が走らないケースは残るが，同名の
+      # 一意ファイルは次回 run で再利用されないため実害は蓄積のみに限られる．
+      if: always()
+      shell: bash
+      env:
+        MDLINT_GENERATED: ${{ steps.mdlint_runtime.outputs.generated }}
+      run: |
+        set -uo pipefail
+        if [ -n "${MDLINT_GENERATED:-}" ]; then rm -f "${MDLINT_GENERATED}"; fi

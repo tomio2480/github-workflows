@@ -45,12 +45,12 @@ import yaml
 RUNTIME_PREFIX = ".gh-workflows-runtime-"
 RUNTIME_SUFFIX = ".markdownlint-cli2.yaml"
 
-# トップレベル（列 0）の outputFormatters キー行．引用符付きキーも受ける．
-_KEY_LINE_RE = re.compile(r"^(?P<quote>['\"]?)outputFormatters(?P=quote)\s*:")
+# root インデント直後の outputFormatters キー．引用符付きキーも受ける．
+_KEY_RE_TEMPLATE = r"(?P<quote>['\"]?)outputFormatters(?P=quote)\s*:"
 
-# キーの値に属する継続行として消費する列 0 の block sequence エントリ
-# （indentationless sequence．`- ` または `-` 単独）．`-foo:` のような
-# ダッシュ始まりの plain キーは該当しない（空白が続かないため）．
+# キーの値に属する継続行として消費する root インデント位置の block sequence
+# エントリ（indentationless sequence．`- ` または `-` 単独）．`-foo:` の
+# ようなダッシュ始まりの plain キーは該当しない（空白が続かないため）．
 _SEQUENCE_ENTRY_RE = re.compile(r"^-(?:[ \t]|$)")
 
 OUTPUT_FORMATTERS_WARNING = (
@@ -70,30 +70,54 @@ def _emit_outputs(config_path: str, generated_path: str) -> None:
         fp.write(f"generated={generated_path}\n")
 
 
-def _remove_top_level_key(text: str) -> str | None:
-    """列 0 の outputFormatters キー行とその継続行を落とす．
+def _root_indent(lines: list[str]) -> str:
+    """root mapping のインデント（最初の内容行の先頭空白）を返す．
 
-    継続行はインデント行・空行に加え，列 0 の block sequence エントリ
-    （indentationless sequence）とコメント行（# 始まり）を含む．
-    コメントの除去は runtime の意味を変えない．他の行はバイト単位で保持する．
-    キー行を特定できなければ None を返す（flow style の root mapping 等．
-    呼び出し側で fail-closed にする）．
+    YAML は root mapping 全体を一様にインデントできるため，列 0 固定に
+    しない（PR #129 レビュー対応）．空行・コメント行は読み飛ばす．
+    """
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "" or stripped.startswith("#"):
+            continue
+        return line[: len(line) - len(line.lstrip(" "))]
+    return ""
+
+
+def _remove_top_level_key(text: str) -> str | None:
+    """root インデント位置の outputFormatters キー行とその継続行を落とす．
+
+    継続行は「root インデントより深い行」・空行・コメント行（任意インデント）
+    に加え，root インデント位置の block sequence エントリ
+    （indentationless sequence）を含む．コメントの除去は runtime の意味を
+    変えない．他の行はバイト単位で保持する．キー行を特定できなければ
+    None を返す（flow style の root mapping 等．呼び出し側で fail-closed
+    にする）．
     """
     lines = text.splitlines(keepends=True)
+    indent = _root_indent(lines)
+    key_re = re.compile("^" + re.escape(indent) + _KEY_RE_TEMPLATE)
+
+    def consumable(line: str) -> bool:
+        stripped = line.strip()
+        if stripped == "" or stripped.startswith("#"):
+            return True
+        if not line.startswith(indent):
+            return False
+        rest = line[len(indent):]
+        if rest[:1] in (" ", "\t"):
+            return True
+        return bool(_SEQUENCE_ENTRY_RE.match(rest))
+
     kept: list[str] = []
     removed = False
     index = 0
     while index < len(lines):
         line = lines[index]
-        if not removed and _KEY_LINE_RE.match(line):
+        if not removed and key_re.match(line):
             removed = True
             index += 1
-            while index < len(lines) and (
-                lines[index].strip() == ""
-                or lines[index][0] in " \t"
-                or lines[index][0] == "#"
-                or _SEQUENCE_ENTRY_RE.match(lines[index])
-            ):
+            while index < len(lines) and consumable(lines[index]):
                 index += 1
             continue
         kept.append(line)
