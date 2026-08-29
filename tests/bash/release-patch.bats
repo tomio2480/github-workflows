@@ -84,6 +84,14 @@ STUB
   [[ "${output}" == *"notes"* ]]
 }
 
+@test "rejects branch name starting with dash" {
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}" \
+    --delete-branch --all
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"branch"* ]]
+}
+
 # --- ガード ---
 
 @test "fails when tag already exists" {

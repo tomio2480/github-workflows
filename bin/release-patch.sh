@@ -93,6 +93,12 @@ if [ -n "${NOTES_FILE}" ] && [ ! -f "${NOTES_FILE}" ]; then
   exit 1
 fi
 
+# ハイフン始まりはオプション誤解釈（例: --all）を招くため拒否する
+if [ -n "${DELETE_BRANCH}" ] && [[ "${DELETE_BRANCH}" == -* ]]; then
+  echo "error: invalid branch name: ${DELETE_BRANCH}" >&2
+  exit 1
+fi
+
 MAJOR="${VERSION%%.*}"
 
 # --- ガード（読み取り専用のため dry-run でも実行する） ---
@@ -109,6 +115,8 @@ fi
 
 # --- 実行 ---
 
+# 失敗時の中断は set -e に依存する．run_cmd の呼び出しを条件式や
+# パイプの一部へ変えると set -e が効かなくなるため，形を変えない．
 run_cmd() {
   if [ "${DRY_RUN}" -eq 1 ]; then
     echo "[dry-run] $*"

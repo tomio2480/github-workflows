@@ -41,6 +41,12 @@ if ($PSCmdlet.ParameterSetName -eq 'NotesFile' -and -not (Test-Path $NotesFile -
   exit 1
 }
 
+# ハイフン始まりはオプション誤解釈（例: --all）を招くため拒否する
+if ($DeleteBranch -ne '' -and $DeleteBranch.StartsWith('-')) {
+  Write-Error "invalid branch name: ${DeleteBranch}"
+  exit 1
+}
+
 $Major = $Version.Split('.')[0]
 
 # --- ガード（読み取り専用のため dry-run でも実行する） ---
