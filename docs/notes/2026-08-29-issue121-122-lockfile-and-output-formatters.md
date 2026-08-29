@@ -2,8 +2,8 @@
 
 ## 要約
 
-`markdownlint-cli2` の lockfile 管理移行（#121，PR #126，v2.12.2）と，
-caller config の `outputFormatters` 除去（#122，PR #129，v2.12.3）の記録．
+`markdownlint-cli2` の lockfile 管理移行（#121，PR #126，v2.12.2）を記録する．
+caller config の `outputFormatters` 除去（#122，PR #129，v2.12.3）も扱う．
 後者は Codex レビュー 5 ラウンド計 8 件の指摘をすべて採用した．
 構造化テキスト加工の難所と，再発防止の起票先をまとめる．
 
@@ -22,7 +22,7 @@ caller config の `outputFormatters` 除去（#122，PR #129，v2.12.3）の記�
   `npx` であり，未レビューの新版が caller の runner で走りうる．
   `npx` 内の版指定は Dependabot の追随対象にもならない．
 - #122: caller config が `outputFormatters` を定義すると既定 formatter が
-  置き換えられ，違反があっても inline・summary とも 0 件になる．
+  置き換えられる．違反があっても inline・summary とも 0 件になる．
   サイレント故障であり caller は気づけない．
 
 ## 判断
@@ -31,10 +31,10 @@ caller config の `outputFormatters` 除去（#122，PR #129，v2.12.3）の記�
 
 - `package.json` へ 0.13.0 を追加した．0.13 系の公開版は 0.13.0 のみで，
   従来の `^0.13.0` の解決結果と同一のため挙動は変わらない．
-- install ステップを `markdownlint` 実行前へ移し，textlint と共通の
-  lint 依存インストールへ統合した（`install-lint-deps.sh` へ改名）．
-- Dependabot の group は `textlint` と `markdownlint` に分け，
-  片系統の挙動変化を他方の更新と切り離してレビューできるようにした．
+- install ステップを `markdownlint` 実行前へ移し，textlint と共通化した．
+  スクリプトは `install-lint-deps.sh` へ改名した．
+- Dependabot の group は `textlint` と `markdownlint` に分けた．
+  片系統の挙動変化を他方の更新と切り離してレビューするためである．
 - `npm audit` は cli2 0.13.0 のツリーに既知指摘を出すが，従来 `npx` が
   実行時に取得していた同一物であり露出は増えない．解消は Dependabot の
   更新 PR（0.23 系）で扱い，設定互換の確認は当該 PR で行う．
@@ -64,16 +64,16 @@ caller config の `outputFormatters` 除去（#122，PR #129，v2.12.3）の記�
 
 - **docs へ「非対応」と明記するだけの案（#122 の Issue 記載）**:
   指摘 0 件化はサイレント故障で caller が気づけないため棄却した．
-- **`RUNNER_TEMP` への退避**: 初版で採用したが，config 基準の相対パス
-  （`customRules` / `markdownItPlugins`）が壊れるため同ディレクトリ生成へ
-  転換した．
+- **`RUNNER_TEMP` への退避**: 初版で採用したが棄却した．
+  `customRules` 等の config 基準の相対パスが壊れるためである．
+  同ディレクトリ生成へ転換した．
 - **相対パスの絶対パス変換**: 書き換え対象キーの網羅（`extends` 含む）が
   必要で壊れやすいため棄却した．
 - **PyYAML の往復再シリアライズ**: YAML 1.1 のスカラー解釈で，引用符なしの
   `on` / `yes` が bool へ化ける．cli2 側の `js-yaml` 4 と型がずれ lint
   挙動が変わるため，テキスト除去へ転換した．
-- **loader schema を `js-yaml` 4 へ合わせる案**: bool 以外の差分
-  （sexagesimal・timestamp 等）まで揃える必要があり脆いため棄却した．
+- **loader schema を `js-yaml` 4 へ合わせる案**: bool 以外にも
+  sexagesimal・timestamp 等の差分まで揃える必要があり脆いため棄却した．
 
 ## レビューの学び（Codex 5 ラウンド 8 件）
 
@@ -82,7 +82,7 @@ caller config の `outputFormatters` 除去（#122，PR #129，v2.12.3）の記�
 1. config 相対パスの解決基準（生成先の同居が必要）
 2. 固定名による caller 所有ファイルの上書き
 3. YAML 1.1 往復のスカラー型崩れ
-4. indentationless sequence（列 0 の `- ` エントリ）
+4. indentationless sequence（列 0 のダッシュ始まりエントリ）
 5. sequence 内の列 0 コメント行
 6. UTF-8 BOM 付き config
 7. 一様にインデントされた root mapping
