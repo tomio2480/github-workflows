@@ -105,6 +105,32 @@ STUB
   [[ "${output}" == *"notes"* ]]
 }
 
+@test "rejects option-like token as --notes value" {
+  # --notes の値欠落で後続オプションを吸うと dry-run が本実行に化けるため拒否する
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes --dry-run
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"--notes"* ]]
+  run grep -q "^git tag" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+}
+
+@test "rejects option-like token as --notes-file value" {
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file --dry-run
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"--notes-file"* ]]
+}
+
+@test "rejects frozen v1 series version" {
+  run bash "${SCRIPT}" v1.2.3 "${SHA}" --notes-file "${NOTES_FILE}"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"v1"* ]]
+  run grep -q "^git tag" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+}
+
 @test "rejects branch name starting with dash" {
   run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}" \
     --delete-branch --all
@@ -258,5 +284,8 @@ STUB
   run grep -q "^git push" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
   run grep -q "^gh release create" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+  # fetch はローカル（FETCH_HEAD・object db）へ書き込むため dry-run では行わない
+  run grep -q "^git fetch" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
 }

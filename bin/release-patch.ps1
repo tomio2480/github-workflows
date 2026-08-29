@@ -31,6 +31,13 @@ if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
   exit 1
 }
 
+# v1 系は self-detection bug により凍結中（動かさない不変条件）．
+# 根拠は CLAUDE.md・docs/security.md・docs/fork-usage.md を参照
+if ($Version -like 'v1.*') {
+  Write-Error "the v1 series is frozen and must not move: ${Version}"
+  exit 1
+}
+
 if ($MergeSha -notmatch '^[0-9a-f]{40}$') {
   Write-Error "merge-sha must be a full 40-hex SHA: ${MergeSha}"
   exit 1
@@ -111,11 +118,21 @@ if ($LASTEXITCODE -eq 0) {
 $RemoteMajorLine = git ls-remote origin "refs/tags/${Major}"
 $RemoteMajorSha = if ($RemoteMajorLine) { ($RemoteMajorLine -split "`t")[0] } else { '' }
 if ($RemoteMajorSha -ne '') {
-  git fetch --quiet origin "refs/tags/${Major}"
-  git merge-base --is-ancestor $RemoteMajorSha $MergeSha
-  if ($LASTEXITCODE -ne 0) {
-    Write-Error "remote ${Major} (${RemoteMajorSha}) is ahead of ${MergeSha}; refusing to rewind"
-    exit 1
+  # dry-run では fetch しない（FETCH_HEAD・object db への書き込みを避ける）．
+  # commit がローカルに無く検査できない場合は，本実行時に検査される旨を示す
+  git cat-file -e "${RemoteMajorSha}^{commit}" 2> $null
+  $RemoteCommitIsLocal = ($LASTEXITCODE -eq 0)
+  if ($DryRun -and -not $RemoteCommitIsLocal) {
+    Write-Output "[dry-run] (monotonicity check for ${Major} deferred to a real run)"
+  } else {
+    if (-not $DryRun) {
+      git fetch --quiet origin "refs/tags/${Major}"
+    }
+    git merge-base --is-ancestor $RemoteMajorSha $MergeSha
+    if ($LASTEXITCODE -ne 0) {
+      Write-Error "remote ${Major} (${RemoteMajorSha}) is ahead of ${MergeSha}; refusing to rewind"
+      exit 1
+    }
   }
 }
 

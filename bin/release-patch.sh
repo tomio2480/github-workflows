@@ -44,18 +44,30 @@ NOTES_FILE=""
 DELETE_BRANCH=""
 DRY_RUN=0
 
+# 値必須オプションが後続オプションを値として吸うと，--dry-run 指定の欠落が
+# 本実行へ化けるため，ハイフン始まりと空値を拒否する
+require_value() {
+  if [ -z "${2:-}" ] || [[ "${2}" == -* ]]; then
+    echo "error: $1 requires a value" >&2
+    exit 1
+  fi
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --notes)
-      NOTES="${2:?--notes requires a value}"
+      require_value --notes "${2:-}"
+      NOTES="$2"
       shift 2
       ;;
     --notes-file)
-      NOTES_FILE="${2:?--notes-file requires a value}"
+      require_value --notes-file "${2:-}"
+      NOTES_FILE="$2"
       shift 2
       ;;
     --delete-branch)
-      DELETE_BRANCH="${2:?--delete-branch requires a value}"
+      require_value --delete-branch "${2:-}"
+      DELETE_BRANCH="$2"
       shift 2
       ;;
     --dry-run)
@@ -73,6 +85,13 @@ done
 
 if ! [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "error: version must match vX.Y.Z: ${VERSION}" >&2
+  exit 1
+fi
+
+# v1 系は self-detection bug により凍結中（動かさない不変条件）．
+# 根拠は CLAUDE.md・docs/security.md・docs/fork-usage.md を参照
+if [[ "${VERSION}" == v1.* ]]; then
+  echo "error: the v1 series is frozen and must not move: ${VERSION}" >&2
   exit 1
 fi
 
@@ -161,10 +180,18 @@ fi
 # 2) lease: 検査済みの観測値を期待値に指定し，push までの間の移動を検知する．
 REMOTE_MAJOR_SHA="$(git ls-remote origin "refs/tags/${MAJOR}" | cut -f1)"
 if [ -n "${REMOTE_MAJOR_SHA}" ]; then
-  git fetch --quiet origin "refs/tags/${MAJOR}"
-  if ! git merge-base --is-ancestor "${REMOTE_MAJOR_SHA}" "${SHA}"; then
-    echo "error: remote ${MAJOR} (${REMOTE_MAJOR_SHA}) is ahead of ${SHA}; refusing to rewind" >&2
-    exit 1
+  # dry-run では fetch しない（FETCH_HEAD・object db への書き込みを避ける）．
+  # commit がローカルに無く検査できない場合は，本実行時に検査される旨を示す
+  if [ "${DRY_RUN}" -eq 1 ] && ! git cat-file -e "${REMOTE_MAJOR_SHA}^{commit}" 2> /dev/null; then
+    echo "[dry-run] (monotonicity check for ${MAJOR} deferred to a real run)"
+  else
+    if [ "${DRY_RUN}" -eq 0 ]; then
+      git fetch --quiet origin "refs/tags/${MAJOR}"
+    fi
+    if ! git merge-base --is-ancestor "${REMOTE_MAJOR_SHA}" "${SHA}"; then
+      echo "error: remote ${MAJOR} (${REMOTE_MAJOR_SHA}) is ahead of ${SHA}; refusing to rewind" >&2
+      exit 1
+    fi
   fi
 fi
 
