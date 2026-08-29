@@ -74,7 +74,8 @@ def _remove_top_level_key(text: str) -> str | None:
     """列 0 の outputFormatters キー行とその継続行を落とす．
 
     継続行はインデント行・空行に加え，列 0 の block sequence エントリ
-    （indentationless sequence）を含む．他の行はバイト単位で保持する．
+    （indentationless sequence）とコメント行（# 始まり）を含む．
+    コメントの除去は runtime の意味を変えない．他の行はバイト単位で保持する．
     キー行を特定できなければ None を返す（flow style の root mapping 等．
     呼び出し側で fail-closed にする）．
     """
@@ -90,6 +91,7 @@ def _remove_top_level_key(text: str) -> str | None:
             while index < len(lines) and (
                 lines[index].strip() == ""
                 or lines[index][0] in " \t"
+                or lines[index][0] == "#"
                 or _SEQUENCE_ENTRY_RE.match(lines[index])
             ):
                 index += 1
@@ -107,7 +109,9 @@ def main(argv: Sequence[str]) -> None:
     src = argv[0]
 
     src_path = pathlib.Path(src)
-    text = src_path.read_text(encoding="utf-8")
+    # utf-8-sig で BOM を落として読む．BOM 付き config でもキー行を列 0 で
+    # 照合でき，生成物は BOM なしで書かれる（cli2 はどちらも受理する）．
+    text = src_path.read_text(encoding="utf-8-sig")
     cfg = yaml.safe_load(text)
     if cfg is not None and not isinstance(cfg, dict):
         raise TypeError(
