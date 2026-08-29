@@ -36,12 +36,13 @@ composite action（本リポジトリ）
   │ 3. caller root に config があれば優先，無ければ中央 templates/ を採用
   │ 4. scripts/generate-textlint-runtime.py で prh の絶対パスを埋め込んだ
   │    .textlintrc.runtime.json を生成
-  │ 5. Node.js setup
-  │ 6. lint 依存（markdownlint-cli2・textlint 一式）を lockfile から tmpdir へ install
-  │ 7. markdownlint-cli2 を実行（markdownlint-report.txt．summary 集計と共用）
-  │ 8. レポートを errorformat で reviewdog へ渡す → PR レビューコメント
-  │ 9. textlint を実行 → reviewdog で PR レビューコメント
-  │ 10. 件数を集計して PR に summary コメントを upsert（hidden marker）
+  │ 5. config に outputFormatters があれば除去した markdownlint runtime config を生成
+  │ 6. Node.js setup
+  │ 7. lint 依存（markdownlint-cli2・textlint 一式）を lockfile から tmpdir へ install
+  │ 8. markdownlint-cli2 を実行（markdownlint-report.txt．summary 集計と共用）
+  │ 9. レポートを errorformat で reviewdog へ渡す → PR レビューコメント
+  │ 10. textlint を実行 → reviewdog で PR レビューコメント
+  │ 11. 件数を集計して PR に summary コメントを upsert（hidden marker）
   ▼
 PR の該当行に inline コメントが付き，summary コメント 1 件が PR timeline に
 upsert される
@@ -156,6 +157,21 @@ PyYAML は `ubuntu-latest` runner に preinstall されている前提である�
 再現性が必要な caller は `pyyaml-version` input にバージョン番号（例 `6.0.2`）を渡せばよい．
 内部で `pip install pyyaml==<value>` として固定される．`==` 等の比較子は付けない．
 既定（空文字）では何も install せず runner 既定の PyYAML を使う．
+
+### markdownlint 用 runtime config 生成（outputFormatters の除去）
+
+composite action は cli2 の既定 formatter 出力（`path:line[:col] RULE 説明`）に依存する．
+依存箇所は reviewdog への errorformat 入力と summary 集計の 2 つである．
+caller config が `outputFormatters` を定義すると既定 formatter は置き換えられる（併存しない）．
+この場合，lint が走って違反があっても inline・summary とも 0 件になる（Issue #122）．
+
+このため `scripts/generate-mdlint-runtime.py` が解決済み config を検査する．
+`outputFormatters` キーがあるときだけ除去済み runtime config を
+`RUNNER_TEMP` 配下へ生成し，`::warning::` アノテーションで caller に知らせる．
+キーが無ければ何も生成せず，解決済みパスをそのまま cli2 へ渡す（パススルー）．
+`--config` は「cwd に置かれたものとして」適用されるため，
+`RUNNER_TEMP` への退避で `globs` / `ignores` の解決は変わらない．
+独自 formatter が必要な caller は，本 action と別のワークフローで実行する．
 
 この組み立てにより，override 組み合わせ（caller 辞書＋中央 textlintrc など）でも path が破綻しない．
 caller 単独で固有名詞や法令名等の例外も差分追加できる．

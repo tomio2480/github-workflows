@@ -100,7 +100,9 @@ github-workflows/
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
 │   ├── add-pr-reaction.sh         # 👀 reaction 付与（fail-open）
 │   ├── count-lint-findings.py     # textlint XML / markdownlint テキストから件数集計
+│   ├── generate-mdlint-runtime.py # outputFormatters を除去した runtime config 生成
 │   ├── generate-textlint-runtime.py
+│   ├── install-lint-deps.sh       # lint 依存を lockfile から tmpdir へ npm ci
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   └── resolve-config-path.sh
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
@@ -280,7 +282,7 @@ curl -fsSL \
 
 | 置くファイル | 効果 |
 |---|---|
-| `.markdownlint-cli2.yaml` | `markdownlint` のルールを全置換 |
+| `.markdownlint-cli2.yaml` | `markdownlint` のルールを全置換．`outputFormatters` は既定出力を壊すため除去される |
 | `.textlintrc.json` | textlint のルールを全置換 |
 | `prh.yml` | 辞書を全置換（中央辞書は無視される） |
 | `.textlint-allowlist.yml` | caller 固有の例外語・例外パターン・例外ルールを差分追加（v2.1〜） |
