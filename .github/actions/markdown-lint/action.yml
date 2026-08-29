@@ -141,6 +141,30 @@ runs:
           "${SRC}" "${PRH}" "${DEST}" "${ALLOWLIST}" "${PRH_EXTRA}"
         echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
+    - name: Generate runtime markdownlint config without outputFormatters
+      # caller config の outputFormatters は既定 formatter を置き換える（併存しない）．
+      # 既定出力（`path:line[:col] RULE 説明`）には reviewdog への errorformat 入力と
+      # summary 集計（scripts/count-lint-findings.py）が依存しており，置き換えられると
+      # lint が走って違反があっても inline・summary とも 0 件になる（Issue #122）．
+      # キーがあるときだけ除去済み runtime config を生成し，::warning:: で caller に
+      # 知らせる．無いときは解決済みパスをそのまま使う（パススルー．既存 caller の
+      # 挙動は不変）．dest の basename は cli2 の --config が受け付ける規約名に合わせ
+      # .markdownlint-cli2.yaml とする．--config は「cwd に置かれたものとして」適用
+      # されるため，RUNNER_TEMP への退避で globs / ignores の解決は変わらない．
+      # PyYAML は ubuntu-latest プリインストール．pyyaml-version input による固定は
+      # 前段の textlint runtime ステップが済ませている．
+      id: mdlint_runtime
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SRC: ${{ steps.cfg.outputs.mdlint }}
+      run: |
+        set -euo pipefail
+        # 採用パスの分岐（除去したら DEST，しなければ SRC）はスクリプト側が
+        # 判定して GITHUB_OUTPUT の config= へ書く．pytest で全経路を検証済み．
+        python3 "${ACTION_PATH}/../../../scripts/generate-mdlint-runtime.py" \
+          "${SRC}" "${RUNNER_TEMP}/mdlint-runtime/.markdownlint-cli2.yaml"
+
     - name: Setup Node.js
       # actions/setup-node v6.4.0
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -182,7 +206,7 @@ runs:
       id: mdlint_report
       shell: bash
       env:
-        MDLINT_CFG: ${{ steps.cfg.outputs.mdlint }}
+        MDLINT_CFG: ${{ steps.mdlint_runtime.outputs.config }}
         MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
         LINT_BIN: ${{ steps.lint_install.outputs.bin }}
       run: |
