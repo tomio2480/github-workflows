@@ -291,9 +291,9 @@ composite action は，caller の job 内の 1 ステップとして実行され
 中央から効かせるには，caller のファイルを書き換える以外に方法がない．
 
 一方 `claude-review`（v2.6〜）と `shell-quality` は reusable workflow 形式である．
-`concurrency` と `timeout-minutes` は，中央だけで完結する．
-持ち場は `.github/workflows/claude-review.yml` 側である．
-caller は `uses:` の 1 行を更新するだけで恩恵を受けられる．
+job の `timeout-minutes` は中央 workflow だけで完結する．
+`concurrency` は caller ごとの grouping を明示するため caller template に置く．
+`templates/.github/workflows/shell-quality.yml` も連続 push の旧 run を cancel する．
 
 ただし `permissions` は reusable workflow でも例外であり，中央だけでは
 完結しない．called workflow は `GITHUB_TOKEN` を昇格できないためである．

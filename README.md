@@ -2,7 +2,15 @@
 
 ## 要約
 
-Markdown lint と Shell / CLI quality の共通 GitHub Actions を配布する中央リポジトリである．対象リポジトリは caller workflow を置き，repo-local の検証ロジックを中央の tool setup から実行できる．caller workflow は SHA pin + バージョンコメント（`@<SHA> # v2`）を既定とし，Dependabot が更新を追随する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．v2.6 以降は，`@claude` メンションで起動するレビュー用 reusable workflow も配布する．
+Markdown lint と Shell / CLI quality の共通 GitHub Actions を配布する．
+Markdown lint は v2 以降 composite action として配布する．
+対象 repo は caller workflow 1 枚で導入できる．
+Shell quality は任意の reusable workflow である．
+caller repo の検証ロジックを中央の tool setup から実行する．
+caller workflow は SHA pin + バージョンコメントを既定とする．
+Dependabot は pin の更新を追随する．
+中央 repo は直接参照しても，自分のアカウントへ fork してもよい．
+v2.6 以降は，`@claude` で起動するレビュー用 workflow も配布する．
 
 > [!IMPORTANT]
 > **v1 タグ（reusable workflow 形式）は self-detection bug により動作しません．** v2 以降の composite action 形式へ移行してください．詳細は [Issue #3](https://github.com/tomio2480/github-workflows/issues/3) およびリリースノートを参照．
@@ -33,9 +41,6 @@ Markdown lint と Shell / CLI quality の共通 GitHub Actions を配布する�
 - これらの指摘が [reviewdog](https://github.com/reviewdog/reviewdog) 経由で **PR の該当行に inline コメント** として投稿される
 - 件数の summary コメントが PR に **1 件 upsert** される（指摘ゼロでも明示．push のたびに最新化）
 - CI 自体は緑のまま（マージをブロックしない）
-- ShellCheck，shfmt，Bats を共通 setup
-- PSScriptAnalyzer，Pester を共通 setup
-- caller repo の Shell quality gate を実行
 
 Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自前運用する構成である．
 
@@ -44,10 +49,14 @@ Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自�
 `.github/workflows/shell-quality.yml` は，各 repo の local gate を実行する．
 既定の command は `bin/verify-shell.py --require-all` である．
 検証規則を中央へ移さず，tool の setup と local gate 呼び出しだけを再利用する．
+ShellCheck，shfmt，Bats，PSScriptAnalyzer，Pester を共通 setup する．
+local gate が非 0 を返すと job も失敗するブロッキング gate である．
+Markdown lint の非ブロッキング動作とは異なる．
 
 導入時は caller template を caller repo へコピーする．
 対象は `templates/.github/workflows/shell-quality.yml` である．
-`OWNER` と `<SHA>` は中央 repo と確定 commit SHA に置換する．
+`OWNER` は中央 repo の owner に置換する．
+`<SHA>` は確定 commit SHA に置換する．
 詳しい caller contract と固定 version は
 [Shell / CLI quality reusable workflow](docs/shell-quality.md) を参照する．
 
@@ -125,7 +134,9 @@ github-workflows/
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
 │   ├── bash/                      # bats-core
-│   └── fixtures/markdown/         # 統合テスト用 Markdown
+│   └── fixtures/
+│       ├── markdown/              # Markdown lint 統合テスト fixture
+│       └── shell-quality/         # Shell quality toolchain probe
 ├── templates/                     # 各リポジトリにコピーするテンプレート
 │   ├── .github/
 │   │   └── workflows/

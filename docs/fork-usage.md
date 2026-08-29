@@ -2,7 +2,7 @@
 
 ## 要約
 
-`tomio2480/github-workflows` を自分のアカウントへフォークして運用するための手順．フォーク後に composite action 本体（`.github/actions/markdown-lint/action.yml`）を書き換える必要はない．`$GITHUB_ACTION_PATH` ベースの自己検出ロジックにより，どのオーナーから呼び出されても自動的に正しい設定が読み込まれる．利用者が触るのは caller workflow の `OWNER` プレースホルダー置換と SHA pin（または `v2` タグ）管理のみ．
+`tomio2480/github-workflows` を自分のアカウントへフォークして運用するための手順．フォーク後に composite action 本体（`.github/actions/markdown-lint/action.yml`）を書き換える必要はない．`$GITHUB_ACTION_PATH` ベースの自己検出ロジックにより，どのオーナーから呼び出されても自動的に正しい設定が読み込まれる．利用者が触るのは caller workflow の `OWNER` プレースホルダー置換と SHA pin（または `v2` タグ）管理のみ．任意の Shell quality workflow も，同じフォークと SHA pin を参照できる．
 
 > [!IMPORTANT]
 > 本ドキュメント中の例で示している `tomio2480/github-workflows` はそのままコピペせず，フォーク利用時は **`OWNER` 部分を必ず自分の GitHub ユーザー名に置き換えてください** ．caller workflow（`templates/.github/workflows/md-lint.yml`）の `uses:` に出てくる `OWNER` プレースホルダーが置換対象です．
@@ -75,6 +75,17 @@ cat .github/workflows/md-lint.yml
 ```
 
 `uses:` 行は `OWNER` と `<SHA>` を sed により置換した状態で出力される．テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）へ揃えるため，取得から pin までの間で main が進んでもずれない．即時反映を優先したい repo だけ `@<SHA>` 部分を `@main` に書き換える．
+
+Shell quality も使う場合は，同じ `${OWNER}` / `${SHA}` から caller を取得する．
+対象 repo 固有の `bin/verify-shell.py` と CLI テストは中央へ移さず，caller repo に置く．
+
+```bash
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/shell-quality.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
+  > .github/workflows/shell-quality.yml
+```
 
 ## 4️⃣ 上流（tomio2480）との同期
 
