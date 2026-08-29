@@ -177,8 +177,8 @@ caller config が `outputFormatters` を定義すると既定 formatter は置�
 一意名（`tempfile.mkstemp`）により caller 所有ファイルを上書きしない．
 suffix は cli2 の `--config` が受理する規約に合わせる．
 除去はトップレベルキーのテキスト除去で行い，他の行は保持する．
-PyYAML（YAML 1.1）の往復では，引用符なしの `on` / `yes` 等が cli2 の
-js-yaml 4 と異なる型へ化けて lint 挙動が変わりうるためである．
+PyYAML（YAML 1.1）の往復は，引用符なしの `on` / `yes` 等を bool へ変える．
+cli2 の js-yaml 4 と型がずれ，lint 挙動が変わりうるためである．
 生成物は `markdownlint` 実行ステップが使用後に削除する（ワークスペース非汚染）．
 独自 formatter が必要な caller は，本 action と別のワークフローで実行する．
 
