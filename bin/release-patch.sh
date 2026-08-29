@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+
+# PR マージ後の定例 patch リリースを 1 コマンドで実行する．
+#
+# 実行列（docs/notes/2026-05-01-retroactive-tag-rollout.md の実績手順に準拠）:
+#   1. git tag <version> <merge-sha>
+#   2. git push origin <version>
+#   3. gh release create <version> --title <version> --notes(-file) ...
+#      タグを先に push 済みのため --target は付けない
+#      （既存タグへの --target は HTTP 422 で失敗する）
+#   4. git tag -f <major> <version>      # major mutable を最新 patch へ追従
+#   5. git push -f origin <major>
+#   6. （任意）git push origin --delete <branch>
+#
+# 版番号の決定（最新タグ確認・patch/minor 判断）はスクリプト外の責務とする．
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: release-patch.sh <version> <merge-sha> (--notes TEXT | --notes-file PATH)
+                        [--delete-branch NAME] [--dry-run]
+
+  version        vX.Y.Z 形式の patch バージョン（例: v2.12.5）
+  merge-sha      リリース対象マージコミットのフル SHA（40 桁）
+  --notes        リリースノート本文（1 行程度の短文向け）
+  --notes-file   リリースノートのファイルパス（複数行の既定手段）
+  --delete-branch  マージ済みブランチを origin から削除する
+  --dry-run      実行せずコマンド列を表示する（ガード検証のみ実行）
+USAGE
+  exit 1
+}
+
+VERSION="${1:-}"
+SHA="${2:-}"
+[ $# -ge 2 ] || usage
+shift 2
+
+NOTES=""
+NOTES_FILE=""
+DELETE_BRANCH=""
+DRY_RUN=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --notes)
+      NOTES="${2:?--notes requires a value}"
+      shift 2
+      ;;
+    --notes-file)
+      NOTES_FILE="${2:?--notes-file requires a value}"
+      shift 2
+      ;;
+    --delete-branch)
+      DELETE_BRANCH="${2:?--delete-branch requires a value}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    *)
+      echo "error: unknown option: $1" >&2
+      usage
+      ;;
+  esac
+done
+
+# --- 入力検証（意味的に具体的 → 汎用的の順） ---
+
+if ! [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "error: version must match vX.Y.Z: ${VERSION}" >&2
+  exit 1
+fi
+
+if ! [[ "${SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "error: merge-sha must be a full 40-hex SHA: ${SHA}" >&2
+  exit 1
+fi
+
+if [ -z "${NOTES}" ] && [ -z "${NOTES_FILE}" ]; then
+  echo "error: release notes are required (--notes or --notes-file)" >&2
+  exit 1
+fi
+
+if [ -n "${NOTES}" ] && [ -n "${NOTES_FILE}" ]; then
+  echo "error: use either --notes or --notes-file, not both" >&2
+  exit 1
+fi
+
+if [ -n "${NOTES_FILE}" ] && [ ! -f "${NOTES_FILE}" ]; then
+  echo "error: notes file not found: ${NOTES_FILE}" >&2
+  exit 1
+fi
+
+MAJOR="${VERSION%%.*}"
+
+# --- ガード（読み取り専用のため dry-run でも実行する） ---
+
+if git rev-parse -q --verify "refs/tags/${VERSION}" > /dev/null 2>&1; then
+  echo "error: tag already exists: ${VERSION}" >&2
+  exit 1
+fi
+
+if ! git cat-file -e "${SHA}^{commit}" 2> /dev/null; then
+  echo "error: commit not found in local repository: ${SHA}" >&2
+  exit 1
+fi
+
+# --- 実行 ---
+
+run_cmd() {
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    echo "[dry-run] $*"
+  else
+    echo "+ $*"
+    "$@"
+  fi
+}
+
+run_cmd git tag "${VERSION}" "${SHA}"
+run_cmd git push origin "${VERSION}"
+
+if [ -n "${NOTES_FILE}" ]; then
+  run_cmd gh release create "${VERSION}" --title "${VERSION}" --notes-file "${NOTES_FILE}"
+else
+  run_cmd gh release create "${VERSION}" --title "${VERSION}" --notes "${NOTES}"
+fi
+
+run_cmd git tag -f "${MAJOR}" "${VERSION}"
+run_cmd git push -f origin "${MAJOR}"
+
+if [ -n "${DELETE_BRANCH}" ]; then
+  run_cmd git push origin --delete "${DELETE_BRANCH}"
+fi
+
+if [ "${DRY_RUN}" -eq 1 ]; then
+  echo "dry-run: no changes were made"
+else
+  echo "released ${VERSION} and moved ${MAJOR}"
+fi
