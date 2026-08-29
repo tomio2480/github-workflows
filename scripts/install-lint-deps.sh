@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # package.json と package-lock.json を ACTION_PATH から tmpdir にコピーし
-# npm ci で textlint 依存パッケージをインストールする．
-# composite action の Install textlint step から呼ばれる．
+# npm ci で lint 依存パッケージ（markdownlint-cli2・textlint 一式）を
+# インストールする．composite action の Install lint dependencies step から呼ばれる．
 #
 # 入力（環境変数）:
 #   ACTION_PATH   - package.json / package-lock.json が置かれた action ディレクトリ（必須）

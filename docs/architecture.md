@@ -37,10 +37,11 @@ composite action（本リポジトリ）
   │ 4. scripts/generate-textlint-runtime.py で prh の絶対パスを埋め込んだ
   │    .textlintrc.runtime.json を生成
   │ 5. Node.js setup
-  │ 6. markdownlint-cli2 を実行（markdownlint-report.txt．summary 集計と共用）
-  │ 7. レポートを errorformat で reviewdog へ渡す → PR レビューコメント
-  │ 8. textlint を tmpdir に install して実行 → reviewdog で PR レビューコメント
-  │ 9. 件数を集計して PR に summary コメントを upsert（hidden marker）
+  │ 6. lint 依存（markdownlint-cli2・textlint 一式）を lockfile から tmpdir へ install
+  │ 7. markdownlint-cli2 を実行（markdownlint-report.txt．summary 集計と共用）
+  │ 8. レポートを errorformat で reviewdog へ渡す → PR レビューコメント
+  │ 9. textlint を実行 → reviewdog で PR レビューコメント
+  │ 10. 件数を集計して PR に summary コメントを upsert（hidden marker）
   ▼
 PR の該当行に inline コメントが付き，summary コメント 1 件が PR timeline に
 upsert される

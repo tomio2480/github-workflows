@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# scripts/install-textlint-deps.sh unit tests.
+# scripts/install-lint-deps.sh unit tests.
 #
 # Spec:
 #   Input (environment variables):
@@ -23,7 +23,7 @@
 
 setup() {
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
-  SCRIPT="${REPO_ROOT}/scripts/install-textlint-deps.sh"
+  SCRIPT="${REPO_ROOT}/scripts/install-lint-deps.sh"
   FAKE_BIN="${BATS_TEST_TMPDIR}/bin"
   ACTION_STUB="${BATS_TEST_TMPDIR}/action"
   mkdir -p "${FAKE_BIN}" "${ACTION_STUB}"
