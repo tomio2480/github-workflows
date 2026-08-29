@@ -72,7 +72,6 @@ jobs:
     name: Composite action integration on fixtures
     runs-on: ubuntu-latest
     needs:
-      - shell-quality-reusable
       - unit-python
       - unit-bash
     if: github.event_name == 'pull_request'

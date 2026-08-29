@@ -51,12 +51,15 @@ jobs:
             | sha256sum --check --strict
           sudo install "${tool_dir}/shfmt" /usr/local/bin/shfmt
 
-          curl -fsSLo "${tool_dir}/bats.tar.gz" \
-            https://github.com/bats-core/bats-core/archive/eb7f42f8d608ac693d7a4b67474f6714ea68cfc5.tar.gz
-          echo "845574549f4c9777bf02fcdf307f1bf347d40c66920fb6b47dcc8fdfa065ac39  ${tool_dir}/bats.tar.gz" \
-            | sha256sum --check --strict
-          tar -xzf "${tool_dir}/bats.tar.gz" -C "${tool_dir}"
-          sudo bash "${tool_dir}/bats-core-eb7f42f8d608ac693d7a4b67474f6714ea68cfc5/install.sh" /usr/local
+          # bats-core v1.14.0．GitHub の自動生成 archive に依存せず commit SHA を取得する．
+          bats_sha="eb7f42f8d608ac693d7a4b67474f6714ea68cfc5"
+          bats_dir="${tool_dir}/bats-core"
+          git init --quiet "${bats_dir}"
+          git -C "${bats_dir}" remote add origin https://github.com/bats-core/bats-core.git
+          git -C "${bats_dir}" fetch --quiet --depth=1 origin "${bats_sha}"
+          git -C "${bats_dir}" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "${bats_dir}" rev-parse HEAD)" = "${bats_sha}"
+          sudo bash "${bats_dir}/install.sh" /usr/local
 
       - name: Install PowerShell analyzers and tests
         shell: pwsh
