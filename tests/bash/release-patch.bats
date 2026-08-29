@@ -26,7 +26,11 @@ echo "git $*" >> "${CMD_LOG}"
 case "$1" in
   rev-parse)
     # refs/tags/<version> の存在確認．既定は「未存在」= exit 1．
-    [ "${STUB_TAG_EXISTS:-0}" = "1" ] && exit 0
+    # 存在時は STUB_TAG_SHA（既定は要求と異なる SHA）を出力する．
+    if [ "${STUB_TAG_EXISTS:-0}" = "1" ]; then
+      echo "${STUB_TAG_SHA:-ffffffffffffffffffffffffffffffffffffffff}"
+      exit 0
+    fi
     exit 1
     ;;
   cat-file)
@@ -34,15 +38,27 @@ case "$1" in
     [ "${STUB_COMMIT_MISSING:-0}" = "1" ] && exit 1
     exit 0
     ;;
+  ls-remote)
+    # remote major タグの現在値．既定は存在（lease 付き push の経路）．
+    if [ -n "${STUB_REMOTE_MAJOR_SHA-1111111111111111111111111111111111111111}" ]; then
+      printf '%s\trefs/tags/%s\n' \
+        "${STUB_REMOTE_MAJOR_SHA:-1111111111111111111111111111111111111111}" "$3"
+    fi
+    exit 0
+    ;;
 esac
 exit 0
 STUB
   chmod +x "${STUB_DIR}/git"
 
-  # gh スタブ: 呼び出しを記録して成功を返す．
+  # gh スタブ: 呼び出しを記録して成功を返す．release view は既定「未存在」．
   cat > "${STUB_DIR}/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "gh $*" >> "${CMD_LOG}"
+if [ "$1 $2" = "release view" ]; then
+  [ "${STUB_RELEASE_EXISTS:-0}" = "1" ] && exit 0
+  exit 1
+fi
 exit 0
 STUB
   chmod +x "${STUB_DIR}/gh"
@@ -94,7 +110,7 @@ STUB
 
 # --- ガード ---
 
-@test "fails when tag already exists" {
+@test "fails when tag already exists with a different commit" {
   export STUB_TAG_EXISTS=1
 
   run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
@@ -118,21 +134,64 @@ STUB
   run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
 
   [ "${status}" -eq 0 ]
-  # ガード 2 件（rev-parse / cat-file）の後に定例 5 コマンドが並ぶ
+  # ガード 2 件（rev-parse / cat-file）の後に定例コマンドが並ぶ
   mapfile -t lines < "${CMD_LOG}"
   [ "${lines[2]}" = "git tag v2.12.5 ${SHA}" ]
   [ "${lines[3]}" = "git push origin v2.12.5" ]
-  [ "${lines[4]}" = "gh release create v2.12.5 --title v2.12.5 --notes-file ${NOTES_FILE}" ]
-  [ "${lines[5]}" = "git tag -f v2 v2.12.5" ]
-  [ "${lines[6]}" = "git push -f origin v2" ]
-  [ "${#lines[@]}" -eq 7 ]
+  [ "${lines[4]}" = "gh release view v2.12.5" ]
+  [ "${lines[5]}" = "gh release create v2.12.5 --title v2.12.5 --notes-file ${NOTES_FILE}" ]
+  [ "${lines[6]}" = "git tag -f v2 v2.12.5" ]
+  [ "${lines[7]}" = "git ls-remote origin refs/tags/v2" ]
+  [ "${lines[8]}" = "git push --force-with-lease=refs/tags/v2:1111111111111111111111111111111111111111 origin v2" ]
+  [ "${#lines[@]}" -eq 9 ]
+}
+
+# --- 再開可能性（Codex P2 指摘 3887143551） ---
+
+@test "resumes when existing tag already points at requested SHA" {
+  export STUB_TAG_EXISTS=1
+  export STUB_TAG_SHA="${SHA}"
+
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
+
+  [ "${status}" -eq 0 ]
+  # タグ作成はスキップし，push 以降は実行する
+  run grep -qx "git tag v2.12.5 ${SHA}" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+  grep -qx "git push origin v2.12.5" "${CMD_LOG}"
+  grep -q "gh release create v2.12.5" "${CMD_LOG}"
+}
+
+@test "skips release creation when release already exists" {
+  export STUB_RELEASE_EXISTS=1
+
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
+
+  [ "${status}" -eq 0 ]
+  run grep -q "gh release create" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+  grep -qx "git tag -f v2 v2.12.5" "${CMD_LOG}"
+}
+
+# --- mutable tag の並行保護（Codex P2 指摘 3887143552） ---
+
+@test "pushes major tag without lease when remote tag is absent" {
+  export STUB_REMOTE_MAJOR_SHA=""
+
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
+
+  [ "${status}" -eq 0 ]
+  grep -qx "git push origin v2" "${CMD_LOG}"
+  run grep -q -- "--force-with-lease" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
 }
 
 @test "release create does not use --target" {
   run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
 
   [ "${status}" -eq 0 ]
-  ! grep -q -- "--target" "${CMD_LOG}"
+  run grep -q -- "--target" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
 }
 
 @test "derives major mutable tag from version" {
@@ -140,7 +199,8 @@ STUB
 
   [ "${status}" -eq 0 ]
   grep -qx "git tag -f v3 v3.0.1" "${CMD_LOG}"
-  grep -qx "git push -f origin v3" "${CMD_LOG}"
+  grep -qx "git push --force-with-lease=refs/tags/v3:1111111111111111111111111111111111111111 origin v3" \
+    "${CMD_LOG}"
 }
 
 @test "passes inline notes with --notes" {
@@ -164,7 +224,10 @@ STUB
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"git push origin v2.12.5"* ]]
   # ガード（読み取り専用）以外は実行されない
-  ! grep -q "^git tag" "${CMD_LOG}"
-  ! grep -q "^git push" "${CMD_LOG}"
-  ! grep -q "^gh " "${CMD_LOG}"
+  run grep -q "^git tag" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+  run grep -q "^git push" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+  run grep -q "^gh release create" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
 }

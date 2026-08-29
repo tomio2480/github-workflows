@@ -51,10 +51,18 @@ $Major = $Version.Split('.')[0]
 
 # --- ガード（読み取り専用のため dry-run でも実行する） ---
 
-git rev-parse -q --verify "refs/tags/${Version}" *> $null
-if ($LASTEXITCODE -eq 0) {
-  Write-Error "tag already exists: ${Version}"
-  exit 1
+# 既存タグが要求 SHA を指す場合は途中失敗からの再開とみなし，
+# タグ作成だけスキップして残りの手順を続行する（冪等な再実行）．
+$ResumeTag = $false
+$ExistingTagSha = git rev-parse -q --verify "refs/tags/${Version}^{commit}" 2> $null
+if ($LASTEXITCODE -eq 0 -and $ExistingTagSha) {
+  if ($ExistingTagSha -eq $MergeSha) {
+    Write-Output "note: tag ${Version} already points at the requested commit; resuming"
+    $ResumeTag = $true
+  } else {
+    Write-Error "tag ${Version} already exists at a different commit: ${ExistingTagSha}"
+    exit 1
+  }
 }
 
 git cat-file -e "${MergeSha}^{commit}" 2> $null
@@ -79,17 +87,32 @@ function Invoke-Step {
   }
 }
 
-Invoke-Step @('git', 'tag', $Version, $MergeSha)
+if (-not $ResumeTag) {
+  Invoke-Step @('git', 'tag', $Version, $MergeSha)
+}
 Invoke-Step @('git', 'push', 'origin', $Version)
 
-if ($PSCmdlet.ParameterSetName -eq 'NotesFile') {
+# 再実行時に作成済み Release で失敗しないよう存在確認する（読み取り専用）
+gh release view $Version *> $null
+if ($LASTEXITCODE -eq 0) {
+  Write-Output "note: release ${Version} already exists; skipping create"
+} elseif ($PSCmdlet.ParameterSetName -eq 'NotesFile') {
   Invoke-Step @('gh', 'release', 'create', $Version, '--title', $Version, '--notes-file', $NotesFile)
 } else {
   Invoke-Step @('gh', 'release', 'create', $Version, '--title', $Version, '--notes', $Notes)
 }
 
 Invoke-Step @('git', 'tag', '-f', $Major, $Version)
-Invoke-Step @('git', 'push', '-f', 'origin', $Major)
+
+# 並行実行時に古いリリースが major mutable を巻き戻さないよう，
+# push 直前の remote 値を lease に指定する（値が動いていれば push は失敗する）
+$RemoteMajorLine = git ls-remote origin "refs/tags/${Major}"
+$RemoteMajorSha = if ($RemoteMajorLine) { ($RemoteMajorLine -split "`t")[0] } else { '' }
+if ($RemoteMajorSha -ne '') {
+  Invoke-Step @('git', 'push', "--force-with-lease=refs/tags/${Major}:${RemoteMajorSha}", 'origin', $Major)
+} else {
+  Invoke-Step @('git', 'push', 'origin', $Major)
+}
 
 if ($DeleteBranch -ne '') {
   Invoke-Step @('git', 'push', 'origin', '--delete', $DeleteBranch)

@@ -103,9 +103,18 @@ MAJOR="${VERSION%%.*}"
 
 # --- ガード（読み取り専用のため dry-run でも実行する） ---
 
-if git rev-parse -q --verify "refs/tags/${VERSION}" > /dev/null 2>&1; then
-  echo "error: tag already exists: ${VERSION}" >&2
-  exit 1
+# 既存タグが要求 SHA を指す場合は途中失敗からの再開とみなし，
+# タグ作成だけスキップして残りの手順を続行する（冪等な再実行）．
+RESUME_TAG=0
+EXISTING_TAG_SHA="$(git rev-parse -q --verify "refs/tags/${VERSION}^{commit}" || true)"
+if [ -n "${EXISTING_TAG_SHA}" ]; then
+  if [ "${EXISTING_TAG_SHA}" = "${SHA}" ]; then
+    echo "note: tag ${VERSION} already points at the requested commit; resuming"
+    RESUME_TAG=1
+  else
+    echo "error: tag ${VERSION} already exists at a different commit: ${EXISTING_TAG_SHA}" >&2
+    exit 1
+  fi
 fi
 
 if ! git cat-file -e "${SHA}^{commit}" 2> /dev/null; then
@@ -126,17 +135,30 @@ run_cmd() {
   fi
 }
 
-run_cmd git tag "${VERSION}" "${SHA}"
+if [ "${RESUME_TAG}" -eq 0 ]; then
+  run_cmd git tag "${VERSION}" "${SHA}"
+fi
 run_cmd git push origin "${VERSION}"
 
-if [ -n "${NOTES_FILE}" ]; then
+# 再実行時に作成済み Release で失敗しないよう存在確認する（読み取り専用）
+if gh release view "${VERSION}" > /dev/null 2>&1; then
+  echo "note: release ${VERSION} already exists; skipping create"
+elif [ -n "${NOTES_FILE}" ]; then
   run_cmd gh release create "${VERSION}" --title "${VERSION}" --notes-file "${NOTES_FILE}"
 else
   run_cmd gh release create "${VERSION}" --title "${VERSION}" --notes "${NOTES}"
 fi
 
 run_cmd git tag -f "${MAJOR}" "${VERSION}"
-run_cmd git push -f origin "${MAJOR}"
+
+# 並行実行時に古いリリースが major mutable を巻き戻さないよう，
+# push 直前の remote 値を lease に指定する（値が動いていれば push は失敗する）
+REMOTE_MAJOR_SHA="$(git ls-remote origin "refs/tags/${MAJOR}" | cut -f1)"
+if [ -n "${REMOTE_MAJOR_SHA}" ]; then
+  run_cmd git push "--force-with-lease=refs/tags/${MAJOR}:${REMOTE_MAJOR_SHA}" origin "${MAJOR}"
+else
+  run_cmd git push origin "${MAJOR}"
+fi
 
 if [ -n "${DELETE_BRANCH}" ]; then
   run_cmd git push origin --delete "${DELETE_BRANCH}"
