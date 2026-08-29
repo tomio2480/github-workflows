@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.scratch/
 
 # Node.js（bats を npm でローカル取得した場合の一時インストール先）
 node_modules/

@@ -1,0 +1,24 @@
+name: Shell Quality
+
+on:
+  pull_request:
+    paths:
+      - "**/*.bash"
+      - "**/*.bats"
+      - "**/*.ps1"
+      - "**/*.psd1"
+      - "**/*.psm1"
+      - "**/*.sh"
+      - ".editorconfig"
+      - "PSScriptAnalyzerSettings.psd1"
+      - "bin/verify-shell.py"
+      - ".github/workflows/shell-quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  shell-quality:
+    uses: OWNER/github-workflows/.github/workflows/shell-quality.yml@<SHA> # v2
+    with:
+      verify-script: bin/verify-shell.py

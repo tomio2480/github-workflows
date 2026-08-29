@@ -167,7 +167,7 @@ caller config が `outputFormatters` を定義すると既定 formatter は置�
 
 このため `scripts/generate-mdlint-runtime.py` が解決済み config を検査する．
 `outputFormatters` キーがあるときだけ，除去済み runtime config を生成する．
-生成先は src と同じディレクトリで，
+生成先は src と同じディレクトリとする．
 名前は `.gh-workflows-runtime-*.markdownlint-cli2.yaml` の一意名とする．
 除去した事実は `::warning::` アノテーションで caller に知らせる．
 キーが無ければ何も生成せず，解決済みパスをそのまま cli2 へ渡す（パススルー）．
@@ -290,7 +290,7 @@ composite action は，caller の job 内の 1 ステップとして実行され
 対象は `concurrency`/`timeout-minutes`/`permissions` などである．
 中央から効かせるには，caller のファイルを書き換える以外に方法がない．
 
-一方 `claude-review`（v2.6〜）は reusable workflow 形式である．
+一方 `claude-review`（v2.6〜）と `shell-quality` は reusable workflow 形式である．
 `concurrency` と `timeout-minutes` は，中央だけで完結する．
 持ち場は `.github/workflows/claude-review.yml` 側である．
 caller は `uses:` の 1 行を更新するだけで恩恵を受けられる．
@@ -310,7 +310,7 @@ caller 側の `permissions` ブロックの追記が別途必要になる．
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
-| 変更の種類 | composite action（md-lint） | reusable workflow（claude-review） |
+| 変更の種類 | composite action（md-lint） | reusable workflow |
 |---|---|---|
 | 設定ファイル（`prh.yml` 等）の中身 | 中央だけで完結．caller 側の作業は不要 | 対象外 |
 | action/workflow の inputs 追加（既定値あり） | 中央だけで完結 | 中央だけで完結 |
@@ -337,17 +337,18 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 ## 🧪 テスト戦略
 
-本リポジトリは composite action の品質保証として 3 層のテストを持つ．
+本リポジトリは composite action と reusable workflow の品質保証として 4 層のテストを持つ．
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 8: テスト 3 層
+表 8: テスト 4 層
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 層 | 対象 | 道具 | 配置 | 実行 |
 |---|---|---|---|---|
 | 単体 | `scripts/` の Python / Bash ロジック | pytest / bats-core | `tests/python/` / `tests/bash/` | ローカル `pytest` / `bats`，CI の `unit-python` / `unit-bash` job |
+| workflow 統合 | Shell quality toolchain と caller contract | local reusable workflow 呼び出し | `tests/fixtures/shell-quality/` + `.github/workflows/test-self-lint.yml` | CI の `shell-quality-reusable` job |
 | 統合 | composite action の step 連携 | `./.github/actions/markdown-lint` の local 参照 | `tests/fixtures/markdown/` + `.github/workflows/test-self-lint.yml` の `integration-action` job | CI で PR 起動時 |
 | E2E | composite action から reviewdog 投稿まで | canary repo（picoruby-tea5767 等）からの実 PR | caller 側 | リリース前の手動確認 |
 

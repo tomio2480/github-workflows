@@ -1,0 +1,72 @@
+name: Reusable Shell Quality
+
+on:
+  workflow_call:
+    inputs:
+      verify-script:
+        description: Repo-local Shell quality gate の path
+        required: false
+        type: string
+        default: bin/verify-shell.py
+      python-version:
+        description: verify script を実行する Python version
+        required: false
+        type: string
+        default: "3.x"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Shell / CLI quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install ShellCheck, shfmt, and Bats
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool_dir="$(mktemp -d)"
+          trap 'rm -rf "${tool_dir}"' EXIT
+
+          curl -fsSLo "${tool_dir}/shellcheck.tar.xz" \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  ${tool_dir}/shellcheck.tar.xz" \
+            | sha256sum --check --strict
+          tar -xJf "${tool_dir}/shellcheck.tar.xz" -C "${tool_dir}"
+          sudo install "${tool_dir}/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
+
+          curl -fsSLo "${tool_dir}/shfmt" \
+            https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
+          echo "fb096c5d1ac6beabbdbaa2874d025badb03ee07929f0c9ff67563ce8c75398b1  ${tool_dir}/shfmt" \
+            | sha256sum --check --strict
+          sudo install "${tool_dir}/shfmt" /usr/local/bin/shfmt
+
+          curl -fsSLo "${tool_dir}/bats.tar.gz" \
+            https://github.com/bats-core/bats-core/archive/eb7f42f8d608ac693d7a4b67474f6714ea68cfc5.tar.gz
+          echo "845574549f4c9777bf02fcdf307f1bf347d40c66920fb6b47dcc8fdfa065ac39  ${tool_dir}/bats.tar.gz" \
+            | sha256sum --check --strict
+          tar -xzf "${tool_dir}/bats.tar.gz" -C "${tool_dir}"
+          sudo bash "${tool_dir}/bats-core-eb7f42f8d608ac693d7a4b67474f6714ea68cfc5/install.sh" /usr/local
+
+      - name: Install PowerShell analyzers and tests
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+          Install-Module Pester -RequiredVersion 6.1.0 -Scope CurrentUser -Force
+
+      - name: Run repo-local Shell quality gate
+        env:
+          VERIFY_SCRIPT: ${{ inputs.verify-script }}
+        shell: bash
+        run: python "${VERIFY_SCRIPT}" --require-all

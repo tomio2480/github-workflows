@@ -2,7 +2,7 @@
 
 ## 要約
 
-Markdown を書くすべてのリポジトリに，PR にコメントする Bot 型の lint レビューを最小設定で導入するための中央リポジトリである．対象リポジトリは **1 ファイル** の caller workflow を置くだけで運用に乗る．本リポジトリは v2 以降 composite action として配布する．caller workflow は SHA pin + バージョンコメント（`@<SHA> # v2`）を既定とし，Dependabot が更新を追随する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．v2.6 以降は，`@claude` メンションで起動するレビュー用 reusable workflow も配布する．
+Markdown lint と Shell / CLI quality の共通 GitHub Actions を配布する中央リポジトリである．対象リポジトリは caller workflow を置き，repo-local の検証ロジックを中央の tool setup から実行できる．caller workflow は SHA pin + バージョンコメント（`@<SHA> # v2`）を既定とし，Dependabot が更新を追随する．`tomio2480/github-workflows` を直接参照してもよいし，自分のアカウントへフォークして独立運用してもよい．v2.6 以降は，`@claude` メンションで起動するレビュー用 reusable workflow も配布する．
 
 > [!IMPORTANT]
 > **v1 タグ（reusable workflow 形式）は self-detection bug により動作しません．** v2 以降の composite action 形式へ移行してください．詳細は [Issue #3](https://github.com/tomio2480/github-workflows/issues/3) およびリリースノートを参照．
@@ -10,6 +10,7 @@ Markdown を書くすべてのリポジトリに，PR にコメントする Bot 
 ## 目次
 
 - 🎯 このリポジトリでできること
+- 🐚 Shell quality workflow（任意）
 - 🤖 Claude レビュー workflow（任意）
 - 🗂 ディレクトリ構成
 - 🚀 人間向け Quick Start
@@ -32,8 +33,23 @@ Markdown を書くすべてのリポジトリに，PR にコメントする Bot 
 - これらの指摘が [reviewdog](https://github.com/reviewdog/reviewdog) 経由で **PR の該当行に inline コメント** として投稿される
 - 件数の summary コメントが PR に **1 件 upsert** される（指摘ゼロでも明示．push のたびに最新化）
 - CI 自体は緑のまま（マージをブロックしない）
+- ShellCheck，shfmt，Bats を共通 setup
+- PSScriptAnalyzer，Pester を共通 setup
+- caller repo の Shell quality gate を実行
 
 Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自前運用する構成である．
+
+## 🐚 Shell quality workflow（任意）
+
+`.github/workflows/shell-quality.yml` は，各 repo の local gate を実行する．
+既定の command は `bin/verify-shell.py --require-all` である．
+検証規則を中央へ移さず，tool の setup と local gate 呼び出しだけを再利用する．
+
+導入時は caller template を caller repo へコピーする．
+対象は `templates/.github/workflows/shell-quality.yml` である．
+`OWNER` と `<SHA>` は中央 repo と確定 commit SHA に置換する．
+詳しい caller contract と固定 version は
+[Shell / CLI quality reusable workflow](docs/shell-quality.md) を参照する．
 
 ## 🤖 Claude レビュー workflow（任意）
 
@@ -95,6 +111,7 @@ github-workflows/
 │   │       └── action.yml      # composite action 本体（v2）
 │   ├── workflows/
 │   │   ├── claude-review.yml   # Claude レビュー用 reusable workflow（v2.6〜）
+│   │   ├── shell-quality.yml   # Shell / CLI quality reusable workflow
 │   │   └── test-self-lint.yml  # 単体／統合テスト用 CI workflow
 │   └── dependabot.yml          # third-party action の自動更新
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
@@ -113,7 +130,8 @@ github-workflows/
 │   ├── .github/
 │   │   └── workflows/
 │   │       ├── claude-review.yml  # Claude レビュー用 caller（任意）
-│   │       └── md-lint.yml        # 呼び出し側ワークフロー（lint 導入の必須ファイル）
+│   │       ├── md-lint.yml        # 呼び出し側ワークフロー（lint 導入の必須ファイル）
+│   │       └── shell-quality.yml  # Shell quality caller（任意）
 │   ├── .markdownlint-cli2.yaml    # 中央デフォルト＋override 用
 │   ├── .textlintrc.json           # 中央デフォルト＋override 用
 │   ├── .textlintignore            # 中央 ignore 設定＋override 用
@@ -131,6 +149,7 @@ github-workflows/
 │   ├── security.md
 │   ├── fork-usage.md
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
+│   ├── shell-quality.md            # Shell quality workflow の caller contract
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
 ├── README.md
 ├── CLAUDE.md                   # AI エージェント向けの作業指針
@@ -347,6 +366,7 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/security.md](docs/security.md) | 公開運用の脅威モデル | オーナー |
 | [docs/fork-usage.md](docs/fork-usage.md) | フォーク運用 | 他利用者 |
 | [docs/development-notes.md](docs/development-notes.md) | 設計判断とレビュー対応の知見 | メンテナー・AI |
+| [docs/shell-quality.md](docs/shell-quality.md) | Shell quality workflow の導入と契約 | 利用者・AI |
 
 ## 📝 ライセンス
 
