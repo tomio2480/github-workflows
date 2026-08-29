@@ -46,6 +46,11 @@ case "$1" in
     fi
     exit 0
     ;;
+  merge-base)
+    # 単調性検査．既定は「remote は新 patch の祖先」= exit 0．
+    [ "${STUB_MAJOR_NOT_ANCESTOR:-0}" = "1" ] && exit 1
+    exit 0
+    ;;
 esac
 exit 0
 STUB
@@ -140,10 +145,12 @@ STUB
   [ "${lines[3]}" = "git push origin v2.12.5" ]
   [ "${lines[4]}" = "gh release view v2.12.5" ]
   [ "${lines[5]}" = "gh release create v2.12.5 --title v2.12.5 --notes-file ${NOTES_FILE}" ]
-  [ "${lines[6]}" = "git tag -f v2 v2.12.5" ]
-  [ "${lines[7]}" = "git ls-remote origin refs/tags/v2" ]
-  [ "${lines[8]}" = "git push --force-with-lease=refs/tags/v2:1111111111111111111111111111111111111111 origin v2" ]
-  [ "${#lines[@]}" -eq 9 ]
+  [ "${lines[6]}" = "git ls-remote origin refs/tags/v2" ]
+  [ "${lines[7]}" = "git fetch --quiet origin refs/tags/v2" ]
+  [ "${lines[8]}" = "git merge-base --is-ancestor 1111111111111111111111111111111111111111 ${SHA}" ]
+  [ "${lines[9]}" = "git tag -f v2 v2.12.5" ]
+  [ "${lines[10]}" = "git push --force-with-lease=refs/tags/v2:1111111111111111111111111111111111111111 origin v2" ]
+  [ "${#lines[@]}" -eq 11 ]
 }
 
 # --- 再開可能性（Codex P2 指摘 3887143551） ---
@@ -174,6 +181,20 @@ STUB
 }
 
 # --- mutable tag の並行保護（Codex P2 指摘 3887143552） ---
+
+@test "refuses to move major tag when remote is not an ancestor" {
+  export STUB_MAJOR_NOT_ANCESTOR=1
+
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"rewind"* ]]
+  # major mutable にはローカル・remote とも触れない
+  run grep -q "git tag -f v2" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+  run grep -q "origin v2$" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+}
 
 @test "pushes major tag without lease when remote tag is absent" {
   export STUB_REMOTE_MAJOR_SHA=""
@@ -210,12 +231,20 @@ STUB
   grep -qx "gh release create v2.12.5 --title v2.12.5 --notes one-line note" "${CMD_LOG}"
 }
 
-@test "deletes merged branch when --delete-branch is given" {
+@test "deletes merged branch with explicit refs/heads refspec" {
   run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}" \
     --delete-branch feat/some-branch
 
   [ "${status}" -eq 0 ]
-  grep -qx "git push origin --delete feat/some-branch" "${CMD_LOG}"
+  grep -qx "git push origin --delete refs/heads/feat/some-branch" "${CMD_LOG}"
+}
+
+@test "rejects delete-branch value that is a fully qualified ref" {
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}" \
+    --delete-branch refs/tags/v2.12.5
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"branch"* ]]
 }
 
 @test "dry-run prints commands without executing mutations" {

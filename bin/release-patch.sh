@@ -96,9 +96,11 @@ if [ -n "${NOTES_FILE}" ] && [ ! -f "${NOTES_FILE}" ]; then
   exit 1
 fi
 
-# ハイフン始まりはオプション誤解釈（例: --all）を招くため拒否する
-if [ -n "${DELETE_BRANCH}" ] && [[ "${DELETE_BRANCH}" == -* ]]; then
-  echo "error: invalid branch name: ${DELETE_BRANCH}" >&2
+# ハイフン始まりはオプション誤解釈（例: --all）を招くため拒否する．
+# refs/ 始まりは refs/heads/ を前置する削除 refspec と二重になるため拒否する
+# （refs/tags/... 誤指定によるタグ削除の防止を兼ねる）
+if [ -n "${DELETE_BRANCH}" ] && [[ "${DELETE_BRANCH}" == -* || "${DELETE_BRANCH}" == refs/* ]]; then
+  echo "error: invalid branch name (short name expected): ${DELETE_BRANCH}" >&2
   exit 1
 fi
 
@@ -152,11 +154,22 @@ else
   run_cmd gh release create "${VERSION}" --title "${VERSION}" --notes "${NOTES}"
 fi
 
+# 並行実行時に古いリリースが major mutable を巻き戻さないよう，二段で守る．
+# 1) 単調性検査: remote の現在値が新 patch commit の祖先であることを確認する．
+#    祖先でない（= remote が先へ進んでいる）場合は巻き戻りになるため中止する．
+#    lease は「観測値からの変化」しか検知せず，版の順序は保証しないため必要．
+# 2) lease: 検査済みの観測値を期待値に指定し，push までの間の移動を検知する．
+REMOTE_MAJOR_SHA="$(git ls-remote origin "refs/tags/${MAJOR}" | cut -f1)"
+if [ -n "${REMOTE_MAJOR_SHA}" ]; then
+  git fetch --quiet origin "refs/tags/${MAJOR}"
+  if ! git merge-base --is-ancestor "${REMOTE_MAJOR_SHA}" "${SHA}"; then
+    echo "error: remote ${MAJOR} (${REMOTE_MAJOR_SHA}) is ahead of ${SHA}; refusing to rewind" >&2
+    exit 1
+  fi
+fi
+
 run_cmd git tag -f "${MAJOR}" "${VERSION}"
 
-# 並行実行時に古いリリースが major mutable を巻き戻さないよう，
-# push 直前の remote 値を lease に指定する（値が動いていれば push は失敗する）
-REMOTE_MAJOR_SHA="$(git ls-remote origin "refs/tags/${MAJOR}" | cut -f1)"
 if [ -n "${REMOTE_MAJOR_SHA}" ]; then
   run_cmd git push "--force-with-lease=refs/tags/${MAJOR}:${REMOTE_MAJOR_SHA}" origin "${MAJOR}"
 else
@@ -164,7 +177,8 @@ else
 fi
 
 if [ -n "${DELETE_BRANCH}" ]; then
-  run_cmd git push origin --delete "${DELETE_BRANCH}"
+  # refspec を refs/heads/ 明示で組み，タグ等の別種 ref を誤削除しない
+  run_cmd git push origin --delete "refs/heads/${DELETE_BRANCH}"
 fi
 
 if [ "${DRY_RUN}" -eq 1 ]; then

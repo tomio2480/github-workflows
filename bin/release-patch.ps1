@@ -41,9 +41,11 @@ if ($PSCmdlet.ParameterSetName -eq 'NotesFile' -and -not (Test-Path $NotesFile -
   exit 1
 }
 
-# ハイフン始まりはオプション誤解釈（例: --all）を招くため拒否する
-if ($DeleteBranch -ne '' -and $DeleteBranch.StartsWith('-')) {
-  Write-Error "invalid branch name: ${DeleteBranch}"
+# ハイフン始まりはオプション誤解釈（例: --all）を招くため拒否する．
+# refs/ 始まりは refs/heads/ を前置する削除 refspec と二重になるため拒否する
+# （refs/tags/... 誤指定によるタグ削除の防止を兼ねる）
+if ($DeleteBranch -ne '' -and ($DeleteBranch.StartsWith('-') -or $DeleteBranch.StartsWith('refs/'))) {
+  Write-Error "invalid branch name (short name expected): ${DeleteBranch}"
   exit 1
 }
 
@@ -102,12 +104,23 @@ if ($LASTEXITCODE -eq 0) {
   Invoke-Step @('gh', 'release', 'create', $Version, '--title', $Version, '--notes', $Notes)
 }
 
-Invoke-Step @('git', 'tag', '-f', $Major, $Version)
-
-# 並行実行時に古いリリースが major mutable を巻き戻さないよう，
-# push 直前の remote 値を lease に指定する（値が動いていれば push は失敗する）
+# 並行実行時に古いリリースが major mutable を巻き戻さないよう，二段で守る．
+# 1) 単調性検査: remote の現在値が新 patch commit の祖先であることを確認する．
+#    lease は「観測値からの変化」しか検知せず，版の順序は保証しないため必要．
+# 2) lease: 検査済みの観測値を期待値に指定し，push までの間の移動を検知する．
 $RemoteMajorLine = git ls-remote origin "refs/tags/${Major}"
 $RemoteMajorSha = if ($RemoteMajorLine) { ($RemoteMajorLine -split "`t")[0] } else { '' }
+if ($RemoteMajorSha -ne '') {
+  git fetch --quiet origin "refs/tags/${Major}"
+  git merge-base --is-ancestor $RemoteMajorSha $MergeSha
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "remote ${Major} (${RemoteMajorSha}) is ahead of ${MergeSha}; refusing to rewind"
+    exit 1
+  }
+}
+
+Invoke-Step @('git', 'tag', '-f', $Major, $Version)
+
 if ($RemoteMajorSha -ne '') {
   Invoke-Step @('git', 'push', "--force-with-lease=refs/tags/${Major}:${RemoteMajorSha}", 'origin', $Major)
 } else {
@@ -115,7 +128,8 @@ if ($RemoteMajorSha -ne '') {
 }
 
 if ($DeleteBranch -ne '') {
-  Invoke-Step @('git', 'push', 'origin', '--delete', $DeleteBranch)
+  # refspec を refs/heads/ 明示で組み，タグ等の別種 ref を誤削除しない
+  Invoke-Step @('git', 'push', 'origin', '--delete', "refs/heads/${DeleteBranch}")
 }
 
 if ($DryRun) {
