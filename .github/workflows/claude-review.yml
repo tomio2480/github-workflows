@@ -40,7 +40,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Claude Code
-        uses: anthropics/claude-code-action@9d7150bc8a3dae8149739a88019d192b579ad90c # v1.0.193
+        uses: anthropics/claude-code-action@1f291e1cfe0f5fc21db2aef19af844591600ade7 # v1.0.206
         with:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           # PR の CI 結果を読む MCP ツールは本入力で有効化される

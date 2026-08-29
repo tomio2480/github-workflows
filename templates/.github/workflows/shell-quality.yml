@@ -1,0 +1,33 @@
+name: Shell Quality
+
+# 対象リポジトリの .github/workflows/shell-quality.yml として配置する caller workflow．
+# `OWNER` を利用する github-workflows のオーナー名へ置換する．
+# `@<SHA>` は利用したい github-workflows の確定 commit SHA へ置換する．
+# verify-script を変更する場合は，pull_request.paths も同じ path へ変更する．
+
+on:
+  pull_request:
+    paths:
+      - "**/*.bash"
+      - "**/*.bats"
+      - "**/*.ps1"
+      - "**/*.psd1"
+      - "**/*.psm1"
+      - "**/*.sh"
+      - ".editorconfig"
+      - "PSScriptAnalyzerSettings.psd1"
+      - "bin/verify-shell.py"
+      - ".github/workflows/shell-quality.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shell-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell-quality:
+    uses: OWNER/github-workflows/.github/workflows/shell-quality.yml@<SHA> # v2.13.0
+    with:
+      verify-script: bin/verify-shell.py
