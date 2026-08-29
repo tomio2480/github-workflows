@@ -9,9 +9,12 @@
 #      タグを先に push 済みのため --target は付けない
 #      （既存タグへの --target は HTTP 422 で失敗する）
 #   4. git tag -f <major> <version>      # major mutable を最新 patch へ追従
-#   5. git push -f origin <major>
+#   5. git push --force-with-lease=refs/tags/<major>:<remote 現在値> origin <major>
+#      並行実行による巻き戻りを防ぐ．remote 未存在の初回のみ通常 push
 #   6. （任意）git push origin --delete <branch>
 #
+# 途中失敗後は同一コマンドの再実行で再開できる（作成済みのタグ・Release は
+# スキップする）．
 # 版番号の決定（最新タグ確認・patch/minor 判断）はスクリプト外の責務とする．
 
 set -euo pipefail
