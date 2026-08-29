@@ -48,6 +48,11 @@ RUNTIME_SUFFIX = ".markdownlint-cli2.yaml"
 # トップレベル（列 0）の outputFormatters キー行．引用符付きキーも受ける．
 _KEY_LINE_RE = re.compile(r"^(?P<quote>['\"]?)outputFormatters(?P=quote)\s*:")
 
+# キーの値に属する継続行として消費する列 0 の block sequence エントリ
+# （indentationless sequence．`- ` または `-` 単独）．`-foo:` のような
+# ダッシュ始まりの plain キーは該当しない（空白が続かないため）．
+_SEQUENCE_ENTRY_RE = re.compile(r"^-(?:[ \t]|$)")
+
 OUTPUT_FORMATTERS_WARNING = (
     "::warning::.markdownlint-cli2.yaml の 'outputFormatters' は既定 formatter を"
     "置き換え，PR への inline コメントと summary 集計が 0 件になるため除去しました．"
@@ -66,10 +71,12 @@ def _emit_outputs(config_path: str, generated_path: str) -> None:
 
 
 def _remove_top_level_key(text: str) -> str | None:
-    """列 0 の outputFormatters キー行とその継続行（インデント行・空行）を落とす．
+    """列 0 の outputFormatters キー行とその継続行を落とす．
 
-    他の行はバイト単位で保持する．キー行を特定できなければ None を返す
-    （flow style の root mapping 等．呼び出し側で fail-closed にする）．
+    継続行はインデント行・空行に加え，列 0 の block sequence エントリ
+    （indentationless sequence）を含む．他の行はバイト単位で保持する．
+    キー行を特定できなければ None を返す（flow style の root mapping 等．
+    呼び出し側で fail-closed にする）．
     """
     lines = text.splitlines(keepends=True)
     kept: list[str] = []
@@ -81,7 +88,9 @@ def _remove_top_level_key(text: str) -> str | None:
             removed = True
             index += 1
             while index < len(lines) and (
-                lines[index].strip() == "" or lines[index][0] in " \t"
+                lines[index].strip() == ""
+                or lines[index][0] in " \t"
+                or _SEQUENCE_ENTRY_RE.match(lines[index])
             ):
                 index += 1
             continue
@@ -114,6 +123,25 @@ def main(argv: Sequence[str]) -> None:
         # 黙って往復再シリアライズへ落とすと型崩れの恐れがあるため fail-closed．
         raise ValueError(
             "outputFormatters is present but could not be removed textually; "
+            "write the config in block style (one top-level key per line)"
+        )
+
+    # 生成物を parse し直し，除去が構造を壊していないことを検証する．
+    # root のキー集合が「元 − outputFormatters」と一致しなければ，壊れた
+    # runtime を黙って cli2 へ渡さず fail-closed にする（PR #129 レビュー対応）．
+    expected_keys = {key for key in cfg if key != "outputFormatters"}
+    try:
+        stripped_cfg = yaml.safe_load(stripped)
+    except yaml.YAMLError as exc:
+        raise ValueError(
+            f"removing outputFormatters produced invalid YAML: {exc}"
+        ) from exc
+    actual_keys = set(stripped_cfg) if isinstance(stripped_cfg, dict) else set()
+    if (stripped_cfg is not None and not isinstance(stripped_cfg, dict)) or (
+        actual_keys != expected_keys
+    ):
+        raise ValueError(
+            "removing outputFormatters altered other top-level keys; "
             "write the config in block style (one top-level key per line)"
         )
     print(OUTPUT_FORMATTERS_WARNING)
