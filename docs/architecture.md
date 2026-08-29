@@ -167,11 +167,15 @@ caller config が `outputFormatters` を定義すると既定 formatter は置�
 
 このため `scripts/generate-mdlint-runtime.py` が解決済み config を検査する．
 `outputFormatters` キーがあるときだけ，除去済み runtime config を
-`RUNNER_TEMP` 配下へ生成する．
+src と同じディレクトリへ `.gh-workflows-runtime.markdownlint-cli2.yaml` の
+名前で生成する．
 除去した事実は `::warning::` アノテーションで caller に知らせる．
 キーが無ければ何も生成せず，解決済みパスをそのまま cli2 へ渡す（パススルー）．
-`--config` は「cwd に置かれたものとして」適用されるため，
-`RUNNER_TEMP` への退避で `globs` / `ignores` の解決は変わらない．
+
+同じディレクトリへ置くのは，config ファイル基準で解決される相対パス
+（`customRules` / `markdownItPlugins` 等）を保つためである（PR #129）．
+basename は cli2 の `--config` が受理する規約に合わせる．
+生成物は markdownlint 実行ステップが使用後に削除する（ワークスペース非汚染）．
 独自 formatter が必要な caller は，本 action と別のワークフローで実行する．
 
 この組み立てにより，override 組み合わせ（caller 辞書＋中央 textlintrc など）でも path が破綻しない．

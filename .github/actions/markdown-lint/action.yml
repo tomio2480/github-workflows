@@ -148,9 +148,13 @@ runs:
       # lint が走って違反があっても inline・summary とも 0 件になる（Issue #122）．
       # キーがあるときだけ除去済み runtime config を生成し，::warning:: で caller に
       # 知らせる．無いときは解決済みパスをそのまま使う（パススルー．既存 caller の
-      # 挙動は不変）．dest の basename は cli2 の --config が受け付ける規約名に合わせ
-      # .markdownlint-cli2.yaml とする．--config は「cwd に置かれたものとして」適用
-      # されるため，RUNNER_TEMP への退避で globs / ignores の解決は変わらない．
+      # 挙動は不変）．runtime は src と同じディレクトリへ生成する．cli2 は
+      # customRules / markdownItPlugins 等の相対パスを config ファイルのディレクトリ
+      # 基準で解決するため，RUNNER_TEMP へ退避すると caller の独自ルールが読めなく
+      # なる（PR #129 の Codex 指摘）．basename は cli2 の --config が受理する規約
+      # （.markdownlint-cli2.yaml で終わる名前）に合わせる．生成物は markdownlint
+      # 実行ステップが generated output を見て削除する（ワークスペース非汚染）．
+      # 採用パスの分岐もスクリプト側が GITHUB_OUTPUT へ書く．pytest で全経路を検証済み．
       # PyYAML は ubuntu-latest プリインストール．pyyaml-version input による固定は
       # 前段の textlint runtime ステップが済ませている．
       id: mdlint_runtime
@@ -160,10 +164,7 @@ runs:
         SRC: ${{ steps.cfg.outputs.mdlint }}
       run: |
         set -euo pipefail
-        # 採用パスの分岐（除去したら DEST，しなければ SRC）はスクリプト側が
-        # 判定して GITHUB_OUTPUT の config= へ書く．pytest で全経路を検証済み．
-        python3 "${ACTION_PATH}/../../../scripts/generate-mdlint-runtime.py" \
-          "${SRC}" "${RUNNER_TEMP}/mdlint-runtime/.markdownlint-cli2.yaml"
+        python3 "${ACTION_PATH}/../../../scripts/generate-mdlint-runtime.py" "${SRC}"
 
     - name: Setup Node.js
       # actions/setup-node v6.4.0
@@ -207,6 +208,7 @@ runs:
       shell: bash
       env:
         MDLINT_CFG: ${{ steps.mdlint_runtime.outputs.config }}
+        MDLINT_GENERATED: ${{ steps.mdlint_runtime.outputs.generated }}
         MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
         LINT_BIN: ${{ steps.lint_install.outputs.bin }}
       run: |
@@ -222,6 +224,10 @@ runs:
           --config "${MDLINT_CFG}" \
           "${MARKDOWN_GLOB}" "#node_modules" \
           > markdownlint-report.txt 2>&1 || MDLINT_EXIT=$?
+        # outputFormatters 除去で生成した runtime config は caller config と同じ
+        # ディレクトリ（多くは caller workspace）に置かれるため，用済み次第
+        # 削除して workspace を汚さない．パススルー時は空文字で何もしない．
+        if [ -n "${MDLINT_GENERATED}" ]; then rm -f "${MDLINT_GENERATED}"; fi
         if [ "${MDLINT_EXIT}" -ne 0 ]; then
           if [ "${MDLINT_EXIT}" -ne 1 ] || \
              ! grep -q '^markdownlint-cli2 v' markdownlint-report.txt; then
