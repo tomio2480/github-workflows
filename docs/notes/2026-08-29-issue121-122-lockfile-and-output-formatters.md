@@ -72,8 +72,8 @@ caller config の `outputFormatters` 除去（#122，PR #129，v2.12.3）も扱�
 - **PyYAML の往復再シリアライズ**: YAML 1.1 のスカラー解釈で，引用符なしの
   `on` / `yes` が bool へ化ける．cli2 側の `js-yaml` 4 と型がずれ lint
   挙動が変わるため，テキスト除去へ転換した．
-- **loader schema を `js-yaml` 4 へ合わせる案**: bool 以外にも
-  sexagesimal・timestamp 等の差分まで揃える必要があり脆いため棄却した．
+- **loader schema を `js-yaml` 4 へ合わせる案**: 棄却した．
+  bool 以外にも sexagesimal・timestamp 等の差分まで揃える必要があり脆い．
 
 ## レビューの学び（Codex 5 ラウンド 8 件）
 
