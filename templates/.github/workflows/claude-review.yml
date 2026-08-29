@@ -33,6 +33,6 @@ permissions:
 
 jobs:
   claude:
-    uses: OWNER/github-workflows/.github/workflows/claude-review.yml@<SHA> # v2.12.3
+    uses: OWNER/github-workflows/.github/workflows/claude-review.yml@<SHA> # v2.12.4
     secrets:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
