@@ -158,7 +158,7 @@ PyYAML は `ubuntu-latest` runner に preinstall されている前提である�
 内部で `pip install pyyaml==<value>` として固定される．`==` 等の比較子は付けない．
 既定（空文字）では何も install せず runner 既定の PyYAML を使う．
 
-### markdownlint 用 runtime config 生成（outputFormatters の除去）
+### `markdownlint` 用 runtime config 生成（`outputFormatters` の除去）
 
 composite action は cli2 の既定 formatter 出力（`path:line[:col] RULE 説明`）に依存する．
 依存箇所は reviewdog への errorformat 入力と summary 集計の 2 つである．
@@ -166,8 +166,9 @@ caller config が `outputFormatters` を定義すると既定 formatter は置�
 この場合，lint が走って違反があっても inline・summary とも 0 件になる（Issue #122）．
 
 このため `scripts/generate-mdlint-runtime.py` が解決済み config を検査する．
-`outputFormatters` キーがあるときだけ除去済み runtime config を
-`RUNNER_TEMP` 配下へ生成し，`::warning::` アノテーションで caller に知らせる．
+`outputFormatters` キーがあるときだけ，除去済み runtime config を
+`RUNNER_TEMP` 配下へ生成する．
+除去した事実は `::warning::` アノテーションで caller に知らせる．
 キーが無ければ何も生成せず，解決済みパスをそのまま cli2 へ渡す（パススルー）．
 `--config` は「cwd に置かれたものとして」適用されるため，
 `RUNNER_TEMP` への退避で `globs` / `ignores` の解決は変わらない．
