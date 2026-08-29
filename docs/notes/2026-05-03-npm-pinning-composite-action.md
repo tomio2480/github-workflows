@@ -28,6 +28,6 @@
 
 ## 参照
 
-- Issue #7: https://github.com/tomio2480/github-workflows/issues/7
-- PR #37: https://github.com/tomio2480/github-workflows/pull/37
-- Issue #38（スクリプト外出し）: https://github.com/tomio2480/github-workflows/issues/38
+- Issue #7: <https://github.com/tomio2480/github-workflows/issues/7>
+- PR #37: <https://github.com/tomio2480/github-workflows/pull/37>
+- Issue #38（スクリプト外出し）: <https://github.com/tomio2480/github-workflows/issues/38>

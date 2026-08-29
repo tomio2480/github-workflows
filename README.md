@@ -87,7 +87,7 @@ v1 md-lint の self-detection bug は該当しない．
 
 ## 🗂 ディレクトリ構成
 
-```
+```text
 github-workflows/
 ├── .github/
 │   ├── actions/
