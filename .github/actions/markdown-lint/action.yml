@@ -141,6 +141,35 @@ runs:
           "${SRC}" "${PRH}" "${DEST}" "${ALLOWLIST}" "${PRH_EXTRA}"
         echo "config=${DEST}" >> "${GITHUB_OUTPUT}"
 
+    - name: Generate runtime markdownlint config without outputFormatters
+      # caller config の outputFormatters は既定 formatter を置き換える（併存しない）．
+      # 既定出力（`path:line[:col] RULE 説明`）には reviewdog への errorformat 入力と
+      # summary 集計（scripts/count-lint-findings.py）が依存しており，置き換えられると
+      # lint が走って違反があっても inline・summary とも 0 件になる（Issue #122）．
+      # キーがあるときだけ除去済み runtime config を生成し，::warning:: で caller に
+      # 知らせる．無いときは解決済みパスをそのまま使う（パススルー．既存 caller の
+      # 挙動は不変）．runtime は src と同じディレクトリへ生成する．cli2 は
+      # customRules / markdownItPlugins 等の相対パスを config ファイルのディレクトリ
+      # 基準で解決するため，RUNNER_TEMP へ退避すると caller の独自ルールが読めなく
+      # なる（PR #129 の Codex 指摘）．ファイル名は mkstemp の一意名
+      # （.gh-workflows-runtime-*.markdownlint-cli2.yaml）とし caller 所有の
+      # ファイルを上書きしない．suffix は cli2 の --config が受理する規約に合わせる．
+      # 除去はトップレベルキーのテキスト除去で行い，PyYAML 往復による YAML 1.1
+      # スカラー型崩れ（on / yes の bool 化等）を避ける（いずれも同レビュー指摘）．
+      # 生成物は末尾の always() クリーンアップステップが generated output を
+      # 見て削除する（ワークスペース非汚染．中間ステップの失敗でも残置しない）．
+      # 採用パスの分岐もスクリプト側が GITHUB_OUTPUT へ書く．pytest で全経路を検証済み．
+      # PyYAML は ubuntu-latest プリインストール．pyyaml-version input による固定は
+      # 前段の textlint runtime ステップが済ませている．
+      id: mdlint_runtime
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SRC: ${{ steps.cfg.outputs.mdlint }}
+      run: |
+        set -euo pipefail
+        python3 "${ACTION_PATH}/../../../scripts/generate-mdlint-runtime.py" "${SRC}"
+
     - name: Setup Node.js
       # actions/setup-node v6.4.0
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -182,7 +211,7 @@ runs:
       id: mdlint_report
       shell: bash
       env:
-        MDLINT_CFG: ${{ steps.cfg.outputs.mdlint }}
+        MDLINT_CFG: ${{ steps.mdlint_runtime.outputs.config }}
         MARKDOWN_GLOB: ${{ inputs.markdown-glob }}
         LINT_BIN: ${{ steps.lint_install.outputs.bin }}
       run: |
@@ -406,3 +435,19 @@ runs:
           ${DIFF_FILES_ARGS[@]+"${DIFF_FILES_ARGS[@]}"} > "${SUMMARY_JSON_PATH}"
         SUMMARY_JSON="${SUMMARY_JSON_PATH}" \
           bash "${ACTION_PATH}/../../../scripts/post-lint-summary.sh"
+
+    - name: Clean up generated runtime config
+      # outputFormatters 除去で生成した runtime config は caller config と同じ
+      # ディレクトリ（多くは caller workspace）に置かれる．中間ステップの失敗や
+      # キャンセルでも残置しないよう，always() の末尾ステップで削除する
+      # （PR #129 の Codex 指摘．self-hosted runner での蓄積と，後続 always()
+      # ステップからの観測を防ぐ）．パススルー時は空文字で何もしない．
+      # ハードキャンセルで always() 自体が走らないケースは残るが，同名の
+      # 一意ファイルは次回 run で再利用されないため実害は蓄積のみに限られる．
+      if: always()
+      shell: bash
+      env:
+        MDLINT_GENERATED: ${{ steps.mdlint_runtime.outputs.generated }}
+      run: |
+        set -uo pipefail
+        if [ -n "${MDLINT_GENERATED:-}" ]; then rm -f "${MDLINT_GENERATED}"; fi
