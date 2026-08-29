@@ -151,9 +151,13 @@ runs:
       # 挙動は不変）．runtime は src と同じディレクトリへ生成する．cli2 は
       # customRules / markdownItPlugins 等の相対パスを config ファイルのディレクトリ
       # 基準で解決するため，RUNNER_TEMP へ退避すると caller の独自ルールが読めなく
-      # なる（PR #129 の Codex 指摘）．basename は cli2 の --config が受理する規約
-      # （.markdownlint-cli2.yaml で終わる名前）に合わせる．生成物は markdownlint
-      # 実行ステップが generated output を見て削除する（ワークスペース非汚染）．
+      # なる（PR #129 の Codex 指摘）．ファイル名は mkstemp の一意名
+      # （.gh-workflows-runtime-*.markdownlint-cli2.yaml）とし caller 所有の
+      # ファイルを上書きしない．suffix は cli2 の --config が受理する規約に合わせる．
+      # 除去はトップレベルキーのテキスト除去で行い，PyYAML 往復による YAML 1.1
+      # スカラー型崩れ（on / yes の bool 化等）を避ける（いずれも同レビュー指摘）．
+      # 生成物は markdownlint 実行ステップが generated output を見て削除する
+      # （ワークスペース非汚染）．
       # 採用パスの分岐もスクリプト側が GITHUB_OUTPUT へ書く．pytest で全経路を検証済み．
       # PyYAML は ubuntu-latest プリインストール．pyyaml-version input による固定は
       # 前段の textlint runtime ステップが済ませている．

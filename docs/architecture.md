@@ -168,13 +168,17 @@ caller config が `outputFormatters` を定義すると既定 formatter は置�
 このため `scripts/generate-mdlint-runtime.py` が解決済み config を検査する．
 `outputFormatters` キーがあるときだけ，除去済み runtime config を生成する．
 生成先は src と同じディレクトリで，
-名前は `.gh-workflows-runtime.markdownlint-cli2.yaml` とする．
+名前は `.gh-workflows-runtime-*.markdownlint-cli2.yaml` の一意名とする．
 除去した事実は `::warning::` アノテーションで caller に知らせる．
 キーが無ければ何も生成せず，解決済みパスをそのまま cli2 へ渡す（パススルー）．
 
 同じディレクトリへ置くのは相対パスの解決を保つためである（PR #129）．
 `customRules` / `markdownItPlugins` 等は config ファイル基準で解決される．
-basename は cli2 の `--config` が受理する規約に合わせる．
+一意名（`tempfile.mkstemp`）により caller 所有ファイルを上書きしない．
+suffix は cli2 の `--config` が受理する規約に合わせる．
+除去はトップレベルキーのテキスト除去で行い，他の行は保持する．
+PyYAML（YAML 1.1）の往復では，引用符なしの `on` / `yes` 等が cli2 の
+js-yaml 4 と異なる型へ化けて lint 挙動が変わりうるためである．
 生成物は `markdownlint` 実行ステップが使用後に削除する（ワークスペース非汚染）．
 独自 formatter が必要な caller は，本 action と別のワークフローで実行する．
 

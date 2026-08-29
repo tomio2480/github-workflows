@@ -17,25 +17,36 @@ outputFormatters を使わない caller の挙動は完全に不変となる．
 runtime ファイルは src と同じディレクトリへ生成する．cli2 は customRules /
 markdownItPlugins 等の相対パスを config ファイルのディレクトリ基準で解決する
 ため，別ディレクトリへ退避すると caller の独自ルールが読めなくなる（PR #129
-の Codex レビュー指摘）．basename は cli2 の --config が受理する規約
-（`.markdownlint-cli2.yaml` で終わる名前）に合わせる．生成物の後始末は
-呼び出し側が `generated` output を使って行う（ワークスペース非汚染）．
+の Codex レビュー指摘）．ファイル名は tempfile.mkstemp による一意名とし，
+caller 所有の同名ファイルを上書きしない（同レビュー指摘）．suffix は cli2 の
+--config が受理する規約（`.markdownlint-cli2.yaml` で終わる名前）に合わせる．
+生成物の後始末は呼び出し側が `generated` output を使って行う．
 
+除去はトップレベルキーのテキスト除去で行い，他の行はバイト単位で保持する．
+PyYAML の safe_load（YAML 1.1）と cli2 の js-yaml 4（YAML 1.2 系）は
+スカラー解釈が異なり，往復再シリアライズでは引用符なしの on / yes 等が
+bool へ化けて lint 挙動が変わりうるためである（同レビュー指摘）．
+PyYAML はキーの検出と root の型検証のみに使う．
 キーがあるときは値を問わず除去する（cli2 は空リストでもキーの存在だけで
-既定 formatter を置き換えるため）．YAML の safe_load / safe_dump の往復で
-コメントは失われるが，runtime 専用の一時ファイルのため差し支えない．
+既定 formatter を置き換えるため）．
 """
 
 from __future__ import annotations
 
 import os
 import pathlib
+import re
 import sys
+import tempfile
 from typing import Sequence
 
 import yaml
 
-RUNTIME_BASENAME = ".gh-workflows-runtime.markdownlint-cli2.yaml"
+RUNTIME_PREFIX = ".gh-workflows-runtime-"
+RUNTIME_SUFFIX = ".markdownlint-cli2.yaml"
+
+# トップレベル（列 0）の outputFormatters キー行．引用符付きキーも受ける．
+_KEY_LINE_RE = re.compile(r"^(?P<quote>['\"]?)outputFormatters(?P=quote)\s*:")
 
 OUTPUT_FORMATTERS_WARNING = (
     "::warning::.markdownlint-cli2.yaml の 'outputFormatters' は既定 formatter を"
@@ -54,13 +65,41 @@ def _emit_outputs(config_path: str, generated_path: str) -> None:
         fp.write(f"generated={generated_path}\n")
 
 
+def _remove_top_level_key(text: str) -> str | None:
+    """列 0 の outputFormatters キー行とその継続行（インデント行・空行）を落とす．
+
+    他の行はバイト単位で保持する．キー行を特定できなければ None を返す
+    （flow style の root mapping 等．呼び出し側で fail-closed にする）．
+    """
+    lines = text.splitlines(keepends=True)
+    kept: list[str] = []
+    removed = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not removed and _KEY_LINE_RE.match(line):
+            removed = True
+            index += 1
+            while index < len(lines) and (
+                lines[index].strip() == "" or lines[index][0] in " \t"
+            ):
+                index += 1
+            continue
+        kept.append(line)
+        index += 1
+    if not removed:
+        return None
+    return "".join(kept)
+
+
 def main(argv: Sequence[str]) -> None:
     if len(argv) != 1:
         raise ValueError(f"expected 1 argument (src), got {len(argv)}")
     src = argv[0]
 
     src_path = pathlib.Path(src)
-    cfg = yaml.safe_load(src_path.read_text(encoding="utf-8"))
+    text = src_path.read_text(encoding="utf-8")
+    cfg = yaml.safe_load(text)
     if cfg is not None and not isinstance(cfg, dict):
         raise TypeError(
             f"markdownlint-cli2 config root must be a mapping, got {type(cfg).__name__}"
@@ -70,14 +109,21 @@ def main(argv: Sequence[str]) -> None:
         _emit_outputs(src, "")
         return
 
-    del cfg["outputFormatters"]
+    stripped = _remove_top_level_key(text)
+    if stripped is None:
+        # 黙って往復再シリアライズへ落とすと型崩れの恐れがあるため fail-closed．
+        raise ValueError(
+            "outputFormatters is present but could not be removed textually; "
+            "write the config in block style (one top-level key per line)"
+        )
     print(OUTPUT_FORMATTERS_WARNING)
 
-    dest_path = src_path.parent / RUNTIME_BASENAME
-    dest_path.write_text(
-        yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    fd, dest = tempfile.mkstemp(
+        dir=src_path.parent, prefix=RUNTIME_PREFIX, suffix=RUNTIME_SUFFIX
     )
-    _emit_outputs(str(dest_path), str(dest_path))
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as fp:
+        fp.write(stripped)
+    _emit_outputs(dest, dest)
 
 
 if __name__ == "__main__":
