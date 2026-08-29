@@ -186,7 +186,14 @@ if [ -n "${REMOTE_MAJOR_SHA}" ]; then
     echo "[dry-run] (monotonicity check for ${MAJOR} deferred to a real run)"
   else
     if [ "${DRY_RUN}" -eq 0 ]; then
-      git fetch --quiet origin "refs/tags/${MAJOR}"
+      # shallow クローンでは remote タグと新 patch の間の履歴が欠けており，
+      # 祖先関係を判定できない（実際は祖先でも非祖先と誤判定される）．
+      # そのため深さを解消してから fetch する
+      if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+        git fetch --quiet --unshallow origin "refs/tags/${MAJOR}"
+      else
+        git fetch --quiet origin "refs/tags/${MAJOR}"
+      fi
     fi
     if ! git merge-base --is-ancestor "${REMOTE_MAJOR_SHA}" "${SHA}"; then
       echo "error: remote ${MAJOR} (${REMOTE_MAJOR_SHA}) is ahead of ${SHA}; refusing to rewind" >&2

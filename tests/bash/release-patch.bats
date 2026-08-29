@@ -25,6 +25,11 @@ setup() {
 echo "git $*" >> "${CMD_LOG}"
 case "$1" in
   rev-parse)
+    # shallow 判定．既定は「完全クローン」= false．
+    if [ "$2" = "--is-shallow-repository" ]; then
+      [ "${STUB_SHALLOW:-0}" = "1" ] && echo "true" || echo "false"
+      exit 0
+    fi
     # refs/tags/<version> の存在確認．既定は「未存在」= exit 1．
     # 存在時は STUB_TAG_SHA（既定は要求と異なる SHA）を出力する．
     if [ "${STUB_TAG_EXISTS:-0}" = "1" ]; then
@@ -172,11 +177,24 @@ STUB
   [ "${lines[4]}" = "gh release view v2.12.5" ]
   [ "${lines[5]}" = "gh release create v2.12.5 --title v2.12.5 --notes-file ${NOTES_FILE}" ]
   [ "${lines[6]}" = "git ls-remote origin refs/tags/v2" ]
-  [ "${lines[7]}" = "git fetch --quiet origin refs/tags/v2" ]
-  [ "${lines[8]}" = "git merge-base --is-ancestor 1111111111111111111111111111111111111111 ${SHA}" ]
-  [ "${lines[9]}" = "git tag -f v2 v2.12.5" ]
-  [ "${lines[10]}" = "git push --force-with-lease=refs/tags/v2:1111111111111111111111111111111111111111 origin v2" ]
-  [ "${#lines[@]}" -eq 11 ]
+  [ "${lines[7]}" = "git rev-parse --is-shallow-repository" ]
+  [ "${lines[8]}" = "git fetch --quiet origin refs/tags/v2" ]
+  [ "${lines[9]}" = "git merge-base --is-ancestor 1111111111111111111111111111111111111111 ${SHA}" ]
+  [ "${lines[10]}" = "git tag -f v2 v2.12.5" ]
+  [ "${lines[11]}" = "git push --force-with-lease=refs/tags/v2:1111111111111111111111111111111111111111 origin v2" ]
+  [ "${#lines[@]}" -eq 12 ]
+}
+
+@test "deepens shallow clone before the ancestry check" {
+  export STUB_SHALLOW=1
+
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
+
+  [ "${status}" -eq 0 ]
+  # 切り詰められた履歴では祖先関係を判定できないため深さを解消してから検査する
+  grep -qx "git fetch --quiet --unshallow origin refs/tags/v2" "${CMD_LOG}"
+  run grep -qx "git fetch --quiet origin refs/tags/v2" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
 }
 
 # --- 再開可能性（Codex P2 指摘 3887143551） ---

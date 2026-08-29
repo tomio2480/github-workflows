@@ -126,7 +126,14 @@ if ($RemoteMajorSha -ne '') {
     Write-Output "[dry-run] (monotonicity check for ${Major} deferred to a real run)"
   } else {
     if (-not $DryRun) {
-      git fetch --quiet origin "refs/tags/${Major}"
+      # shallow クローンでは remote タグと新 patch の間の履歴が欠けており，
+      # 祖先関係を判定できない（実際は祖先でも非祖先と誤判定される）．
+      # そのため深さを解消してから fetch する
+      if ((git rev-parse --is-shallow-repository) -eq 'true') {
+        git fetch --quiet --unshallow origin "refs/tags/${Major}"
+      } else {
+        git fetch --quiet origin "refs/tags/${Major}"
+      }
     }
     git merge-base --is-ancestor $RemoteMajorSha $MergeSha
     if ($LASTEXITCODE -ne 0) {
