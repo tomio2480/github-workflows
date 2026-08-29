@@ -6,11 +6,15 @@
     - src に outputFormatters キーが無いときは runtime を生成せず，
       GITHUB_OUTPUT へ `config=<src>` と `generated=`（空）を追記する（パススルー）
     - src に outputFormatters キーがあるときは src と同じディレクトリへ
-      `.gh-workflows-runtime.markdownlint-cli2.yaml` を生成してキーを除去し，
+      `.gh-workflows-runtime-*.markdownlint-cli2.yaml` の一意名で生成し，
       GITHUB_OUTPUT へ `config=<runtime>` と `generated=<runtime>` を追記する
-      （他のキーは保持する．値が null や空リストでもキーの存在だけで除去する．
-      同じディレクトリに置くのは config ファイル基準の相対パス解決
-      （customRules / markdownItPlugins 等）を保つため）
+      （一意名は既存ファイルと衝突しない．caller 所有ファイルを上書きしない）
+    - 除去はトップレベルキーのテキスト除去で行い，他の行はバイト単位で保持する
+      （PyYAML の YAML 1.1 往復による型崩れ（on / yes の bool 化等）を避ける．
+      PyYAML は検出・検証のみに使う）
+    - block style・flow style（1 行値）・引用符付きキーのいずれも除去できる
+    - 検出はできたがテキスト除去でキー行を特定できないとき（flow style の
+      root mapping 等）は ValueError を上げる（fail-closed．黙って型崩れさせない）
     - 除去したときは '::warning::' で始まる警告を 1 行 stdout へ出す
     - 除去しなかったときは何も出力しない
     - src が空ファイル（YAML root が None）のときは生成しない（パススルー）
@@ -28,7 +32,8 @@ import yaml
 # ハイフンを含むモジュール名は import 文で書けないため importlib で読み込む．
 _MODULE = importlib.import_module("generate-mdlint-runtime")
 
-RUNTIME_BASENAME = ".gh-workflows-runtime.markdownlint-cli2.yaml"
+RUNTIME_PREFIX = ".gh-workflows-runtime-"
+RUNTIME_SUFFIX = ".markdownlint-cli2.yaml"
 
 
 @pytest.fixture
@@ -39,63 +44,116 @@ def github_output(tmp_path, monkeypatch) -> Path:
     return path
 
 
-def _write_yaml(path: Path, payload) -> Path:
-    path.write_text(yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8")
+def _outputs(github_output: Path) -> dict:
+    pairs = [
+        line.split("=", 1)
+        for line in github_output.read_text(encoding="utf-8").splitlines()
+    ]
+    return {key: value for key, value in pairs}
+
+
+def _write(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
     return path
-
-
-def _outputs(github_output: Path) -> str:
-    return github_output.read_text(encoding="utf-8")
 
 
 def test_without_output_formatters_passes_src_through(
     tmp_path, capsys, github_output
 ):
-    src = _write_yaml(
-        tmp_path / "src.yaml", {"config": {"MD013": False}, "ignores": ["a/**"]}
+    src = _write(
+        tmp_path / "src.yaml", "config:\n  MD013: false\nignores:\n  - a/**\n"
     )
 
     _MODULE.main([str(src)])
 
-    assert not (tmp_path / RUNTIME_BASENAME).exists()
-    assert _outputs(github_output) == f"config={src}\ngenerated=\n"
+    assert list(tmp_path.glob(f"{RUNTIME_PREFIX}*")) == []
+    assert _outputs(github_output) == {"config": str(src), "generated": ""}
     assert capsys.readouterr().out == ""
 
 
-def test_with_output_formatters_key_is_removed_and_others_kept(
+def test_block_style_key_is_removed_and_other_lines_kept_verbatim(
     tmp_path, github_output
 ):
-    src = _write_yaml(
+    src = _write(
         tmp_path / "src.yaml",
-        {
-            "config": {"MD013": False, "MD041": True},
-            "ignores": ["tests/fixtures/**"],
-            "outputFormatters": [["markdownlint-cli2-formatter-json"]],
-        },
+        "config:\n"
+        "  MD013: false\n"
+        "outputFormatters:\n"
+        "  - [markdownlint-cli2-formatter-json]\n"
+        "ignores:\n"
+        "  - tests/fixtures/**\n",
     )
 
     _MODULE.main([str(src)])
 
-    runtime = tmp_path / RUNTIME_BASENAME
-    written = yaml.safe_load(runtime.read_text(encoding="utf-8"))
-    assert "outputFormatters" not in written
-    assert written["config"] == {"MD013": False, "MD041": True}
-    assert written["ignores"] == ["tests/fixtures/**"]
-    assert _outputs(github_output) == f"config={runtime}\ngenerated={runtime}\n"
+    outputs = _outputs(github_output)
+    runtime = Path(outputs["generated"])
+    assert runtime.read_text(encoding="utf-8") == (
+        "config:\n  MD013: false\nignores:\n  - tests/fixtures/**\n"
+    )
+    assert outputs["config"] == str(runtime)
 
 
-def test_runtime_is_created_beside_src(tmp_path, github_output):
-    subdir = tmp_path / "nested"
-    subdir.mkdir()
-    src = _write_yaml(subdir / "src.yaml", {"outputFormatters": []})
+def test_flow_style_single_line_value_is_removed(tmp_path, github_output):
+    src = _write(
+        tmp_path / "src.yaml",
+        "outputFormatters: [[markdownlint-cli2-formatter-json]]\n"
+        "config:\n"
+        "  MD041: true\n",
+    )
 
     _MODULE.main([str(src)])
 
-    assert (subdir / RUNTIME_BASENAME).is_file()
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "config:\n  MD041: true\n"
+
+
+def test_quoted_key_is_removed(tmp_path, github_output):
+    src = _write(
+        tmp_path / "src.yaml",
+        '"outputFormatters": []\nconfig:\n  MD041: true\n',
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "config:\n  MD041: true\n"
+
+
+def test_yaml11_scalars_survive_verbatim(tmp_path, github_output):
+    # PyYAML（YAML 1.1）では on / yes が bool になるが，js-yaml 4 では文字列．
+    # テキスト除去なら他行が保持され，型崩れが起きないことを固定する．
+    src = _write(
+        tmp_path / "src.yaml",
+        "ignores:\n  - on\n  - yes\noutputFormatters: []\n",
+    )
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.read_text(encoding="utf-8") == "ignores:\n  - on\n  - yes\n"
+
+
+def test_runtime_name_is_unique_and_does_not_clobber_existing_file(
+    tmp_path, github_output
+):
+    sentinel = _write(
+        tmp_path / f"{RUNTIME_PREFIX}caller{RUNTIME_SUFFIX}", "caller-owned\n"
+    )
+    src = _write(tmp_path / "src.yaml", "outputFormatters: []\n")
+
+    _MODULE.main([str(src)])
+
+    runtime = Path(_outputs(github_output)["generated"])
+    assert runtime.parent == tmp_path
+    assert runtime.name.startswith(RUNTIME_PREFIX)
+    assert runtime.name.endswith(RUNTIME_SUFFIX)
+    assert runtime != sentinel
+    assert sentinel.read_text(encoding="utf-8") == "caller-owned\n"
 
 
 def test_removal_prints_single_warning_line(tmp_path, capsys, github_output):
-    src = _write_yaml(tmp_path / "src.yaml", {"outputFormatters": []})
+    src = _write(tmp_path / "src.yaml", "outputFormatters: []\n")
 
     _MODULE.main([str(src)])
 
@@ -105,25 +163,20 @@ def test_removal_prints_single_warning_line(tmp_path, capsys, github_output):
     assert "outputFormatters" in out_lines[0]
 
 
-def test_null_valued_key_is_also_removed(tmp_path, github_output):
-    src = _write_yaml(tmp_path / "src.yaml", {"outputFormatters": None})
+def test_flow_style_root_mapping_raises_value_error(tmp_path, github_output):
+    src = _write(tmp_path / "src.yaml", "{outputFormatters: [], config: {}}\n")
 
-    _MODULE.main([str(src)])
-
-    written = yaml.safe_load(
-        (tmp_path / RUNTIME_BASENAME).read_text(encoding="utf-8")
-    )
-    assert written == {}
+    with pytest.raises(ValueError):
+        _MODULE.main([str(src)])
 
 
 def test_empty_src_file_passes_src_through(tmp_path, capsys, github_output):
-    src = tmp_path / "src.yaml"
-    src.write_text("", encoding="utf-8")
+    src = _write(tmp_path / "src.yaml", "")
 
     _MODULE.main([str(src)])
 
-    assert not (tmp_path / RUNTIME_BASENAME).exists()
-    assert _outputs(github_output) == f"config={src}\ngenerated=\n"
+    assert list(tmp_path.glob(f"{RUNTIME_PREFIX}*")) == []
+    assert _outputs(github_output) == {"config": str(src), "generated": ""}
     assert capsys.readouterr().out == ""
 
 
@@ -133,7 +186,7 @@ def test_missing_src_raises_file_not_found(tmp_path, github_output):
 
 
 def test_non_mapping_root_raises_type_error(tmp_path, github_output):
-    src = _write_yaml(tmp_path / "src.yaml", ["not", "a", "mapping"])
+    src = _write(tmp_path / "src.yaml", "- not\n- a\n- mapping\n")
 
     with pytest.raises(TypeError):
         _MODULE.main([str(src)])
@@ -141,7 +194,7 @@ def test_non_mapping_root_raises_type_error(tmp_path, github_output):
 
 def test_missing_github_output_raises_value_error(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
-    src = _write_yaml(tmp_path / "src.yaml", {})
+    src = _write(tmp_path / "src.yaml", "config: {}\n")
 
     with pytest.raises(ValueError):
         _MODULE.main([str(src)])
