@@ -103,12 +103,12 @@ main にマージされると `@main` 参照の caller には次回 PR から新
 
 ```bash
 # patch リリース（PR マージごとに実施）
-git tag v2.2.1 main
-git push origin v2.2.1
-git tag -f v2 v2.2.1
-git push -f origin v2
-gh release create v2.2.1 --title "v2.2.1" --notes "..."
+bash bin/release-patch.sh v2.2.1 <merge-sha-full> --notes-file notes.md
 ```
+
+スクリプトはタグ発行 → push → Release 作成 → major mutable（`v2`）追従を
+一括実行する．等価な手動コマンドと PowerShell 版の呼び出し形は
+[docs/dictionary-maintenance.md](dictionary-maintenance.md) を参照．
 
 `-f` と `--force` はオーナー操作．pinning 利用している caller の影響範囲を確認し，stakeholder（caller repo のオーナー）に事前通知したうえで実施する．patch immutable（`v2.2.0` 等）に固定したい caller は，新 patch への切り替えを明示的に行う必要がある．major mutable（`v2`）に追従する caller は patch リリースで自動的に最新化される．
 
