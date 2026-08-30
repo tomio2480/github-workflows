@@ -68,7 +68,7 @@ caller workflow の `pull_request.paths` も同じ path へ変更する．
 更新は maintainer が次の手順で行う．
 
 1. 公式 release または PowerShell Gallery で新しい版を確認する．
-2. workflow の URL、version、commit SHA を更新する．
+2. workflow の URL，version，commit SHA を更新する．
 3. release asset は取得物の SHA-256 を実測して更新する．
 4. Bats は tag が指す commit SHA と行内の版コメントを同時に更新する．
 5. fixture の期待 version と本書の表を同じ commit で更新する．
