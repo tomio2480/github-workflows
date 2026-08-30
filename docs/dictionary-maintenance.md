@@ -228,9 +228,18 @@ git tag v2.2.1 <merge-sha>
 git push origin v2.2.1
 gh release create v2.2.1 --title "v2.2.1" --notes "..."
 git tag -f v2 v2.2.1
-# 直前に観測した remote の値を期待値に置き，並行実行時の巻き戻りを防ぐ
+# remote の現在値が新 patch の祖先かを先に検査する．
+# lease は観測値からの変化しか見ないため，これだけでは巻き戻りを防げない
+git fetch origin refs/tags/v2
+git merge-base --is-ancestor <observed-sha> <merge-sha>
+# 検査済みの観測値を期待値に置き，検査から push までの競合を検知する
 git push --force-with-lease=refs/tags/v2:<observed-sha> origin v2
 ```
+
+手動で行う場合は上の 2 段を省略しない．
+省略すると，並行する古いリリースが `v2` を巻き戻せる．
+スクリプトは shallow クローンの深さ解消も含めてこれらを実行するため，
+既定ではスクリプトを使う．
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
