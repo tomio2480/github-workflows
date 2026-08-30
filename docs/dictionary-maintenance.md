@@ -209,12 +209,25 @@ plain string で書くと `JSON Lines` 等の語に誤マッチするため `\bJ
 patch リリースは PR マージごとに切る運用とする．major mutable は同時に最新 patch へ進める．
 
 ```bash
-# PR マージ後に patch tag を切り，major mutable を進める例
+# PR マージ後の定例リリース（タグ発行 → Release 作成 → major mutable 追従）
+bash bin/release-patch.sh v2.2.1 <merge-sha-full> --notes-file notes.md
+# PowerShell 環境の場合
+# powershell -ExecutionPolicy Bypass -File bin\release-patch.ps1 `
+#   -Version v2.2.1 -MergeSha <merge-sha-full> -NotesFile notes.md
+```
+
+スクリプトが実行する手順は次の手動コマンドに相当する．
+手動で行う場合もこの順序を守る（タグを先に push し，
+`gh release create` に `--target` を付けない）．
+スクリプトはこれに加え，途中失敗後の再実行（作成済みタグ・Release の
+スキップ）と，major mutable push への `--force-with-lease` 保護を行う．
+
+```bash
 git tag v2.2.1 <merge-sha>
 git push origin v2.2.1
+gh release create v2.2.1 --title "v2.2.1" --notes "..."
 git tag -f v2 v2.2.1
 git push -f origin v2
-gh release create v2.2.1 --title "v2.2.1" --notes "..."
 ```
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
