@@ -227,7 +227,8 @@ git tag v2.2.1 <merge-sha>
 git push origin v2.2.1
 gh release create v2.2.1 --title "v2.2.1" --notes "..."
 git tag -f v2 v2.2.1
-git push -f origin v2
+# 直前に観測した remote の値を期待値に置き，並行実行時の巻き戻りを防ぐ
+git push --force-with-lease=refs/tags/v2:<observed-sha> origin v2
 ```
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->

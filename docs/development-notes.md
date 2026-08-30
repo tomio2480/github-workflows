@@ -399,7 +399,11 @@ PR #25 の作業時に v2.0.0/v2.1.0/v2.2.0/v2.2.1 を retroactive で発行し�
 
 ### mutable major の force-push は破壊的でない範囲で運用する
 
-`v2` mutable を最新 patch に進める際は `git tag -f v2 <new-SHA>` と `git push -f origin v2` を使う．
+`v2` mutable を最新 patch に進める際は `git tag -f v2 <new-SHA>` で移動する．
+push は `bin/release-patch.{sh,ps1}` に任せる（Issue #132）．
+同スクリプトは remote の現在値が新 patch の祖先であることを確認し，
+その観測値を `--force-with-lease` の期待値に置く．
+並行リリースによる巻き戻りを防ぐためである．
 ログには `forced update` と表示される．
 新 SHA が古い SHA の祖先関係（fast-forward 可能な範囲）にあるため caller への破壊性は低い．
 本リポジトリでは patch リリースごとに進めることを既定とし，pre-release 通知は不要としている．
