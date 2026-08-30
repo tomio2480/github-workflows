@@ -75,7 +75,7 @@ PowerShell 版は同種の実装を足していない．
 そのため `git rev-parse --is-shallow-repository` で分岐する．
 
 副次的な観察を 1 点残す．Windows では fetch 後に
-`failed to write commit-graph` が出ることがある．
+`failed to write commit-graph` と表示される場合がある．
 これはメンテナンス処理由来で終了コードは 0 のままであり，
 `set -e` の中断には影響しない．
 

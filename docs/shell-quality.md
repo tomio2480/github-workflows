@@ -31,7 +31,7 @@ lint 対象，除外，test suite，CLI contract は caller repo が決める．
 `OWNER` は利用する中央 repo の owner に置換する．
 `<SHA>` は確定 commit SHA に置換する．
 
-caller repo は `bin/verify-shell.py` を用意し，次の契約を満たす必要がある．
+caller repo は `bin/verify-shell.py` を用意する．次の契約を満たす必要がある．
 
 ```text
 python bin/verify-shell.py --require-all
@@ -81,6 +81,6 @@ caller workflow の `pull_request.paths` も同じ path へ変更する．
 
 workflow の変更は self-test workflow から local reusable workflow を呼ぶ．
 self-test は `.github/workflows/test-self-lint.yml` に置く．
-fixture gate は CLI tool と PowerShell module の version を固定値と突合する．
+fixture gate は CLI tool と PowerShell module の version を固定値へ突き合わせる．
 pytest は `--require-all` が無い呼び出しを拒否することも確認する．
 `--require-all` で tool が不足した場合の非ゼロ終了も確認する．
