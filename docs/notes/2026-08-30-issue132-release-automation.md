@@ -74,7 +74,7 @@ PowerShell 版は同種の実装を足していない．
 完全クローンへ `--unshallow` を渡すとエラーになる．
 そのため `git rev-parse --is-shallow-repository` で分岐する．
 
-副次的な観察として，Windows では fetch 後に
+副次的な観察を 1 点残す．Windows では fetch 後に
 `failed to write commit-graph` が出ることがある．
 これはメンテナンス処理由来で終了コードは 0 のままであり，
 `set -e` の中断には影響しない．
@@ -104,7 +104,7 @@ shfmt と PSScriptAnalyzer はローカル未導入のため未実行とし，
 
 1. **リリース手順を GitHub Actions 化する**
    マージ時に自動でタグと Release を発行する案．
-   版番号の決定（patch か minor か）に判断が要り，
+   版番号の決定には patch と minor を見分ける判断が要る．
    自動化すると誤った番号で発行される．
    Issue #132 の方針どおり，版番号の決定はスクリプト外に残した．
 

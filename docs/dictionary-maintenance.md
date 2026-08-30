@@ -219,8 +219,9 @@ bash bin/release-patch.sh v2.2.1 <merge-sha-full> --notes-file notes.md
 スクリプトが実行する手順は次の手動コマンドに相当する．
 手動で行う場合もこの順序を守る（タグを先に push し，
 `gh release create` に `--target` を付けない）．
-スクリプトはこれに加え，途中失敗後の再実行（作成済みタグ・Release の
-スキップ）と，major mutable push への `--force-with-lease` 保護を行う．
+スクリプトはこれに加えて 2 点を担う．
+1 点目は途中失敗後の再実行であり，作成済みのタグと Release をスキップする．
+2 点目は major mutable の push を `--force-with-lease` で保護することである．
 
 ```bash
 git tag v2.2.1 <merge-sha>
