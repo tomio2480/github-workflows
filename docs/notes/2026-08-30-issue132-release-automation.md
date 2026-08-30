@@ -88,9 +88,8 @@ PowerShell 版は同種の実装を足していない．
 素通りするのは，後ろに成功するコマンドが続いて終了ステータスを
 上書きする場合である．
 
-実例として，本 PR の Red 実行で
-「skips release creation when release already exists」だけが
-実装前に成功した．
+実例がある．PR #136 の Red 実行では，次のテストだけが実装前に成功した．
+「skips release creation when release already exists」である．
 `! grep -q "gh release create"` の後ろに別の `grep` が続いており，
 そちらの成功が終了ステータスを上書きしていた．
 テストが並ぶほど否定アサーションは中間行になりやすく，素通りしやすい．
