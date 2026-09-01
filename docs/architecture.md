@@ -263,7 +263,7 @@ reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない
 
 これにより，filter-mode='added' で除外された指摘も PR コメントから直接辿れる．
 
-ただし `<details>` に出るのは差分スコープの findings 上位 20 件までである．リポジトリ全体の内訳は summary からは辿れなかった．個別の指摘は reviewdog へ渡るだけで，Actions のログには rule ID もファイル名も残らないためである．案内文が「内訳は Actions ログから確認してください」と書いていたのは誤りであった（[Issue #148](https://github.com/tomio2480/github-workflows/issues/148)）．
+ただし `<details>` に出るのは差分スコープの findings 上位 20 件までである．リポジトリ全体の内訳は summary からは辿れなかった．個別の指摘は reviewdog へ渡るだけで，Actions のログには rule ID とファイル名のどちらも残らないためである．案内文が「内訳は Actions ログから確認してください」と書いていたのは誤りであった（[Issue #148](https://github.com/tomio2480/github-workflows/issues/148)）．
 
 対策として `Upload lint reports` step を追加した．生レポートをそのまま run の artifact として添付する．summary の肥大を避けたまま，必要な caller だけが内訳を取得できる．caller は既存指摘の棚卸しに使える．本リポジトリが [Issue #109](https://github.com/tomio2480/github-workflows/issues/109) で行った段階的な解消と同じことが caller 側でもできる．
 
