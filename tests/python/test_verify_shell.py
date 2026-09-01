@@ -125,6 +125,14 @@ def test_run_checks_reports_every_failure() -> None:
     assert [call[0] for call in runner.calls] == ["shellcheck", "shfmt", "pwsh"]
 
 
+def test_run_checks_prints_inspected_targets(capsys) -> None:
+    verify_shell.run_checks(runner=RecordingRunner())
+
+    captured = capsys.readouterr().out
+    assert "scripts/post-lint-summary.sh" in captured
+    assert "bin/release-patch.ps1" in captured
+
+
 def test_run_checks_succeeds_when_every_tool_succeeds() -> None:
     runner = RecordingRunner(returncode=0)
 

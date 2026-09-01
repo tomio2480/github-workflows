@@ -85,6 +85,12 @@ def run_checks(runner: Runner = default_runner) -> int:
     bash_targets = collect_targets(REPO_ROOT, BASH_PATTERNS)
     powershell_targets = collect_targets(REPO_ROOT, POWERSHELL_PATTERNS)
 
+    # 「チェックが pass した」と「対象を検査した」を CI ログ上で区別するため，
+    # ShellCheck と shfmt が無出力で成功する場合でも対象を残す．
+    # 子プロセスの出力と混ざらないよう flush する．
+    print(f"targets (shellcheck, shfmt): {', '.join(bash_targets)}", flush=True)
+    print(f"targets (PSScriptAnalyzer): {', '.join(powershell_targets)}", flush=True)
+
     exit_codes = [
         run_shellcheck(bash_targets, runner),
         run_shfmt(bash_targets, runner),
