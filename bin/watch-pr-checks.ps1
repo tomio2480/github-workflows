@@ -66,29 +66,43 @@ if ($ExpectSha -eq '') {
 # gh の失敗を「条件未成立」と区別できないまま待ち続けると，認証切れが
 # 単なるタイムアウトに見える．最後の stderr を残してタイムアウト時に示す
 $Script:LastError = ''
+$Script:ErrPath = [System.IO.Path]::GetTempFileName()
+
+function Invoke-GhQuery {
+  param([string[]]$GhArgs)
+
+  # pending・failure でも gh は結果を出しつつ非 0 で終える（pending は exit 8）．
+  # 終了コードで判定すると検査中の PR を照会失敗と誤読するため，出力だけを見る
+  $out = & gh @GhArgs 2> $Script:ErrPath
+  $text = ($out | Out-String).Trim()
+  if ($text -eq '' -and (Test-Path $Script:ErrPath)) {
+    $err = Get-Content -Raw $Script:ErrPath
+    if (-not [string]::IsNullOrWhiteSpace($err)) {
+      $Script:LastError = $err.Trim()
+    }
+  }
+  return $text
+}
 
 function Get-HeadOid {
-  $out = gh pr view $Pr --json headRefOid --jq .headRefOid 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    $Script:LastError = ($out | Out-String).Trim()
-    return ''
-  }
-  return ($out | Out-String).Trim()
+  return Invoke-GhQuery @('pr', 'view', $Pr, '--json', 'headRefOid', '--jq', '.headRefOid')
 }
 
 function Test-HeadMatch {
   return (Get-HeadOid) -eq $ExpectSha
 }
 
-function Test-ChecksRegistered {
-  $out = gh pr checks $Pr --json name,state 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    $Script:LastError = ($out | Out-String).Trim()
-    return $false
+function Get-ChecksCount {
+  $text = Invoke-GhQuery @('pr', 'checks', $Pr, '--json', 'name,state', '--jq', 'length')
+  if ($text -match '^[0-9]+$') {
+    return [int]$text
   }
-  $text = ($out | Out-String).Trim()
-  # 空・空配列・取得失敗はいずれも未登録として扱い，watch へ進めない
-  return ($text -ne '' -and $text -ne '[]')
+  # 数値以外（照会失敗・空）は 0 件として扱い，未登録と同じ経路へ落とす
+  return 0
+}
+
+function Test-ChecksRegistered {
+  return (Get-ChecksCount) -gt 0
 }
 
 function Wait-Until {
@@ -104,7 +118,7 @@ function Wait-Until {
     if ((Get-Date) -ge $deadline) {
       Write-Output "error: timed out waiting for ${Description} (commit ${ExpectSha})"
       if ($Script:LastError -ne '') {
-        Write-Output "error: last gh error was:"
+        Write-Output 'error: last gh error was:'
         Write-Output $Script:LastError
       }
       exit 2
@@ -115,28 +129,52 @@ function Wait-Until {
   }
 }
 
-Write-Output 'watch-pr-checks: waiting for gh to catch up with origin'
-Wait-Until -Description 'gh to report the target commit' -Condition { Test-HeadMatch }
+try {
+  Write-Output 'watch-pr-checks: waiting for gh to catch up with origin'
+  Wait-Until -Description 'gh to report the target commit' -Condition { Test-HeadMatch }
 
-Write-Output 'watch-pr-checks: waiting for checks to be registered'
-Wait-Until -Description 'checks to be registered' -Condition { Test-ChecksRegistered }
+  Write-Output 'watch-pr-checks: waiting for checks to be registered'
+  Wait-Until -Description 'checks to be registered' -Condition { Test-ChecksRegistered }
 
-# --- 監視 ---
+  # --- 監視 ---
 
-gh pr checks $Pr --watch
-$WatchStatus = $LASTEXITCODE
+  # workflow ごとに登録の時刻が異なるため，先に見えていた check だけで watch が
+  # 完了しうる．件数が増えていれば，遅れて現れた check を含めて watch し直す．
+  # 最後の照会より後に現れる check までは追えない．そこまで要るなら
+  # GitHub 側の required checks 設定で担保する
+  $WatchDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $WatchStatus = 0
+  while ($true) {
+    $CountBefore = Get-ChecksCount
+    gh pr checks $Pr --watch
+    $WatchStatus = $LASTEXITCODE
+    $CountAfter = Get-ChecksCount
+    if ($CountAfter -le $CountBefore) {
+      break
+    }
+    Write-Output "watch-pr-checks: checks grew from ${CountBefore} to ${CountAfter}; watching again"
+    if ((Get-Date) -ge $WatchDeadline) {
+      Write-Output "error: checks kept appearing until the timeout (commit ${ExpectSha})"
+      exit 2
+    }
+  }
 
-# watch 中に新しい push があれば，結果は別 commit のものである
-$AfterOid = Get-HeadOid
-if ($AfterOid -ne $ExpectSha) {
-  Write-Output "error: head moved to ${AfterOid} while watching ${ExpectSha}"
-  Write-Output 'error: rerun to watch the new commit'
-  exit 2
+  # watch 中に新しい push があれば，結果は別 commit のものである
+  $AfterOid = Get-HeadOid
+  if ($AfterOid -ne $ExpectSha) {
+    Write-Output "error: head moved to ${AfterOid} while watching ${ExpectSha}"
+    Write-Output 'error: rerun to watch the new commit'
+    exit 2
+  }
+
+  if ($WatchStatus -ne 0) {
+    Write-Output "error: checks did not pass on ${ExpectSha} (gh exit ${WatchStatus})"
+    exit 3
+  }
+
+  Write-Output "watch-pr-checks: all checks passed on ${ExpectSha}"
+} finally {
+  if (Test-Path $Script:ErrPath) {
+    Remove-Item -Force -ErrorAction SilentlyContinue $Script:ErrPath
+  }
 }
-
-if ($WatchStatus -ne 0) {
-  Write-Output "error: checks did not pass on ${ExpectSha} (gh exit ${WatchStatus})"
-  exit 3
-}
-
-Write-Output "watch-pr-checks: all checks passed on ${ExpectSha}"

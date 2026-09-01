@@ -396,6 +396,11 @@ checks が未登録の時点では「no checks reported」を返して即座に�
 次に checks が 1 件以上登録されるまで待つ．
 `--watch` の完了後にも head が動いていないことを確かめる．
 
+登録の時刻は workflow ごとに異なる．先に見えていた check だけで
+`--watch` が完了する余地が残る．そこで完了時に件数を取り直し，
+増えていれば watch をやり直す．最後の照会より後に現れる check までは追えない．
+そこまで要る場合は GitHub 側の required checks 設定で担保する．
+
 ```bash
 bash bin/watch-pr-checks.sh 165
 ```

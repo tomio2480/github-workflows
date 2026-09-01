@@ -7,6 +7,7 @@
 #   - 監視対象の commit は origin の実体（git ls-remote）を正とする
 #   - gh の headRefOid が実体へ追いつくまで待ってから checks の登録を待つ
 #   - checks が登録されてから gh pr checks --watch へ移行する
+#   - watch 完了時に件数が増えていれば，登録の遅れた check を含めて watch し直す
 #   - watch 完了後に head が動いていないことを確認する
 #   - 終了コード: 0 全 pass / 1 入力・環境エラー / 2 タイムアウト・commit 不一致 /
 #     3 checks の失敗
@@ -78,14 +79,22 @@ case "$1 $2" in
     ;;
   "pr checks")
     if [[ "$*" == *--watch* ]]; then
-      : > "${STUB_STATE_DIR}/watched"
+      bump watched > /dev/null
       exit "${STUB_WATCH_EXIT:-0}"
     fi
     n="$(bump checks)"
+    watched=0
+    [ -f "${STUB_STATE_DIR}/watched" ] && watched="$(cat "${STUB_STATE_DIR}/watched")"
     if [ "${n}" -le "${STUB_CHECKS_LAG:-0}" ]; then
-      echo "[]"
+      echo "0"
+    elif [ "${STUB_LATE_CHECKS:-0}" = "always" ]; then
+      # watch のたびに新しい check が登録され続ける状況を再現する
+      echo $((watched + 1))
+    elif [ "${STUB_LATE_CHECKS:-0}" = "1" ] && [ "${watched}" -ge 1 ]; then
+      # 最初の watch の間に 1 件だけ遅れて登録される
+      echo "2"
     else
-      echo '[{"name":"Markdown Lint","state":"SUCCESS"}]'
+      echo "1"
     fi
     exit 0
     ;;
@@ -211,6 +220,23 @@ watch_invoked() {
   STUB_WATCH_EXIT=8 run bash "${SCRIPT}" 165 --interval 0 --timeout 5
 
   [ "${status}" -eq 3 ]
+  [[ "${output}" == *"${REMOTE_SHA}"* ]]
+}
+
+@test "watches again when a check registers late" {
+  # 別 workflow の登録が遅れると，先に見えていた check だけで watch が
+  # 完了しうる．件数が増えていれば watch をやり直す
+  STUB_LATE_CHECKS=1 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+
+  [ "${status}" -eq 0 ]
+  count="$(grep -c -- "--watch" "${CMD_LOG}")"
+  [ "${count}" -eq 2 ]
+}
+
+@test "times out when checks keep appearing" {
+  STUB_LATE_CHECKS=always run bash "${SCRIPT}" 165 --interval 0 --timeout 0
+
+  [ "${status}" -eq 2 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
 }
 
