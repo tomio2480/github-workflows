@@ -77,6 +77,7 @@
 - Pull Request は **必ず Draft** で作成する
 - ワークフローおよび composite action の変更は `act` 等でローカル検証，またはテスト用リポジトリから呼び出して動作確認する．本リポジトリには [.github/workflows/test-self-lint.yml](.github/workflows/test-self-lint.yml) で composite action の単体／統合テストが組まれている
 - `scripts/`・`bin/` のシェル資産を触ったら `python bin/verify-shell.py --require-all` を通す．CI では `shell-quality-self` job が同じ gate を実行する（[docs/shell-quality.md](docs/shell-quality.md)）
+- Markdown を書き換えたら push 前に `bash bin/lint-md.sh` を通す．CI と同じ設定で変更ファイルだけを検査する（[docs/local-lint.md](docs/local-lint.md)）
 - `scripts/` 配下に新規ロジックを追加する場合は `tests/` で test-first で書く．Red → Green → Refactor の順を守る
 - コミットは論理単位で分ける（テスト追加／実装／テンプレ変更／ドキュメント更新など）
 

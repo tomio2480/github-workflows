@@ -2,6 +2,11 @@
 # pre-push 時に変更対象の Markdown ファイルに lint をかける．
 # インストール: npm install -D lefthook && npx -y lefthook install
 # 手動実行:     npx -y lefthook run pre-push
+#
+# 下の既定は npx で linter を直接呼ぶ．中央（github-workflows）の設定・辞書を
+# 読まないため，CI の結果とは一致しない．中央設定での検査を hook へ載せる場合は
+# run を bin/lint-md.sh の呼び出しへ置き換える（docs/local-lint.md 参照）．
+# 中央リポジトリのチェックアウト先はリポジトリごとに異なるため，既定値は置かない．
 
 pre-push:
   parallel: true
