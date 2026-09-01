@@ -31,10 +31,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # `uses: owner/repo@<40 桁 SHA>` と，あれば行末の版コメントを拾う．
 # ローカル action（`./` 始まり）とタグ参照は対象外．タグ参照の禁止は
 # 別の関心事であり本テストでは扱わない．
+#
+# コメントは空白を含みうるため残り全体を捕捉する．版だけを `\S+` で拾うと
+# `# actions/checkout v7.0.1` の行がマッチせず，pin ごと収集から漏れる．
+# 漏れた pin はどの検査にも掛からないため，検査が素通りする．
 _USES_PIN = re.compile(
     r"^\s*(?:-\s*)?uses:\s*(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)"
     r"@(?P<sha>[0-9a-f]{40})"
-    r"(?:\s*#\s*(?P<version>\S+))?\s*$"
+    r"\s*(?:#\s*(?P<version>.*?))?\s*$"
 )
 
 _SEARCH_GLOBS = (
@@ -42,6 +46,9 @@ _SEARCH_GLOBS = (
     ".github/actions/*/action.yml",
     "templates/**/*.yml",
 )
+
+
+_DUMMY_SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 @dataclass(frozen=True)
@@ -74,6 +81,53 @@ def _collect_pins() -> list[Pin]:
                     )
                 )
     return pins
+
+
+@pytest.mark.parametrize(
+    ("line", "expected_version"),
+    [
+        pytest.param(
+            f"      uses: actions/checkout@{_DUMMY_SHA}",
+            None,
+            id="コメント無し",
+        ),
+        pytest.param(
+            f"      uses: actions/checkout@{_DUMMY_SHA} # v7.0.1",
+            "v7.0.1",
+            id="版のみ",
+        ),
+        pytest.param(
+            f"      - uses: actions/checkout@{_DUMMY_SHA} # v7.0.1",
+            "v7.0.1",
+            id="リスト要素",
+        ),
+        pytest.param(
+            f"      uses: actions/checkout@{_DUMMY_SHA} # actions/checkout v7.0.1",
+            "actions/checkout v7.0.1",
+            id="action 名付き",
+        ),
+        pytest.param(
+            f"      uses: actions/checkout@{_DUMMY_SHA}  #  v7.0.1  ",
+            "v7.0.1",
+            id="余分な空白",
+        ),
+    ],
+)
+def test_uses_pin_captures_whole_trailing_comment(
+    line: str, expected_version: str | None
+) -> None:
+    """行末コメントは空白を含んでいても丸ごと捕捉すること．
+
+    版だけを `\\S+` で拾うと `# actions/checkout v7.0.1` のような複数トークンの
+    コメントで行全体がマッチしなくなる．収集から漏れた pin は「版以外の記述」の
+    検査にも「複数 SHA」の検査にも掛からず，検査そのものが素通りする．
+    まさに Issue #157 が排除したい書き方が見逃される形であり，
+    行末コメントは残り全体を捕捉する．
+    """
+    matched = _USES_PIN.match(line)
+    assert matched is not None, f"pin 行がマッチしない: {line!r}"
+    assert matched.group("sha") == _DUMMY_SHA
+    assert matched.group("version") == expected_version
 
 
 @pytest.fixture(scope="module")
