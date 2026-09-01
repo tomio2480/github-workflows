@@ -2,8 +2,9 @@
 
 ## 要約
 
-Issue #138 で `bin/verify-shell.py` を追加し，中央リポジトリ自身のシェル資産を
-ShellCheck・shfmt・PSScriptAnalyzer で検査するようにした．
+Issue #138 で `bin/verify-shell.py` を追加した．
+中央リポジトリ自身のシェル資産を
+ShellCheck・shfmt・PSScriptAnalyzer で検査する．
 実装そのものより，適用の過程で判明した 3 点に記録の価値がある．
 整形規則の選び方，`.ps1` の文字符号化，Windows 環境での改行コードである．
 あわせて「チェックが pass した」と「対象を検査した」を区別する方法を残す．
@@ -19,16 +20,16 @@ ShellCheck・shfmt・PSScriptAnalyzer で検査するようにした．
 
 ## なぜ自リポジトリに適用していなかったか
 
-`test-self-lint.yml` は Shell quality の reusable workflow を
-`verify-script: tests/fixtures/shell-quality/verify-shell.py` で呼んでいた．
+`test-self-lint.yml` は Shell quality の reusable workflow を呼んでいた．
+渡す `verify-script` は `tests/fixtures/shell-quality/verify-shell.py` である．
 これは toolchain と caller contract を検証する自己テストであり，設計どおりである．
 
-一方で `docs/shell-quality.md` の導入節は，caller repo が
-`bin/verify-shell.py` を用意して検査対象を決める設計としていた．
+一方で `docs/shell-quality.md` の導入節は別の設計を示していた．
+caller repo が `bin/verify-shell.py` を用意し，検査対象を決める形である．
 本リポジトリもシェル資産を持つ caller であるが，この gate を持たなかった．
 
-「Reusable Shell quality workflow」というチェック名が PR に出ていたため，
-追加したスクリプトが検査されたと読めてしまう点が問題の本体である．
+PR には「Reusable Shell quality workflow」というチェック名が出ていた．
+そのため追加したスクリプトが検査されたと読めてしまう．これが問題の本体である．
 チェック名は job の名前であって，検査範囲の説明ではない．
 
 ## shfmt の整形規則は既存コードから逆算して選ぶ
@@ -59,7 +60,7 @@ shfmt は既定でタブインデントかつ `case` 分岐を字下げしない
 | `-i 2 -ci -sr` | ヒアドキュメントとパイプ継続 |
 
 整形ツールを後から入れるときは，既定値をそのまま受け入れない．
-既存コードに合う設定を実測で探すほうが，差分もレビュー負荷も小さい．
+既存コードに合う設定を実測で探すと，差分が小さくなりレビュー負荷も下がる．
 
 ## PSScriptAnalyzer の BOM 指摘は実害のある指摘だった
 
@@ -67,8 +68,8 @@ shfmt は既定でタブインデントかつ `case` 分岐を字下げしない
 非 ASCII を含む `.ps1` に UTF-8 BOM が無い，という指摘である．
 
 形式的な指摘に見えるが，実害がある．
-`CLAUDE.md` は PowerShell 版の実行を
-`powershell -ExecutionPolicy Bypass -File bin\<name>.ps1` と案内している．
+`CLAUDE.md` は PowerShell 版の実行方法を案内している．
+その形は `powershell -ExecutionPolicy Bypass -File bin\<name>.ps1` である．
 この `powershell` は Windows PowerShell 5.1 であり，
 BOM の無い UTF-8 を現在の ANSI コードページとして読む．
 日本語のコメントと文字列リテラルが文字化けする．
@@ -78,11 +79,12 @@ BOM の無い UTF-8 を現在の ANSI コードページとして読む．
 ## CRLF は ShellCheck を全行で誤爆させる
 
 Windows の `core.autocrlf=true` 環境では worktree が CRLF になる．
-この状態で ShellCheck を実行すると，全行に SC1017（Literal carriage return）が
-出て gate をローカル実行できない．リポジトリの blob は LF なので CI では起きない．
+この状態で ShellCheck を実行すると，全行に SC1017 が出る．
+Literal carriage return の検出であり，gate をローカル実行できない．
+リポジトリの blob は LF なので CI では起きない．
 
 当初は git の管理下から LF で取り出して検査する回避を試したが，
-毎回その手順を踏むのは現実的ではない．`.gitattributes` を追加し，
+毎回その手順を踏むのは煩雑である．`.gitattributes` を追加し，
 `*.sh` と `*.ps1` を `eol=lf` に固定した．
 
 これは gate の副産物ではなく前提条件である．
