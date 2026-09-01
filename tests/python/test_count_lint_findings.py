@@ -401,6 +401,29 @@ def test_main_accepts_diff_files_from_file(capsys, tmp_path):
     assert payload["markdownlint"]["findings"][0]["file"] == "docs/keep.md"
 
 
+def test_main_keeps_leading_whitespace_in_diff_files(capsys, tmp_path):
+    # 先頭に空白を含むファイル名を strip すると，linter の報告と突合できず
+    # 全 findings が絞り込みで消える．行末の改行だけを落とす．
+    diff_list = tmp_path / "diff-files.txt"
+    diff_list.write_text(" lead.md\r\n", encoding="utf-8")
+    report = tmp_path / "markdownlint.txt"
+    report.write_text(" lead.md:1 MD000/fake message\n", encoding="utf-8")
+    empty_xml = tmp_path / "textlint.xml"
+    empty_xml.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?><checkstyle version="4.3"></checkstyle>',
+        encoding="utf-8",
+    )
+
+    rc = _MODULE.main(
+        [str(empty_xml), str(report), "--diff-files-from", str(diff_list)]
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["markdownlint"]["total"] == 1
+    assert payload["markdownlint"]["findings"][0]["file"] == " lead.md"
+
+
 def test_main_without_diff_files_from_keeps_all_findings(capsys):
     # --diff-files-from 未指定時は従来どおりリポジトリ全体の findings を返す
     # （後方互換：既存 caller の挙動を変えない）．

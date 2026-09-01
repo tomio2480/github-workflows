@@ -271,6 +271,26 @@ FAKE
   [ -z "${output}" ]
 }
 
+@test "releases the cache key when publishing fails" {
+  # 確保したまま公開に失敗すると，鍵の位置が空のまま残る．以後の実行は
+  # すべて mkdir に失敗し，現れない .bin を待ってから自前の導入へ落ちる．
+  # 掃除は .staging.* しか見ないため，この鍵は自動では復旧しない．
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+  export LINT_DEPS_PUBLISH_WAIT=1
+  KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
+  # 公開の mv だけを失敗させる．
+  cat > "${FAKE_BIN}/mv" <<'FAKE'
+#!/usr/bin/env bash
+exit 1
+FAKE
+  chmod +x "${FAKE_BIN}/mv"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -ne 0 ]
+  [ ! -e "${KEY_DIR}" ]
+}
+
 @test "still succeeds when the cache key path is a regular file" {
   export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
   export LINT_DEPS_PUBLISH_WAIT=1

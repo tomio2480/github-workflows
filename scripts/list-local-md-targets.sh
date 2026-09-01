@@ -15,7 +15,9 @@
 #     どちらも無い（clone 直後・単独リポジトリ）ときのみ HEAD を使う．
 #   - 既定の対象は「基点との差分」＋「untracked」の Markdown である．
 #     コミット済み・staged・unstaged のいずれも 1 度の diff で拾える
-#   - 削除されたファイルは出さない．実在しないパスを lint へ渡さないためである
+#   - 削除されたファイルは出さない．実在しないパスを lint へ渡さないためである．
+#     除くのは削除だけで，型変更（symlink から通常ファイルへの置き換え等）は
+#     中身が入れ替わっているため対象に含める
 #   - パスはリポジトリルート相対で 1 行 1 ファイル．重複なし・辞書順
 #   - 非 ASCII のパスをエスケープせずに出す．git の既定（core.quotePath）は
 #     C 形式の 8 進エスケープを出すが，その値は linter の報告（実 UTF-8 パス）と
@@ -143,9 +145,11 @@ fi
   # 基点が 1 つも解決できないのは commit の無いリポジトリだけである．
   # その場合は untracked だけが対象になる．
   if [ -n "${BASE}" ]; then
-    # ACMR は追加・コピー・変更・改名のみを拾う．削除（D）を除くことで
-    # 実在しないパスが lint へ渡らない．
-    git_raw diff --name-only --diff-filter=ACMR "${BASE}" -- ${PATHSPECS[@]+"${PATHSPECS[@]}"}
+    # 除きたいのは削除（D）だけなので，小文字の d で「削除以外すべて」を
+    # 指定する．ACMR の列挙では型変更（T．追跡済みの symlink が通常
+    # ファイルへ置き換わった等）が漏れ，中身が入れ替わっているのに
+    # 対象から外れていた．
+    git_raw diff --name-only --diff-filter=d "${BASE}" -- ${PATHSPECS[@]+"${PATHSPECS[@]}"}
   fi
   git_raw ls-files --others --exclude-standard -- ${PATHSPECS[@]+"${PATHSPECS[@]}"}
 } | sort -u

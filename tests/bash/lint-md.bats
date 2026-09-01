@@ -217,6 +217,19 @@ teardown() {
   [ "${status}" -eq 0 ]
 }
 
+@test "scopes findings for a filename with leading whitespace" {
+  # 対象一覧の読み手が strip すると，先頭に空白を持つ名前が別名になり，
+  # linter の報告と突合できずに全 findings が消える．
+  echo "# lead" > " lead.md"
+  export FAKE_MDLINT_FINDINGS=1
+  export FAKE_FINDING_PATH=" lead.md"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"fake mdlint finding"* ]]
+}
+
 @test "ignores findings in files outside the target set" {
   echo "# new" > new.md
   export FAKE_MDLINT_FINDINGS=1

@@ -77,8 +77,12 @@ else
   TMP="$(mktemp -d "${RUNNER_TEMP}/XXXXXX")"
 fi
 
-# 失敗時に消すのは自前の組み立て先だけである．公開済みのキャッシュには触れない．
-trap 'rm -rf "${TMP}"' ERR
+# 失敗時に消すのは自前のものだけである．他の実行が公開したキャッシュには
+# 触れない．CLAIMED_KEY_DIR は自分が mkdir で確保できたときにだけ入るため，
+# 公開の途中で失敗しても空の確保を残さない．残すと以後の実行がすべて
+# mkdir に失敗し，現れない .bin を待ち続ける鍵になる（掃除も届かない）．
+CLAIMED_KEY_DIR=""
+trap 'rm -rf "${TMP}"; [ -n "${CLAIMED_KEY_DIR}" ] && rm -rf "${CLAIMED_KEY_DIR}"; true' ERR
 cp "${ACTION_PATH}/package.json" "${TMP}/"
 cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
 (cd "${TMP}" && npm ci)
@@ -88,11 +92,13 @@ if [ -n "${CACHE_KEY_DIR}" ]; then
   # mv は宛先が既存ディレクトリのとき「その配下へ移す」意味になり，成功を
   # 返したまま依存一式を重複して残す．mkdir は不可分で，既にあれば失敗する．
   if mkdir "${CACHE_KEY_DIR}" 2>/dev/null; then
+    CLAIMED_KEY_DIR="${CACHE_KEY_DIR}"
     # node_modules を最後に移す．読み手は node_modules/.bin の有無で完成を
     # 判定するため，中身が揃う前にキャッシュ命中と見なされることはない．
     mv "${TMP}/package.json" "${TMP}/package-lock.json" "${CACHE_KEY_DIR}/"
     mv "${TMP}/node_modules" "${CACHE_KEY_DIR}/node_modules"
     rm -rf "${TMP}"
+    CLAIMED_KEY_DIR=""
     TMP="${CACHE_KEY_DIR}"
   else
     # 別の実行が先に確保した．その公開の完了を待ってから相乗りする．

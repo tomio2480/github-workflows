@@ -90,6 +90,23 @@ setup() {
   [ -z "${output}" ]
 }
 
+@test "includes a file whose type changed" {
+  # 追跡済みの symlink が通常ファイルへ置き換わると git は T を返す．
+  # ACMR だけを見ると，中身が入れ替わっているのに対象から漏れる．
+  # 実体の symlink を作らずに同じ状態を作るため，index へ 120000 の
+  # エントリを直接入れる．Windows でも同じ検査ができる．
+  git config core.symlinks true
+  BLOB="$(printf 'base.md' | git hash-object -w --stdin)"
+  git update-index --add --cacheinfo "120000,${BLOB},link.md"
+  git commit -q -m "add link.md as a symlink"
+  printf '# real\n' > link.md
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "link.md" ]
+}
+
 @test "includes staged additions" {
   echo "# staged" > staged.md
   git add staged.md

@@ -258,10 +258,13 @@ def main(argv: Sequence[str]) -> int:
     # 繰り返し呼ばれる _is_in_diff_scope の `in` 判定を O(1) にするため．
     diff_files: set[str] | None = None
     if args.diff_files_from:
+        # 落とすのは行末の CR だけとする．strip() すると，先頭や末尾に空白を
+        # 含むファイル名が別名になり，linter の報告と突合できずに findings が
+        # 丸ごと消える．改行は splitlines() が既に落としている．
         diff_files = {
-            line.strip().replace("\\", "/")
+            line.rstrip("\r").replace("\\", "/")
             for line in Path(args.diff_files_from).read_text(encoding="utf-8").splitlines()
-            if line.strip()
+            if line.rstrip("\r")
         }
 
     markdownlint = count_markdownlint(
