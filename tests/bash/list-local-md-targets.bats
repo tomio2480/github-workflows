@@ -197,10 +197,23 @@ setup() {
   [[ "${output}" == *"b.markdown"* ]]
 }
 
-@test "falls back to markdown when --glob has no extension" {
+@test "selects every changed file when --glob has no extension" {
+  # `README` や `**/LICENSE` は妥当な指定である．md へ落とすと，指定した
+  # ファイルが選ばれないまま lint を起動せず終了する．
   echo "# new" > new.md
+  echo "readme" > README
 
-  run bash "${SCRIPT}" --glob "docs"
+  run bash "${SCRIPT}" --glob "**/README"
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"README"* ]]
+}
+
+@test "keeps the markdown default when --glob is absent" {
+  echo "# new" > new.md
+  echo "readme" > README
+
+  run bash "${SCRIPT}"
 
   [ "${status}" -eq 0 ]
   [ "${output}" = "new.md" ]
