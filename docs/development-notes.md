@@ -13,6 +13,7 @@ PR #28 の経験で得た「機械生成 Markdown と bot レビュー対応」�
 PR #30・#31 の dogfooding の経験から「scope 分割」「設計 pivot」「複数 reviewer 判断割れ」の知見も追記している．
 PR #35 の prh 否定先読み修正と，Issue #34（SHA 直上バージョンコメント bump 漏れ再発防止）の知見も追記している．
 PR #40 の textlint v15 互換性検証と，PR #43 の Gemini SHA 誤検知の知見も追記している．
+Issue #157 で版コメントを行末スタイルへ統一した経緯も記録している．
 類似タスクに着手するセッションが過去判断を辿れるようにする．
 
 ## 目次
@@ -447,18 +448,32 @@ template バージョンコメントは「同 release で発行されるバー�
 [docs/notes/2026-09-01-issue142-version-comment-major-only.md](notes/2026-09-01-issue142-version-comment-major-only.md)
 を参照．
 
-### Dependabot 更新時の SHA 直上コメント手動補正
+### 版コメントを行末スタイルへ統一した理由
 
-Dependabot は SHA を更新するが，SHA 直上の `# <action> vX.Y.Z` コメントは自動 bump しない（既知挙動）．
-PR #10 の事例では，`# actions/checkout v4.3.0` が SHA 更新後も残置されていた．
+Dependabot が書き換えるのは SHA と同じ行にあるコメントだけである．
+SHA 直上へ置いたコメントは更新されない．PR #10 では `# actions/checkout v4.3.0` が
+SHA 更新後も残置された．一方 PR #143 の差分では，行末コメントが SHA と同時に
+書き換わっている．
 
-Dependabot PR をレビュー・マージする際は次を確認する．
+```diff
+-        uses: anthropics/claude-code-action@1f291e1cfe0f5fc21db2aef19af844591600ade7 # v1.0.206
++        uses: anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210
+```
 
-1. 差分で SHA が更新された行を特定する．
-2. SHA 直上の `# <action> vX.Y.Z` コメントを新バージョンへ手動補正する．
-3. 補正 commit を squash merge に含めてから ready → merge する．
+以前は直上行スタイルを許容し，Dependabot PR のレビューで版コメントを手で補正していた．
+Issue #153 で composite action を走査対象へ入れた結果，補正が要る箇所は増えた．
+そこで Issue #157 において直上行 8 箇所を行末スタイルへ移し，手動補正の工程を廃した．
+コメントへ書く内容も版だけ（`# v7.0.1`）へそろえた．Dependabot が書き出す形と一致させ，
+自動更新の結果と手書きが混ざらないようにするためである．
 
-この確認は将来的に `self-reviewer` Skill の観点リストへ組み込む候補である（Issue #34）．
+スタイルの逸脱は `tests/python/test_action_pins.py` が検出する．
+行末コメントの欠落，版以外の記述，同じ SHA への異なる版表記の 3 つを見る．
+SHA と版の対応そのものは上流へ問い合わせないと確かめられないため，
+CI では検査していない．手で pin を写す場合は `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`
+で突合すること．
+
+この工程が消えたぶん，`self-reviewer` Skill の観点リストへ組み込む候補（Issue #34）も
+対象が 1 つ減った．
 
 ### caller 追従確認は並行セッションを前提にする
 
