@@ -482,6 +482,10 @@ CI では検査していない．手で pin を写す場合は `gh api repos/<ow
 この工程が消えたぶん，`self-reviewer` Skill の観点リストへ組み込む候補（Issue #34）も
 対象が 1 つ減った．
 
+統一の作業で得た知見は
+[docs/notes/2026-09-02-issue156-157-pin-consistency.md](notes/2026-09-02-issue156-157-pin-consistency.md)
+を参照．検査が「検出できない形」を取りこぼしていた経緯もそこに残している．
+
 ### caller 追従確認は並行セッションを前提にする
 
 リリース後の caller 追従確認では，自分の知らないセッションで取り込み PR が走っている可能性を前提にする．

@@ -285,7 +285,7 @@ artifact 名の既定は `lint-reports-<job id>` である．`actions/upload-art
 `templates/.github/workflows/md-lint.yml` の構造変更は，既存 caller に
 自動反映されない．対象は `concurrency` や `timeout-minutes` など，
 workflow・job レベルのキーである．
-Dependabot が追随するのは `uses:` の SHA とバージョンコメントのみである．
+Dependabot が追随するのは `uses:` の SHA と，同じ行に置いた版コメントのみである．
 caller が自身の `.github/workflows/md-lint.yml` に書き写した内容までは
 追わない．実測では 33 caller 中 32 件が，最新テンプレートの構造変更を
 反映できていなかった．経緯は
