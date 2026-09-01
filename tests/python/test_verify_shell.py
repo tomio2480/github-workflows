@@ -62,7 +62,11 @@ def test_collect_targets_excludes_fixture_assets() -> None:
         REPO_ROOT, verify_shell.POWERSHELL_PATTERNS
     )
 
-    assert targets == ["bin/analyze-powershell.ps1", "bin/release-patch.ps1"]
+    assert targets == [
+        "bin/analyze-powershell.ps1",
+        "bin/release-patch.ps1",
+        "bin/watch-pr-checks.ps1",
+    ]
 
 
 def test_missing_tools_reports_absent_executables() -> None:
