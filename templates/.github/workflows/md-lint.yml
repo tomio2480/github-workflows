@@ -10,6 +10,9 @@ name: Markdown Lint
 #   - 既定: `@<SHA> # v2` 形式で SHA pin とバージョンコメントを併記する．
 #     Dependabot が SHA とバージョンの両方を自動追随し，更新は PR で通知される．
 #     本テンプレはこの方式を推奨．
+#     版コメントは major のみを書く．patch 番号を書くと，中央がテンプレを
+#     触らないリリースを出すたびに 1 世代ずれ続けるためである．
+#     pin した SHA の正確な版は `git tag --points-at` で引ける．
 #   - 代替 1: `@main` — 中央の最新 commit を即時反映．Dependabot による更新検知は働かない．
 #     中央 repo の書き換えが即時反映される点に同意できる場合のみ．
 #   - 代替 2: `@<SHA> # v2.0.0` 形式 — 完全不変．パッチ追随も止めて固定したい場合．
@@ -45,7 +48,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Markdown Lint via composite action
-        uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2.13.3
+        uses: OWNER/github-workflows/.github/actions/markdown-lint@<SHA> # v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # 必要に応じて inputs で上書き可能．詳細は中央リポジトリの README を参照．
