@@ -59,6 +59,11 @@ caller が `# v2` を持つ状態で Dependabot が SHA を更新したとき，
 | `README.md`・`docs/onboarding-new-repo.md` | 版コメントの手動補正指示を削除 |
 | `CLAUDE.md` | 版コメントは major 限定と明記 |
 | `docs/development-notes.md` | 旧チェックリスト節を撤回済みと明示 |
+| `README.md`・`docs/architecture.md` ほか 2 件 | 既定として示していた patch 形式の例を `# v2` へ統一 |
+
+既定の例を patch 形式のまま残した箇所が 4 件あり，Codex レビューで指摘を受けた．
+移行では「実ファイルの書き換え」と「説明文中の例の書き換え」を分けて洗い出す必要がある．
+前者だけを直すと，説明が旧形式を既定として示し続け，patch 形式へ戻す動機を残す．
 
 Issue #131（ドリフトの CI 検知）は本変更で条件が単純になる．
 「`templates/` 内の版コメントが `# v2` 以外なら fail」で足りる．

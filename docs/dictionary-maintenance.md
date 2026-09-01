@@ -204,7 +204,7 @@ plain string で書くと `JSON Lines` 等の語に誤マッチするため `\bJ
 | `@main` | 中央 main へのマージで次回 PR から即反映．即時性重視の利用者向け |
 | `@v2` major mutable | patch リリースごとに最新 patch へ進められる．caller の介入なしで追従 |
 | `@v2.2.0` patch immutable | 原則反映されない（固定）．新 patch へ切り替える明示的な操作が必要 |
-| `@<SHA> # v2.2.0`（既定） | SHA pin．Dependabot がタグの更新を検知して caller に PR を起票 |
+| `@<SHA> # v2`（既定） | SHA pin．Dependabot がタグの更新を検知して caller に PR を起票 |
 
 patch リリースは PR マージごとに切る運用とする．major mutable は同時に最新 patch へ進める．
 
