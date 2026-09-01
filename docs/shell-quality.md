@@ -6,6 +6,7 @@
 中央 workflow は共通 toolchain を配置する．
 対象は ShellCheck，shfmt，Bats，PSScriptAnalyzer，Pester である．
 検証ロジックは caller repo へ残す．
+本リポジトリ自身の gate は `bin/verify-shell.py` に置く．
 
 ## 🗺 目次
 
@@ -13,6 +14,7 @@
 - 🚀 導入
 - 📌 Tool version
 - 🔄 更新手順
+- 🏠 中央リポジトリ自身の gate
 - 🧪 自己テスト
 
 ## 🧭 責務
@@ -76,6 +78,41 @@ caller workflow の `pull_request.paths` も同じ path へ変更する．
 
 定期的な更新検知の自動化は Phase 2 候補とする．
 更新 PR を自動生成するまでは，release 時の手動確認を必須とする．
+
+## 🏠 中央リポジトリ自身の gate
+
+本リポジトリもシェル資産を持つ caller である．
+repo-local gate は `bin/verify-shell.py` に置く．
+`test-self-lint.yml` の `shell-quality-self` job から呼ぶ．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 2: repo-local gate の検査対象と実行ツール
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
+
+| 検査対象 | 実行するツール |
+|---|---|
+| `bin/*.sh`・`scripts/*.sh` | ShellCheck，shfmt（`-d -i 2 -ci`） |
+| `bin/*.ps1` | PSScriptAnalyzer（Error と Warning） |
+
+Bats は `unit-bash` job が同じ suite を実行するため gate へ含めない．
+Pester は対象となる `*.Tests.ps1` が無いため実行しない．
+
+fixture 呼び出し（`shell-quality-reusable` job）とは統合しない．
+前者は toolchain と caller contract を検証する自己テストである．
+後者は配布物ではない実資産を検査する gate であり，役割が異なる．
+
+shfmt の整形規則は `-i 2 -ci` とする．
+既存スクリプトのインデント幅と case 分岐の字下げに合わせた選択である．
+
+`.ps1` は UTF-8 BOM 付きで保存する．
+非 ASCII を含むファイルへの `PSUseBOMForUnicodeEncodedFile` を満たす．
+Windows PowerShell 5.1 で読ませたときの文字化けも同時に防げる．
+
+シェル資産は `.gitattributes` により LF で checkout する．
+CRLF の worktree では ShellCheck が SC1017 を全行へ出すためである．
+これがないと Windows 上でローカル実行が成立しない．
 
 ## 🧪 自己テスト
 

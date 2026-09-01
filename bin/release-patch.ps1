@@ -1,4 +1,4 @@
-# PR マージ後の定例 patch リリースを 1 コマンドで実行する（PowerShell 版）．
+﻿# PR マージ後の定例 patch リリースを 1 コマンドで実行する（PowerShell 版）．
 #
 # 実行列は bin/release-patch.sh と同一（同スクリプトのヘッダーコメントを参照）．
 # 版番号の決定（最新タグ確認・patch/minor 判断）はスクリプト外の責務とする．
