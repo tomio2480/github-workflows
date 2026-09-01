@@ -44,6 +44,7 @@
 ### テンプレート・設定ファイルの変更
 
 - `templates/prh.yml` などの中央デフォルト設定は，`@main` 直接参照の caller では即時反映される．SHA pin 利用者には Dependabot 更新 PR を経由して伝わる．破壊的追加（既存 caller で誤検出が増える恐れ）は注意
+- **`templates/` の third-party pin は中央 `.github/` 側と同じ SHA へ揃える**．`templates/` は Dependabot の走査対象へ入れられないため，放置すると caller へ古い action が配られる．ずれは `tests/python/test_action_pins.py` が検出する（Issue #156）
 - **`templates/` の版コメントは major のみ（`# v2`）とし，patch 番号を書かない**．リリースごとの同期作業は不要である．背景は Issue #142
 - **PR マージごとに `vX.Y.Z` patch タグを切る**（patch 番号運用）．caller は `@v2.2.0` のような固定 patch を pin できる．immutable patch は GitHub Release を伴う
 - **major mutable タグ（`v2` 等）は最新 patch に追従させる**．PR マージ後に次項のスクリプトで進める．`@v2` pin 利用者は次回 PR で自動的に最新 patch を受け取る

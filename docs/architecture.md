@@ -356,7 +356,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 | 層 | 対象 | 道具 | 配置 | 実行 |
 |---|---|---|---|---|
-| 単体 | `scripts/`・`bin/` の Python / Bash ロジック | pytest / bats-core | `tests/python/` / `tests/bash/` | ローカル `pytest` / `bats`，CI の `unit-python` / `unit-bash` job |
+| 単体 | `scripts/`・`bin/` のロジックと，`templates/`・設定ファイルの回帰検査 | pytest / bats-core | `tests/python/` / `tests/bash/` | ローカル `pytest` / `bats`，CI の `unit-python` / `unit-bash` job |
 | 静的解析 | 本リポジトリ自身のシェル資産 | ShellCheck / shfmt / PSScriptAnalyzer | `bin/verify-shell.py` | CI の `shell-quality-self` job |
 | workflow 統合 | Shell quality toolchain と caller contract | local reusable workflow 呼び出し | `tests/fixtures/shell-quality/` + `.github/workflows/test-self-lint.yml` | CI の `shell-quality-reusable` job |
 | 統合 | composite action の step 連携 | `./.github/actions/markdown-lint` の local 参照 | `tests/fixtures/markdown/` + `.github/workflows/test-self-lint.yml` の `integration-action` job | CI で PR 起動時 |
