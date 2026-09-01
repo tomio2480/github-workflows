@@ -177,8 +177,7 @@ runs:
         python3 "${ACTION_PATH}/../../../scripts/generate-mdlint-runtime.py" "${SRC}"
 
     - name: Setup Node.js
-      # actions/setup-node v7.0.0
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ inputs.node-version }}
 
@@ -252,8 +251,7 @@ runs:
           || echo "::warning::markdownlint-cli2 output has no Linting/Summary lines; report may be malformed"
 
     - name: Setup reviewdog
-      # reviewdog/action-setup v1.5.0
-      uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f
+      uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1.5.0
       with:
         # reviewdog 本体は再現性のため tag を固定．Dependabot の対象外なため version up は別 issue で扱う．
         reviewdog_version: v0.21.0
