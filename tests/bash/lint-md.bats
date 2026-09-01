@@ -302,6 +302,25 @@ teardown() {
   [[ "${output}" == *"fake mdlint finding"* ]]
 }
 
+@test "exits 2 when an explicit path does not exist" {
+  # 親ディレクトリだけを見ると，打ち間違いが「実在しない 1 件だけを対象に
+  # した」形になり，全指摘が絞り込みで消えて 0 終了する．
+  mkdir -p docs
+  echo "# nested" > docs/nested.md
+
+  run bash "${SCRIPT}" docs/no-such.md
+
+  [ "${status}" -eq 2 ]
+}
+
+@test "exits 2 when an explicit path is a directory" {
+  mkdir -p docs
+
+  run bash "${SCRIPT}" docs
+
+  [ "${status}" -eq 2 ]
+}
+
 @test "exits 2 when an explicit path is outside the repository" {
   run bash "${SCRIPT}" "${BATS_TEST_TMPDIR}/outside.md"
 

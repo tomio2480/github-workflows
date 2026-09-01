@@ -29,10 +29,12 @@ setup() {
   ACTION_STUB="${BATS_TEST_TMPDIR}/action"
   mkdir -p "${FAKE_BIN}" "${ACTION_STUB}"
 
+  export NPM_CWD_LOG="${BATS_TEST_TMPDIR}/npm-cwd"
   cat > "${FAKE_BIN}/npm" <<'FAKE'
 #!/usr/bin/env bash
 case "$1" in
   ci)
+    pwd > "${NPM_CWD_LOG}"
     mkdir -p "./node_modules/.bin"
     exit "${NPM_CI_EXIT:-0}"
     ;;
@@ -56,7 +58,8 @@ FAKE
 }
 
 teardown() {
-  unset ACTION_PATH RUNNER_TEMP GITHUB_OUTPUT NPM_CI_EXIT LINT_DEPS_CACHE_DIR
+  unset ACTION_PATH RUNNER_TEMP GITHUB_OUTPUT NPM_CI_EXIT LINT_DEPS_CACHE_DIR \
+    NPM_CWD_LOG
 }
 
 @test "exits 0 and writes bin and modules to GITHUB_OUTPUT on success" {
@@ -171,6 +174,59 @@ FAKE
   [ "${status}" -eq 0 ]
   SECOND_DIR="${output##*Installed under: }"
   [ "${FIRST_DIR}" != "${SECOND_DIR}" ]
+}
+
+@test "installs into a private staging dir, not the shared cache key" {
+  # 共有の鍵ディレクトリを組み立て途中で作ると，同時に走った別プロセスが
+  # 未完成の状態を掴む．失敗時の後始末も相手の使用中ディレクトリを消す．
+  # 組み立ては専用ディレクトリで行い，完成後に鍵の位置へ移す．
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  PUBLISHED="${output##*Installed under: }"
+  INSTALLED_IN="$(cat "${NPM_CWD_LOG}")"
+  [ "${INSTALLED_IN}" != "${PUBLISHED}" ]
+  [[ "$(basename "${INSTALLED_IN}")" == .staging.* ]]
+}
+
+@test "publishes nothing to the cache when npm ci fails" {
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+  mkdir -p "${LINT_DEPS_CACHE_DIR}"
+  echo "keep me" > "${LINT_DEPS_CACHE_DIR}/sentinel"
+  export NPM_CI_EXIT=1
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -ne 0 ]
+  [ -f "${LINT_DEPS_CACHE_DIR}/sentinel" ]
+  # 未完成のキャッシュを残さない．
+  run find "${LINT_DEPS_CACHE_DIR}" -name "node_modules" -maxdepth 2
+  [ -z "${output}" ]
+}
+
+@test "leaves no staging directory behind on success" {
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+
+  run bash "${SCRIPT}"
+  [ "${status}" -eq 0 ]
+
+  run find "${LINT_DEPS_CACHE_DIR}" -maxdepth 1 -name ".staging.*"
+  [ -z "${output}" ]
+}
+
+@test "exits non-zero when the cache key path is not usable" {
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+  mkdir -p "${LINT_DEPS_CACHE_DIR}"
+  # 鍵の位置を通常ファイルで塞ぐ．黙って成功を返さないことを確かめる．
+  KEY="$(cat "${ACTION_STUB}/package.json" "${ACTION_STUB}/package-lock.json" |
+    sha256sum | cut -d' ' -f1)"
+  echo "blocked" > "${LINT_DEPS_CACHE_DIR}/${KEY}"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -ne 0 ]
 }
 
 @test "falls back to RUNNER_TEMP when LINT_DEPS_CACHE_DIR is empty" {

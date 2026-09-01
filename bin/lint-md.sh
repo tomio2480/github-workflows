@@ -109,8 +109,10 @@ if [ "${#FILES[@]}" -gt 0 ]; then
   # 成立しない．
   NORMALIZED=()
   for given in "${FILES[@]}"; do
+    # 親ディレクトリの存在だけでは足りない．打ち間違いのパスを通すと，
+    # 実在しない 1 件だけが対象になり，全指摘が絞り込みで消えて 0 終了する．
+    [ -f "${given}" ] || die "no such file: ${given}"
     dir="$(dirname "${given}")"
-    [ -d "${dir}" ] || die "no such file: ${given}"
     file_toplevel="$(git -C "${dir}" rev-parse --show-toplevel 2>/dev/null)" ||
       die "outside the repository: ${given}"
     [ "${file_toplevel}" = "${TOPLEVEL}" ] ||

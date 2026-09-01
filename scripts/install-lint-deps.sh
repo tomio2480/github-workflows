@@ -52,23 +52,41 @@ emit_outputs() {
   echo "modules=$1/node_modules" >>"${GITHUB_OUTPUT}"
 }
 
+CACHE_KEY_DIR=""
 if [ -n "${CACHE_DIR}" ]; then
-  TMP="${CACHE_DIR}/$(hash_manifest)"
-  if [ -d "${TMP}/node_modules/.bin" ]; then
-    emit_outputs "${TMP}"
-    echo "Reusing cache: ${TMP}"
+  CACHE_KEY_DIR="${CACHE_DIR}/$(hash_manifest)"
+  if [ -d "${CACHE_KEY_DIR}/node_modules/.bin" ]; then
+    emit_outputs "${CACHE_KEY_DIR}"
+    echo "Reusing cache: ${CACHE_KEY_DIR}"
     exit 0
   fi
-  mkdir -p "${TMP}"
+  # 鍵の位置へ直接組み立てない．同時に走った別プロセスが未完成の状態を掴み，
+  # こちらが失敗すると後始末が相手の使用中ディレクトリを消してしまう．
+  # 組み立ては専用ディレクトリで行い，完成後に鍵の位置へ移す．
+  mkdir -p "${CACHE_DIR}"
+  TMP="$(mktemp -d "${CACHE_DIR}/.staging.XXXXXX")"
 else
   TMP="$(mktemp -d "${RUNNER_TEMP}/XXXXXX")"
 fi
 
-# 失敗時は中途半端な状態を残さない．キャッシュ側も鍵つきの自前ディレクトリの
-# ため，消しておけば次回の再実行がやり直しになる．
+# 失敗時に消すのは自前の組み立て先だけである．公開済みのキャッシュには触れない．
 trap 'rm -rf "${TMP}"' ERR
 cp "${ACTION_PATH}/package.json" "${TMP}/"
 cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
 (cd "${TMP}" && npm ci)
+
+if [ -n "${CACHE_KEY_DIR}" ]; then
+  # 公開は 1 度の rename で行う．競合に負けた場合は相手の成果を使い，
+  # 自分の組み立て先を捨てる．どちらの経路でも未完成の状態は見えない．
+  if [ -e "${CACHE_KEY_DIR}" ] || ! mv "${TMP}" "${CACHE_KEY_DIR}" 2>/dev/null; then
+    rm -rf "${TMP}"
+  fi
+  if [ ! -d "${CACHE_KEY_DIR}/node_modules/.bin" ]; then
+    echo "cache key path is not usable: ${CACHE_KEY_DIR}" >&2
+    exit 1
+  fi
+  TMP="${CACHE_KEY_DIR}"
+fi
+
 emit_outputs "${TMP}"
 echo "Installed under: ${TMP}"
