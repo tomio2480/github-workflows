@@ -101,7 +101,7 @@
 - 外部からの PR は **原則マージしない**．typo 修正の名目でも `.github/workflows/`・`.github/actions/`・`dependabot.yml` が変わっていないか確認
 - third-party action の SHA は Dependabot PR を通してのみ更新．手動書き換えは避ける
   - 走査対象は `.github/dependabot.yml` の `github-actions` に列挙した `/` と `/.github/actions/*` である．前者が `.github/workflows/` を，後者がネストした composite action を拾う（Issue #153）
-  - **`templates/` だけは例外で手動更新とする．** caller 用の雛形であり本リポジトリの workflow として実行されないため，走査対象へ入れても Dependabot は扱わない．中央側と同じ SHA へ揃え，`tests/python/test_action_pins.py` でずれを検出する（Issue #156）
+  - **`templates/` だけは例外で手動更新とする．** caller 用の雛形であり，本リポジトリの workflow として実行されない．走査対象へ入れても Dependabot は扱わないためである．中央側と同じ SHA へ揃え，`tests/python/test_action_pins.py` でずれを検出する（Issue #156）
 - `v2` などの共有タグを動かすときは以下を事前に行う：
   - 影響する caller repository の一覧化と影響範囲評価
   - 各 caller のオーナー（stakeholder）への事前通知と通知期間の確保
