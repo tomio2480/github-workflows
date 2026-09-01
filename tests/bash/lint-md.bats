@@ -269,6 +269,56 @@ teardown() {
   [ "${status}" -eq 0 ]
 }
 
+@test "exits 2 when the target selector fails" {
+  # 選定が失敗したのに「対象 0 件」と読み替えると，打ち間違いが lint を
+  # 素通りさせる．mapfile は process substitution の状態を継がないため，
+  # 明示的に伝播させる必要がある．
+  run bash "${SCRIPT}" --base no-such-ref
+
+  [ "${status}" -eq 2 ]
+}
+
+@test "normalizes an explicit relative path given from a subdirectory" {
+  mkdir -p docs
+  echo "# nested" > docs/nested.md
+  cd docs
+  export FAKE_MDLINT_FINDINGS=1
+  export FAKE_FINDING_PATH="docs/nested.md"
+
+  run bash "${SCRIPT}" nested.md
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"fake mdlint finding"* ]]
+}
+
+@test "normalizes an explicit absolute path" {
+  echo "# new" > new.md
+  export FAKE_MDLINT_FINDINGS=1
+  export FAKE_FINDING_PATH="new.md"
+
+  run bash "${SCRIPT}" "${WORK}/new.md"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"fake mdlint finding"* ]]
+}
+
+@test "exits 2 when an explicit path is outside the repository" {
+  run bash "${SCRIPT}" "${BATS_TEST_TMPDIR}/outside.md"
+
+  [ "${status}" -eq 2 ]
+}
+
+@test "selects targets by the extension of an explicit --glob" {
+  echo "# other" > other.markdown
+  export FAKE_MDLINT_FINDINGS=1
+  export FAKE_FINDING_PATH="other.markdown"
+
+  run bash "${SCRIPT}" --glob "**/*.markdown"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"fake mdlint finding"* ]]
+}
+
 @test "covers every tracked markdown with --all" {
   export FAKE_MDLINT_FINDINGS=1
   export FAKE_FINDING_PATH="sample.md"

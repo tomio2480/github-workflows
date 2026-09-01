@@ -76,7 +76,10 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --help | -h)
-      sed -n '2,41p' "${BASH_SOURCE[0]}"
+      # 先頭のコメント塊をそのまま説明として出す．行番号で切ると本文の
+      # 増減でずれるため，最初の非コメント行までを読む．
+      awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' \
+        "${BASH_SOURCE[0]}"
       exit 0
       ;;
     --)
@@ -96,6 +99,29 @@ done
 
 TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)" ||
   die "not inside a git worktree"
+
+# 明示指定のパスは呼び出し時のカレント基準で書かれる．集計はリポジトリルート
+# 相対で突合するため，ルートへ移る前に正規化する．揃えないと，指定した当の
+# ファイルの指摘が黙って消える．
+if [ "${#FILES[@]}" -gt 0 ]; then
+  # 相対化は git 自身に尋ねる．シェルの `pwd` は Windows で /c/... 形式を返す
+  # 一方 `rev-parse --show-toplevel` は C:/... 形式を返し，素朴な文字列比較は
+  # 成立しない．
+  NORMALIZED=()
+  for given in "${FILES[@]}"; do
+    dir="$(dirname "${given}")"
+    [ -d "${dir}" ] || die "no such file: ${given}"
+    file_toplevel="$(git -C "${dir}" rev-parse --show-toplevel 2>/dev/null)" ||
+      die "outside the repository: ${given}"
+    [ "${file_toplevel}" = "${TOPLEVEL}" ] ||
+      die "outside the repository: ${given}"
+    prefix="$(git -C "${dir}" rev-parse --show-prefix)" ||
+      die "cannot resolve ${given}"
+    NORMALIZED+=("${prefix}$(basename "${given}")")
+  done
+  FILES=("${NORMALIZED[@]}")
+fi
+
 cd "${TOPLEVEL}" || die "cannot enter ${TOPLEVEL}"
 
 # 生成・集計スクリプトは PyYAML を使う．環境によって python3 が無い
@@ -115,18 +141,6 @@ done
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-if [ "${#FILES[@]}" -eq 0 ]; then
-  mapfile -t FILES < <(bash "${SCRIPTS}/list-local-md-targets.sh" "${SELECT_ARGS[@]+"${SELECT_ARGS[@]}"}") ||
-    die "failed to list target files"
-fi
-
-if [ "${#FILES[@]}" -eq 0 ]; then
-  echo "lint-md: no markdown to check"
-  exit 0
-fi
-
-echo "lint-md: ${#FILES[@]} file(s) to check"
-
 WORKDIR="$(mktemp -d)"
 MDLINT_GENERATED=""
 # runtime config は caller の作業ツリーへ生成されうる（cli2 が相対パスを
@@ -135,6 +149,22 @@ MDLINT_GENERATED=""
 trap 'rm -rf "${WORKDIR}"; [ -n "${MDLINT_GENERATED}" ] && rm -f "${MDLINT_GENERATED}"; true' EXIT
 
 TARGETS="${WORKDIR}/targets.txt"
+if [ "${#FILES[@]}" -eq 0 ]; then
+  # mapfile は process substitution の終了状態を継がない．選定の失敗を
+  # 「対象 0 件」と読み替えると，打ち間違いが lint を素通りさせるため，
+  # 一度ファイルへ受けて状態を確かめる．
+  bash "${SCRIPTS}/list-local-md-targets.sh" \
+    --glob "${MARKDOWN_GLOB}" "${SELECT_ARGS[@]+"${SELECT_ARGS[@]}"}" \
+    >"${TARGETS}" || die "failed to list target files"
+  mapfile -t FILES <"${TARGETS}"
+fi
+
+if [ "${#FILES[@]}" -eq 0 ]; then
+  echo "lint-md: no markdown to check"
+  exit 0
+fi
+
+echo "lint-md: ${#FILES[@]} file(s) to check"
 printf '%s\n' "${FILES[@]}" >"${TARGETS}"
 
 read_output() {

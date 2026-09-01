@@ -4,15 +4,17 @@
 #
 # Spec:
 #   Arguments:
-#     --all          - すべての追跡済み Markdown を出す
-#     --base <ref>   - 差分の基点を明示する
+#     --all           - すべての追跡済み Markdown を出す
+#     --base <ref>    - 差分の基点を明示する
+#     --glob <pattern> - 選定する拡張子を lint 対象 glob から決める
 #   Behavior:
 #     - カレントが git worktree でなければ非 0 終了
 #     - 基点の解決順は --base > @{upstream} > origin/main > HEAD
 #     - 既定は「基点との差分」＋「untracked」の Markdown を出す
 #     - 削除されたファイルは出さない（実在するものだけを lint 対象にする）
 #     - パスはリポジトリルート相対で 1 行 1 ファイル．重複なし・辞書順
-#     - Markdown 以外は出さない
+#     - 非 ASCII のパスをエスケープせずそのまま出す
+#     - 既定の拡張子は md．--glob の拡張子があればそちらを使う
 #
 # Test strategy:
 #   BATS_TEST_TMPDIR に使い捨ての git リポジトリを作り，実際の git を動かす．
@@ -136,6 +138,52 @@ setup() {
 
   [ "${status}" -eq 0 ]
   [ "${output}" = "docs/nested.md" ]
+}
+
+@test "emits non-ASCII paths unescaped" {
+  # core.quotePath の既定では git が C 形式の 8 進エスケープを出す．その値を
+  # 対象一覧へ書くと linter の報告（実際の UTF-8 パス）と突合できない．
+  git config core.quotePath true
+  echo "# 日本語" > 日本語.md
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "日本語.md" ]
+}
+
+@test "selects by the extension of an explicit --glob" {
+  echo "# other" > other.markdown
+
+  run bash "${SCRIPT}" --glob "**/*.markdown"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "other.markdown" ]
+}
+
+@test "keeps selecting markdown when --glob is not given" {
+  echo "# other" > other.markdown
+  echo "# new" > new.md
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "new.md" ]
+}
+
+@test "falls back to markdown when --glob has no extension" {
+  echo "# new" > new.md
+
+  run bash "${SCRIPT}" --glob "docs"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "new.md" ]
+}
+
+@test "exits non-zero when --glob is given without a value" {
+  run bash "${SCRIPT}" --glob
+
+  [ "${status}" -ne 0 ]
 }
 
 @test "emits each path once and in sorted order" {
