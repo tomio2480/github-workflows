@@ -255,6 +255,8 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 
 対策として，composite action に `List PR diff files (for summary scoping)` step を追加した．[scripts/list-pr-diff-files.sh](../scripts/list-pr-diff-files.sh) が PR の差分ファイル一覧を取得する．API は `GET /repos/:owner/:repo/pulls/:pr/files` である．取得結果は `count-lint-findings.py` の `--diff-files-from` へファイルパスとして渡す．これにより summary は PR 差分ファイルのみを対象にする．GitHub API 呼び出しが失敗した場合は，`::warning::` を出しつつ `--diff-files-from` を渡さない．従来どおりリポジトリ全体スコープにフォールバックする（fail-open）．`--diff-files-from` は `count-lint-findings.py` 単体の後方互換を保つ．未指定時は従来どおりリポジトリ全体を対象にする仕様のままである．
 
+同じ `--diff-files-from` は push 前ローカル lint（[bin/lint-md.sh](../bin/lint-md.sh)．v2.15.0〜）からも使う．一覧の作り方だけが異なり，CI は PR files API，ローカルは基点との差分（[scripts/list-local-md-targets.sh](../scripts/list-local-md-targets.sh)）である．集計を共有するのは，同じレポートから違う件数が出る余地を残さないためである．詳細は [docs/local-lint.md](local-lint.md) を参照．
+
 reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない指摘を inline 化しない．このため「集計件数 N 件あるのに inline コメントが 0 件」という見え方が起こりうる．この差を埋めるため summary コメントには以下を含める．
 
 - 文言で「inline 化されない指摘がある」旨を明示
