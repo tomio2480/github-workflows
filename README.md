@@ -18,6 +18,7 @@ v2.6 以降は，`@claude` で起動するレビュー用 workflow も配布す�
 ## 目次
 
 - 🎯 このリポジトリでできること
+- 🖥 push 前ローカル lint（任意）
 - 🐚 Shell quality workflow（任意）
 - 🤖 Claude レビュー workflow（任意）
 - 🗂 ディレクトリ構成
@@ -43,6 +44,22 @@ v2.6 以降は，`@claude` で起動するレビュー用 workflow も配布す�
 - CI 自体は緑のまま（マージをブロックしない）
 
 Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自前運用する構成である．
+
+## 🖥 push 前ローカル lint（任意）
+
+`bin/lint-md.sh` は，中央リポジトリの設定を使って手元で Markdown を lint する．
+呼び出し元リポジトリには何も置かないため，中央設定との drift が生じない．
+軽微な文体指摘のたびに CI を 1 巡させる無駄を減らす（Issue #134）．
+
+```bash
+bash /path/to/github-workflows/bin/lint-md.sh
+```
+
+既定では変更した Markdown だけを報告する．
+lint 自体は CI と同じ設定・同じ集計を通し，違いは終了コードだけである．
+CI の reviewdog は非ブロッキングだが，ローカルは指摘ありで非 0 終了する．
+引数・キャッシュ・Windows での実行は
+[push 前ローカル Markdown lint](docs/local-lint.md) を参照する．
 
 ## 🐚 Shell quality workflow（任意）
 
@@ -131,12 +148,15 @@ github-workflows/
 │   ├── count-lint-findings.py     # textlint XML / markdownlint テキストから件数集計
 │   ├── generate-mdlint-runtime.py # outputFormatters を除去した runtime config 生成
 │   ├── generate-textlint-runtime.py
-│   ├── install-lint-deps.sh       # lint 依存を lockfile から tmpdir へ npm ci
+│   ├── install-lint-deps.sh       # lint 依存を lockfile から npm ci（ローカルは鍵つき再利用）
+│   ├── list-local-md-targets.sh   # ローカル lint の報告対象を差分から選ぶ
 │   ├── list-pr-diff-files.sh      # summary 絞り込み用に PR 差分ファイルを取得（fail-open）
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
+│   ├── render-local-lint-report.py # ローカル lint の集計結果を端末向けに整形
 │   └── resolve-config-path.sh
 ├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
 │   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部（verify-shell.py から呼ぶ）
+│   ├── lint-md.sh                 # push 前ローカル Markdown lint（v2.15〜）
 │   ├── release-patch.sh           # 定例 patch リリース（タグ・Release・v2 追従）
 │   ├── release-patch.ps1          # 同上の PowerShell 版
 │   └── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
@@ -170,6 +190,7 @@ github-workflows/
 │   ├── fork-usage.md
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
 │   ├── shell-quality.md           # Shell quality workflow の caller contract
+│   ├── local-lint.md              # push 前ローカル Markdown lint の使い方
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
 ├── .markdownlint-cli2.yaml        # 自リポジトリ用 override（fixture を lint 対象に含める）
 ├── .textlintignore                # 同上
@@ -393,6 +414,7 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/fork-usage.md](docs/fork-usage.md) | フォーク運用 | 他利用者 |
 | [docs/development-notes.md](docs/development-notes.md) | 設計判断とレビュー対応の知見 | メンテナー・AI |
 | [docs/shell-quality.md](docs/shell-quality.md) | Shell quality workflow の導入と契約 | 利用者・AI |
+| [docs/local-lint.md](docs/local-lint.md) | push 前ローカル Markdown lint の使い方 | 利用者・AI |
 
 ## 📝 ライセンス
 
