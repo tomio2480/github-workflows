@@ -573,6 +573,24 @@ FAKE
   ! grep -q 'BODY: .*Actions ログ' "${FAKE_CURL_LOG}"
 }
 
+@test "LINT_REPORT_FILES があるとき実際に含まれるレポートだけを案内する（Issue #148）" {
+  # fail-on-error: true の caller では markdownlint 側の非ゼロ終了で textlint step が
+  # skip される．artifact が片方のレポートしか持たないため，案内も実態に合わせる．
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":0,"repo_total":21,"findings":[]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+  export LINT_REPORT_ARTIFACT="lint-reports-lint"
+  export LINT_REPORT_FILES="markdownlint-report.txt"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*artifact `lint-reports-lint`' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*markdownlint-report\.txt' "${FAKE_CURL_LOG}"
+  ! grep -q 'BODY: .*textlint-report\.xml' "${FAKE_CURL_LOG}"
+
+  unset LINT_REPORT_ARTIFACT LINT_REPORT_FILES
+}
+
 @test "指摘ありのときも Actions ログではなく artifact を案内する（Issue #148）" {
   _write_summary '{"diff_scoped":true,"markdownlint":{"total":1,"repo_total":21,"findings":[{"file":"a.md","line":1,"rule":"MD041/x","message":"top heading"}]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
   export FAKE_CURL_GET_BODY='[]'

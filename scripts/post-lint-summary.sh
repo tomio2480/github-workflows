@@ -21,6 +21,10 @@
 #   LINT_REPORT_ARTIFACT - lint レポートをまとめた artifact 名（任意）．
 #     渡されたときは「リポジトリ全体の内訳はこの artifact から取れる」と案内し，
 #     空・未設定のときは取得できない旨と有効化手段を案内する（Issue #148）．
+#   LINT_REPORT_FILES - artifact に実際に入ったレポートのファイル名（任意）．
+#     カンマ区切り．未設定なら markdownlint / textlint 両方が入っている前提で
+#     案内する．片方の lint が skip された run では実態と食い違うため，
+#     composite action 側が存在するファイルだけを渡す．
 #
 # 仕様:
 #   - hidden marker `<!-- gh-workflows-lint-summary -->` 付きコメントを GET で
@@ -202,10 +206,18 @@ report_artifact = os.environ.get("LINT_REPORT_ARTIFACT", "")
 # 表の見出しと同じ語彙で案内するため，主語を切り替える．
 detail_subject = "リポジトリ全体の内訳" if diff_scoped else "指摘の全件"
 if report_artifact:
+    # 実際に artifact へ入ったレポートだけを案内する．fail-on-error: true の
+    # caller では markdownlint の非ゼロ終了で textlint step が skip され，
+    # 片方のレポートしか存在しないことがあるため（PR #152 のレビュー指摘）．
+    report_files = [
+        name.strip()
+        for name in os.environ.get("LINT_REPORT_FILES", "").split(",")
+        if name.strip()
+    ] or ["markdownlint-report.txt", "textlint-report.xml"]
+    joined_files = " と ".join(f"`{name}`" for name in report_files)
     repo_detail_hint = (
         f"{detail_subject}は Actions run の artifact `{report_artifact}` "
-        "にある `markdownlint-report.txt` と `textlint-report.xml` "
-        "から確認できます．"
+        f"にある {joined_files} から確認できます．"
     )
 else:
     repo_detail_hint = (

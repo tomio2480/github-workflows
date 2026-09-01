@@ -267,6 +267,8 @@ reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない
 
 対策として `Upload lint reports` step を追加した．生レポートをそのまま run の artifact として添付する．summary の肥大を避けたまま，必要な caller だけが内訳を取得できる．caller は既存指摘の棚卸しに使える．本リポジトリが [Issue #109](https://github.com/tomio2480/github-workflows/issues/109) で行った段階的な解消と同じことが caller 側でもできる．
 
+添付するのは実在するレポートだけである．`fail-on-error: true` の caller を考える．markdownlint 側の reviewdog が非ゼロ終了した時点で textlint の step は skip される．この run の artifact は markdownlint のレポートだけになる．欠けているファイルは `::warning::` で通知し，summary の案内文にも実在するファイル名だけを載せる．どちらのレポートも無い run では添付そのものを見送る．
+
 artifact 名の既定は `lint-reports-<job id>` である．`actions/upload-artifact` は同一 run 内で同名 artifact のアップロードに失敗する．matrix で同じ job を並列展開する caller は `report-artifact-name` で job ごとに別名を渡す．アップロードの失敗は job を落とさない（`continue-on-error`）．失敗・skip のときは summary の案内文が「取得できない」旨へ切り替わる．
 
 同一 PR で複数の job が同じ marker で upsert すると race するため，integration テストは単一 job に絞る方針．caller 側で複数 job が並走する構成にしたい場合は別マーカー運用が必要（現状 input 化していないため job 分割は推奨しない）．
