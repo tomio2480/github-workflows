@@ -117,20 +117,29 @@ github-workflows/
 ├── .github/
 │   ├── actions/
 │   │   └── markdown-lint/
-│   │       └── action.yml      # composite action 本体（v2）
+│   │       ├── action.yml         # composite action 本体（v2）
+│   │       ├── package.json       # lint 依存の宣言
+│   │       └── package-lock.json  # lint 依存の固定（install-lint-deps.sh が使う）
 │   ├── workflows/
-│   │   ├── claude-review.yml   # Claude レビュー用 reusable workflow（v2.6〜）
-│   │   ├── shell-quality.yml   # Shell / CLI quality reusable workflow
-│   │   └── test-self-lint.yml  # 単体／統合テスト用 CI workflow
-│   └── dependabot.yml          # third-party action の自動更新
+│   │   ├── claude-review.yml      # Claude レビュー用 reusable workflow（v2.6〜）
+│   │   ├── md-lint.yml            # 自リポジトリ向けの Markdown lint caller
+│   │   ├── shell-quality.yml      # Shell / CLI quality reusable workflow
+│   │   └── test-self-lint.yml     # 単体／統合テスト用 CI workflow
+│   └── dependabot.yml             # third-party action の自動更新
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
 │   ├── add-pr-reaction.sh         # 👀 reaction 付与（fail-open）
 │   ├── count-lint-findings.py     # textlint XML / markdownlint テキストから件数集計
 │   ├── generate-mdlint-runtime.py # outputFormatters を除去した runtime config 生成
 │   ├── generate-textlint-runtime.py
 │   ├── install-lint-deps.sh       # lint 依存を lockfile から tmpdir へ npm ci
+│   ├── list-pr-diff-files.sh      # summary 絞り込み用に PR 差分ファイルを取得（fail-open）
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   └── resolve-config-path.sh
+├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
+│   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部（verify-shell.py から呼ぶ）
+│   ├── release-patch.sh           # 定例 patch リリース（タグ・Release・v2 追従）
+│   ├── release-patch.ps1          # 同上の PowerShell 版
+│   └── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
 │   ├── bash/                      # bats-core
@@ -160,10 +169,16 @@ github-workflows/
 │   ├── security.md
 │   ├── fork-usage.md
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
-│   ├── shell-quality.md            # Shell quality workflow の caller contract
+│   ├── shell-quality.md           # Shell quality workflow の caller contract
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
+├── .markdownlint-cli2.yaml        # 自リポジトリ用 override（fixture を lint 対象に含める）
+├── .textlintignore                # 同上
+├── .prh-extra.yml                 # 自リポジトリ用の追加 prh 辞書
+├── .gitattributes                 # シェル資産を LF で checkout する
+├── .gitignore
 ├── README.md
-├── CLAUDE.md                   # AI エージェント向けの作業指針
+├── AGENTS.md                      # Codex 向けの作業指針
+├── CLAUDE.md                      # Claude 向けの作業指針
 └── LICENSE
 ```
 
