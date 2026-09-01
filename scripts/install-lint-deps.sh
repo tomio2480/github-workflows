@@ -36,11 +36,11 @@ CACHE_DIR="${LINT_DEPS_CACHE_DIR:-}"
 # 環境で割れる（GNU は sha256sum，macOS は shasum）ため両方を見る．
 hash_manifest() {
   if command -v sha256sum >/dev/null 2>&1; then
-    cat "${ACTION_PATH}/package.json" "${ACTION_PATH}/package-lock.json" \
-      | sha256sum | cut -d' ' -f1
+    cat "${ACTION_PATH}/package.json" "${ACTION_PATH}/package-lock.json" |
+      sha256sum | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then
-    cat "${ACTION_PATH}/package.json" "${ACTION_PATH}/package-lock.json" \
-      | shasum -a 256 | cut -d' ' -f1
+    cat "${ACTION_PATH}/package.json" "${ACTION_PATH}/package-lock.json" |
+      shasum -a 256 | cut -d' ' -f1
   else
     echo "neither sha256sum nor shasum is available" >&2
     return 1
