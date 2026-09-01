@@ -61,7 +61,7 @@ curl -fsSL \
 cat .github/workflows/md-lint.yml
 ```
 
-出力を目視確認する．`uses:` 行の `OWNER` と `<SHA>` が実際の値に置換されていればよい．併記の版コメント（`# v2` 等）が実際の版と食い違う場合は手で合わせる．テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）に揃えているため，`main` が次版へ進んでいても新旧混在の caller は生成されない．
+出力を目視確認する．`uses:` 行の `OWNER` と `<SHA>` が実際の値に置換されていればよい．併記の版コメントは major のみ（`# v2`）でよく，patch 番号へ書き換える必要はない．テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）に揃えているため，`main` が次版へ進んでいても新旧混在の caller は生成されない．
 
 `gh release view v2 --json targetCommitish` は，release が作成されたブランチ名（既定 `main`）を返す．このため commit SHA を保証しない．SHA 解決には上記 git refs API を使うこと．
 
@@ -150,7 +150,7 @@ curl -fsSL \
 gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 ```
 
-`uses:` 行の SHA pin は sed で置換済みとなる．併記の版コメントだけ目視確認する．
+`uses:` 行の SHA pin は sed で置換済みとなる．併記の版コメントは major のみ（`# v2`）で固定である．
 workflow は default ブランチの定義で発火するため，追加した PR 自身では
 メンションが発火しない．動作確認はマージ後の別 PR で行う．
 

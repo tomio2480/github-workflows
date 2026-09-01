@@ -84,8 +84,8 @@ curl -fsSL \
 gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 ```
 
-生成後に caller を目視確認し，併記の版コメントが実際の版と
-食い違う場合は手で合わせる．
+生成後に caller を目視確認する．併記の版コメントは major のみ（`# v2`）で
+よく，patch 番号へ書き換える必要はない．
 
 前提は次の 2 点である．
 
@@ -186,7 +186,7 @@ github-workflows/
 | アップデート（`@main`） | 中央 main へのマージで次回 PR から即反映 | 自分でフォーク先に上流同期すると反映 |
 | おすすめ対象 | Tomio さん本人 / ルールに異存がない利用者 | 組織運用 / ルールを独自カスタムしたい利用者 |
 
-参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2.2.0` 形式の SHA pin で，Dependabot が SHA とバージョンを自動追随する．即時反映を優先したい場合は `@main` を pin する．caller 自身で明示的に追従したい場合は `@v2`（major mutable）か `@v2.2.0`（patch immutable）を選ぶ．`@v2` は patch リリースごとに進む．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
+参照先（`@` 以降）は caller workflow で選ぶ．既定は `@<SHA> # v2` 形式の SHA pin で，Dependabot が SHA とバージョンを自動追随する．即時反映を優先したい場合は `@main` を pin する．caller 自身で明示的に追従したい場合は `@v2`（major mutable）か `@v2.2.0`（patch immutable）を選ぶ．`@v2` は patch リリースごとに進む．`@v1` / `@v1.0.0` 系は self-detection bug により動作しないため利用しない．
 
 ### パターン (A)：`tomio2480/github-workflows` を直接参照
 
@@ -209,7 +209,7 @@ curl -fsSL \
 
 テンプレ取得元と SHA pin を同じリビジョン（`${SHA}`）に揃えている．
 `main` が次版へ進んでいても，新テンプレと旧参照の混在は起きない．
-生成後に `uses:` 行を目視確認し，併記の版コメントが実際の版と食い違う場合は手で合わせる．
+生成後に `uses:` 行を目視確認する．併記の版コメントは major のみ（`# v2`）でよく，patch 番号へ書き換える必要はない．
 
 あとは PR を作るだけ．初回 PR では Actions の実行に権限承認を要求される場合がある．その際はリポジトリの Settings → Actions から許可する．
 

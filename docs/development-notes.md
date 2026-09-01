@@ -433,6 +433,14 @@ template バージョンコメントは「同 release で発行されるバー�
 古いバージョンを残すと利用者が「新 input を持たない古い tag」を copy する事故につながる．
 チェックリスト化の経緯と Gemini レビューの実例は [docs/notes/2026-05-02-v2.5.0-postmortem.md](notes/2026-05-02-v2.5.0-postmortem.md) を参照．
 
+この規律は Issue #142 で撤回した．
+`templates/` を触らないリリースが 1 回起きるたび，版コメントは 1 世代ずれる．
+チェックリストで一致を保つ運用は構造的に破綻する（実際に 4 回再発した）．
+現在は版コメントを major のみ（`# v2`）とし，patch 番号を書かない．
+これによりずれ自体が発生しない．経緯は
+[docs/notes/2026-09-01-issue142-version-comment-major-only.md](notes/2026-09-01-issue142-version-comment-major-only.md)
+を参照．
+
 ### Dependabot 更新時の SHA 直上コメント手動補正
 
 Dependabot は SHA を更新するが，SHA 直上の `# <action> vX.Y.Z` コメントは自動 bump しない（既知挙動）．

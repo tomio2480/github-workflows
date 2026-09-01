@@ -28,6 +28,6 @@ concurrency:
 
 jobs:
   shell-quality:
-    uses: OWNER/github-workflows/.github/workflows/shell-quality.yml@<SHA> # v2.13.3
+    uses: OWNER/github-workflows/.github/workflows/shell-quality.yml@<SHA> # v2
     with:
       verify-script: bin/verify-shell.py
