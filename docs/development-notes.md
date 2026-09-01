@@ -104,7 +104,7 @@ PR #28 では summary 本文を以下の構成にして「件数の意味」を�
 数字だけ見せると利用者は「何が見えていないか」を判断できない．
 
 ただしこのとき組み込んだ「Actions ログを参照」は実在しない経路だった．
-個別の指摘は reviewdog へ渡るだけで，ログには rule ID もファイル名も出ない．
+個別の指摘は reviewdog へ渡るだけで，ログには rule ID とファイル名のどちらも出ない．
 v2.14.0（Issue #148）で生レポートを artifact として配布する経路へ差し替えた．
 参照経路を案内するときは，その経路を 1 度実際にたどって実在を確かめる．
 詳細は [docs/notes/2026-09-01-issue148-lint-report-artifact.md](notes/2026-09-01-issue148-lint-report-artifact.md) を参照．
