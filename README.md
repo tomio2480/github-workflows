@@ -159,6 +159,8 @@ github-workflows/
 │   ├── lint-md.sh                 # push 前ローカル Markdown lint（v2.15〜）
 │   ├── release-patch.sh           # 定例 patch リリース（タグ・Release・v2 追従）
 │   ├── release-patch.ps1          # 同上の PowerShell 版
+│   ├── watch-pr-checks.sh         # checks 登録を待ってから CI を監視（v2.16〜）
+│   ├── watch-pr-checks.ps1        # 同上の PowerShell 版
 │   └── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest

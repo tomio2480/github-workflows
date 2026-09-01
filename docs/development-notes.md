@@ -382,6 +382,42 @@ bot レビューは到着間隔が読めないため受容している．
 3. ユーザー承認 → push
 4. 全コメントに返信．scope 外の指摘は follow-up issue を起票してリンクで応答
 
+### CI checks の監視は `bin/watch-pr-checks.{sh,ps1}` に任せる
+
+`gh pr checks <n> --watch` を push 直後に実行しても監視にならない．
+checks が未登録の時点では「no checks reported」を返して即座に終わる．
+さらに `gh` 側の PR head は push へ数十秒遅れる場合がある．
+1 つ前の commit の run を掴んだまま全 pass を返した実例が PR #159 にある．
+いずれも「CI green」の誤認を生む（Issue #133）．
+
+`bin/watch-pr-checks.sh` は監視の前へ 2 つの待機を置く．
+まず監視対象 commit の正を `git ls-remote origin` の実体とし，
+`gh` の `headRefOid` がそこへ追いつくまで待つ．
+次に checks が 1 件以上登録されるまで待つ．
+`--watch` の完了後にも head が動いていないことを確かめる．
+
+```bash
+bash bin/watch-pr-checks.sh 165
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File bin\watch-pr-checks.ps1 -Pr 165
+```
+
+終了コードは 4 種類である．
+
+- `0`: 監視対象 commit で全 checks が pass した
+- `1`: 入力エラー・環境エラー
+- `2`: タイムアウト，または監視対象 commit の不一致
+- `3`: checks が pass しなかった
+
+待っても成立しない状態を成功へ落とさない設計とした．
+タイムアウトは非 0 で終え，直前の `gh` の stderr を添える．
+認証切れが単なるタイムアウトに見える経路を残さないためである．
+
+報告には必ず検査した commit を書く．
+「全 pass」だけでは，どの commit を検査したのか読み取れない．
+
 ## 🏷 リリース運用
 
 ### SemVer 風 patch tag 運用へ移行した
