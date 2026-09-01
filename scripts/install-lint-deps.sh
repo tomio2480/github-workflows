@@ -8,7 +8,6 @@
 #   RUNNER_TEMP   - tmpdir 作成先のベースディレクトリ（必須）
 #   GITHUB_OUTPUT - GitHub Actions output ファイルのパス（必須）
 #   LINT_DEPS_CACHE_DIR - 再利用キャッシュの置き場所（任意．Issue #134）
-#   LINT_DEPS_PUBLISH_WAIT - 別実行の公開を待つ上限秒数（任意．既定 60）
 #
 # LINT_DEPS_CACHE_DIR を空でない値にすると，インストール先を
 # <cache_dir>/<package.json と package-lock.json の内容ハッシュ> へ固定し，
@@ -32,8 +31,6 @@ set -euo pipefail
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
 CACHE_DIR="${LINT_DEPS_CACHE_DIR:-}"
-# 別の実行が公開を終えるのを待つ上限（秒）．テストから短くする．
-PUBLISH_WAIT="${LINT_DEPS_PUBLISH_WAIT:-60}"
 
 # 依存の同一性は manifest と lockfile の内容だけで決まる．sha256 の実装名は
 # 環境で割れる（GNU は sha256sum，macOS は shasum）ため両方を見る．
@@ -80,7 +77,7 @@ fi
 # 失敗時に消すのは自前のものだけである．他の実行が公開したキャッシュには
 # 触れない．CLAIMED_KEY_DIR は自分が mkdir で確保できたときにだけ入るため，
 # 公開の途中で失敗しても空の確保を残さない．残すと以後の実行がすべて
-# mkdir に失敗し，現れない .bin を待ち続ける鍵になる（掃除も届かない）．
+# mkdir に失敗し，二度と公開されない鍵になる（.staging.* を見る掃除も届かない）．
 CLAIMED_KEY_DIR=""
 trap 'rm -rf "${TMP}"; [ -n "${CLAIMED_KEY_DIR}" ] && rm -rf "${CLAIMED_KEY_DIR}"; true' ERR
 cp "${ACTION_PATH}/package.json" "${TMP}/"
@@ -101,21 +98,18 @@ if [ -n "${CACHE_KEY_DIR}" ]; then
     CLAIMED_KEY_DIR=""
     TMP="${CACHE_KEY_DIR}"
   else
-    # 別の実行が先に確保した．その公開の完了を待ってから相乗りする．
-    WAITED=0
-    while [ "${WAITED}" -lt "${PUBLISH_WAIT}" ] &&
-      [ ! -d "${CACHE_KEY_DIR}/node_modules/.bin" ]; do
-      sleep 1
-      WAITED=$((WAITED + 1))
-    done
+    # 別の実行が先に確保していた．この時点で自分の npm ci は済んでいるため，
+    # 相手の完了を待つ理由がない．待って得られるのは staging 1 つ分の
+    # ディスクだけで，代償は最大で待ち時間ぶんの停止である．
+    # 既に公開が済んでいれば相乗りし，そうでなければ自前の導入を使う．
     if [ -d "${CACHE_KEY_DIR}/node_modules/.bin" ]; then
       rm -rf "${TMP}"
       emit_outputs "${CACHE_KEY_DIR}"
       echo "Reusing cache: ${CACHE_KEY_DIR}"
       exit 0
     fi
-    # 待っても現れない．公開は諦め，自分の組み立て先をそのまま使う．
-    # 待ち続けて止まるより，1 度分の導入を無駄にするほうが害が小さい．
+    # まだ公開されていない．公開は諦め，自分の組み立て先をそのまま使う．
+    # 次回の実行は相手の公開を拾うため，無駄になるのは 1 度分だけである．
     echo "could not publish the cache at ${CACHE_KEY_DIR}; using ${TMP}" >&2
   fi
 fi

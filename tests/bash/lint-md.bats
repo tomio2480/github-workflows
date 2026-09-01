@@ -41,6 +41,11 @@ setup() {
   # 指摘を出すファイルは FAKE_FINDING_PATH で指定する（既定は new.md）．
   cat > "${FAKE_LINT_BIN}/markdownlint-cli2" <<'FAKE'
 #!/usr/bin/env bash
+# 実行失敗は banner を出さずに終わる．指摘ありの exit 1 と区別される．
+if [ -n "${FAKE_MDLINT_EXEC_ERROR:-}" ]; then
+  echo "cannot load config" >&2
+  exit 1
+fi
 echo "markdownlint-cli2 v0.0.0-fake"
 printf '%s\n' "$@" > "${FAKE_LOG_DIR}/mdlint-args"
 if [ -n "${FAKE_MDLINT_FINDINGS:-}" ]; then
@@ -109,7 +114,7 @@ FAKE
 
 teardown() {
   unset FAKE_MDLINT_FINDINGS FAKE_TEXTLINT_FINDINGS FAKE_TEXTLINT_EXEC_ERROR \
-    FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV
+    FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV FAKE_MDLINT_EXEC_ERROR
 }
 
 @test "exits 0 without running lint when nothing changed" {
@@ -259,6 +264,16 @@ teardown() {
 
   [ "${status}" -eq 1 ]
   [ -f "${FAKE_LOG_DIR}/textlint-args" ]
+}
+
+@test "exits 2 on a markdownlint execution failure" {
+  echo "# new" > new.md
+  export FAKE_MDLINT_EXEC_ERROR=1
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 2 ]
+  [[ "${output}" == *"execution failure"* ]]
 }
 
 @test "exits 2 on a textlint execution failure" {

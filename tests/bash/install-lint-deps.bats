@@ -69,7 +69,7 @@ cache_key() {
 
 teardown() {
   unset ACTION_PATH RUNNER_TEMP GITHUB_OUTPUT NPM_CI_EXIT LINT_DEPS_CACHE_DIR \
-    NPM_CWD_LOG RIVAL_PUBLISH_DIR LINT_DEPS_PUBLISH_WAIT
+    NPM_CWD_LOG RIVAL_PUBLISH_DIR
 }
 
 @test "exits 0 and writes bin and modules to GITHUB_OUTPUT on success" {
@@ -231,7 +231,6 @@ FAKE
   # 自分の組み立て先が丸ごと入り，mv は成功を返す．重複した依存一式が
   # 消えないまま残る．公開は上書きしない操作で行う必要がある．
   export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
-  export LINT_DEPS_PUBLISH_WAIT=1
   KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
   mkdir -p "${KEY_DIR}"
 
@@ -244,7 +243,6 @@ FAKE
 
 @test "uses its own install when the cache key is claimed by another run" {
   export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
-  export LINT_DEPS_PUBLISH_WAIT=1
   KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
   mkdir -p "${KEY_DIR}"
 
@@ -255,9 +253,8 @@ FAKE
   [ -d "${INSTALLED_DIR}/node_modules/.bin" ]
 }
 
-@test "adopts a cache published by another run while waiting" {
+@test "adopts a cache published by a concurrent run" {
   export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
-  export LINT_DEPS_PUBLISH_WAIT=5
   KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
   mkdir -p "${KEY_DIR}"
   # 競合相手が公開を完了する状況を作る．
@@ -276,7 +273,6 @@ FAKE
   # すべて mkdir に失敗し，現れない .bin を待ってから自前の導入へ落ちる．
   # 掃除は .staging.* しか見ないため，この鍵は自動では復旧しない．
   export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
-  export LINT_DEPS_PUBLISH_WAIT=1
   KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
   # 公開の mv だけを失敗させる．
   cat > "${FAKE_BIN}/mv" <<'FAKE'
@@ -293,7 +289,6 @@ FAKE
 
 @test "still succeeds when the cache key path is a regular file" {
   export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
-  export LINT_DEPS_PUBLISH_WAIT=1
   mkdir -p "${LINT_DEPS_CACHE_DIR}"
   echo "blocked" > "${LINT_DEPS_CACHE_DIR}/$(cache_key)"
 

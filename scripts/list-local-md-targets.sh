@@ -5,14 +5,16 @@
 # 引数:
 #   --all            追跡済みの Markdown をすべて出す
 #   --base <ref>     差分の基点を明示する
-#   --glob <pattern> lint 対象 glob．拡張子だけを選定へ使う
+#   --glob <pattern> lint 対象 glob．渡されたときは拡張子で絞らない
+#   --print-base     解決した基点を stderr へ 1 行出す
 #
 # 仕様:
 #   - カレントが git worktree でなければ非 0 終了する
-#   - 基点の解決順は --base > @{upstream} > origin/main > HEAD である．
+#   - 基点の解決順は --base > @{upstream} > origin/HEAD > origin/main > HEAD．
 #     push 前検査という用途上，既定の基点は「push 先が既に持っている状態」が
-#     最も近い．upstream が未設定のローカルブランチでは origin/main へ落とし，
-#     どちらも無い（clone 直後・単独リポジトリ）ときのみ HEAD を使う．
+#     最も近い．upstream が未設定のローカルブランチでは remote の既定ブランチ
+#     へ落とし，remote が無い（単独リポジトリ）ときのみ HEAD を使う．
+#     HEAD はコミット済みの変更を含まないため，最後の手段である．
 #   - 既定の対象は「基点との差分」＋「untracked」の Markdown である．
 #     コミット済み・staged・unstaged のいずれも 1 度の diff で拾える
 #   - 削除されたファイルは出さない．実在しないパスを lint へ渡さないためである．
@@ -40,11 +42,16 @@ set -euo pipefail
 ALL=0
 BASE=""
 GLOB=""
+PRINT_BASE=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --all)
       ALL=1
+      shift
+      ;;
+    --print-base)
+      PRINT_BASE=1
       shift
       ;;
     --glob)
@@ -80,40 +87,15 @@ cd "${TOPLEVEL}"
 # 出力の並びを環境の locale に左右させない．テストと実行結果を一致させる．
 export LC_ALL=C
 
-# 拡張子は glob の末尾から取る．`{md,markdown}` のような brace 記法は
-# git の pathspec が展開しないため，こちらで展開して複数の pathspec にする．
-# それ以外の解釈しきれない記法では絞り込みをやめ，変更ファイルをすべて出す．
-# 多めに選んでも後段の集計が落とすだけだが，少なく選ぶと指摘を取りこぼす．
+# --glob を渡さないときだけ *.md で絞る．既定の用途はこれで，Markdown を
+# 触っていない push では linter を起動せずに済む．
+# --glob を渡されたときは絞り込まない．glob の解釈（拡張子・brace・文字
+# クラス）を選定側で再実装すると，取りこぼす方向の穴が開き続ける．実際に
+# 拡張子と brace の解釈で 2 度取りこぼした．選定は「linter の報告を絞り込む
+# 集合」を作るだけで指摘の発生源ではないため，多めに選んでも後段が落とす．
 PATHSPECS=('*.md')
-GLOB_TAIL="${GLOB##*/}"
-if [ -n "${GLOB}" ] && [ "${GLOB_TAIL}" = "${GLOB_TAIL#*.}" ]; then
-  # `README` や `**/LICENSE` のように拡張子を持たない指定．md へ落とすと，
-  # 指定したファイルが選ばれないまま lint を起動せず終了する．
+if [ -n "${GLOB}" ]; then
   PATHSPECS=()
-elif [ -n "${GLOB}" ]; then
-  EXT_PART="${GLOB_TAIL##*.}"
-  case "${EXT_PART}" in
-    '{'*'}')
-      INNER="${EXT_PART#\{}"
-      INNER="${INNER%\}}"
-      PATHSPECS=()
-      OLD_IFS="${IFS}"
-      IFS=','
-      for ext in ${INNER}; do
-        case "${ext}" in
-          '' | *[!A-Za-z0-9]*) PATHSPECS=() && break ;;
-          *) PATHSPECS+=("*.${ext}") ;;
-        esac
-      done
-      IFS="${OLD_IFS}"
-      ;;
-    *[!A-Za-z0-9]*)
-      PATHSPECS=()
-      ;;
-    *)
-      PATHSPECS=("*.${EXT_PART}")
-      ;;
-  esac
 fi
 
 # core.quotePath=false で 8 進エスケープを止める．caller の設定を書き換えず，
@@ -133,12 +115,22 @@ if [ -n "${BASE}" ]; then
     exit 1
   fi
 else
-  for candidate in '@{upstream}' 'origin/main' 'HEAD'; do
+  # origin/HEAD は clone 時に設定され，既定ブランチが main でない
+  # リポジトリでも解決する．origin/main だけを見ると，master や develop の
+  # caller で HEAD へ落ちてしまう．git diff HEAD はコミット済みの変更を
+  # 含まないため，コミットしてから実行すると対象 0 件で黙って終わる．
+  for candidate in '@{upstream}' 'origin/HEAD' 'origin/main' 'HEAD'; do
     if git rev-parse --verify --quiet "${candidate}^{commit}" >/dev/null; then
       BASE="${candidate}"
       break
     fi
   done
+fi
+
+# 基点は結果を大きく変える．どれが選ばれたかを見えるようにする．
+# HEAD へ落ちたことに気づけないと，対象 0 件を「変更なし」と読み違える．
+if [ "${PRINT_BASE}" -eq 1 ]; then
+  echo "base = ${BASE:-(none)}" >&2
 fi
 
 {

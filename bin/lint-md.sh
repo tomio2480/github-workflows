@@ -155,7 +155,7 @@ if [ "${#FILES[@]}" -eq 0 ]; then
   # mapfile は process substitution の終了状態を継がない．選定の失敗を
   # 「対象 0 件」と読み替えると，打ち間違いが lint を素通りさせるため，
   # 一度ファイルへ受けて状態を確かめる．
-  bash "${SCRIPTS}/list-local-md-targets.sh" \
+  bash "${SCRIPTS}/list-local-md-targets.sh" --print-base \
     --glob "${MARKDOWN_GLOB}" "${SELECT_ARGS[@]+"${SELECT_ARGS[@]}"}" \
     >"${TARGETS}" || die "failed to list target files"
   # mapfile は bash 4 以降の builtin である．macOS 同梱の /bin/bash は 3.2 で
@@ -167,11 +167,13 @@ if [ "${#FILES[@]}" -eq 0 ]; then
 fi
 
 if [ "${#FILES[@]}" -eq 0 ]; then
-  echo "lint-md: no markdown to check"
+  echo "lint-md: nothing to check"
   exit 0
 fi
 
-echo "lint-md: ${#FILES[@]} file(s) to check"
+# --glob 指定時は Markdown 以外の変更ファイルも入る．報告の絞り込み集合で
+# あって lint 対象そのものではないため「in scope」と呼ぶ．
+echo "lint-md: ${#FILES[@]} file(s) in scope"
 printf '%s\n' "${FILES[@]}" >"${TARGETS}"
 
 read_output() {

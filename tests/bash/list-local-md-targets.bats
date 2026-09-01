@@ -128,6 +128,41 @@ setup() {
   [ "${output}" = "committed.md" ]
 }
 
+@test "resolves the base from origin/HEAD when upstream is unset" {
+  # 既定ブランチが main でない caller で origin/main しか見ないと HEAD へ
+  # 落ちる．git diff HEAD はコミット済みの変更を含まないため，コミットして
+  # から実行すると対象 0 件で黙って終わる．
+  SRC="${BATS_TEST_TMPDIR}/src"
+  git init -q -b master "${SRC}"
+  git -C "${SRC}" config core.autocrlf false
+  echo "# seed" > "${SRC}/seed.md"
+  git -C "${SRC}" add -A
+  git -C "${SRC}" commit -q -m "initial"
+
+  CLONE="${BATS_TEST_TMPDIR}/clone"
+  # checkout 時点から改行変換を止める．後から設定すると，既存ファイルが
+  # CRLF で展開済みとなり差分として現れてしまう．
+  git clone -q -c core.autocrlf=false "${SRC}" "${CLONE}"
+  cd "${CLONE}"
+  git switch -q -c feature
+  echo "# committed" > committed.md
+  git add -A
+  git commit -q -m "add committed.md"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "committed.md" ]
+}
+
+@test "reports the resolved base with --print-base" {
+  run bash "${SCRIPT}" --print-base --base HEAD
+
+  [ "${status}" -eq 0 ]
+  # run は stderr も output へ取り込む．
+  [[ "${output}" == *"base = HEAD"* ]]
+}
+
 @test "exits non-zero when --base names an unknown ref" {
   run bash "${SCRIPT}" --base no-such-ref
 
@@ -188,41 +223,18 @@ setup() {
   [ "${output}" = "new.md" ]
 }
 
-@test "selects every extension of a brace --glob" {
-  # git の pathspec は brace 展開をしない．`*.{md,markdown}` を合成すると
-  # 1 件も一致せず，lint を起動しないまま素通りする．
+@test "selects every changed file when --glob is given" {
+  # glob の解釈（拡張子・brace・文字クラス）を選定側で再実装すると，
+  # 取りこぼす方向の穴が開き続ける．--glob を渡されたら絞り込まない．
   echo "# a" > a.md
   echo "# b" > b.markdown
+  echo "readme" > README
 
   run bash "${SCRIPT}" --glob "**/*.{md,markdown}"
 
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"a.md"* ]]
   [[ "${output}" == *"b.markdown"* ]]
-}
-
-@test "selects every changed file when --glob is not a simple extension" {
-  # 解釈しきれない glob では絞り込まない．多めに選んでも後段の集計が
-  # 落とすだけだが，少なく選ぶと指摘を取りこぼす．
-  echo "# a" > a.md
-  echo "# b" > b.markdown
-
-  run bash "${SCRIPT}" --glob "**/*.m[dk]"
-
-  [ "${status}" -eq 0 ]
-  [[ "${output}" == *"a.md"* ]]
-  [[ "${output}" == *"b.markdown"* ]]
-}
-
-@test "selects every changed file when --glob has no extension" {
-  # `README` や `**/LICENSE` は妥当な指定である．md へ落とすと，指定した
-  # ファイルが選ばれないまま lint を起動せず終了する．
-  echo "# new" > new.md
-  echo "readme" > README
-
-  run bash "${SCRIPT}" --glob "**/README"
-
-  [ "${status}" -eq 0 ]
   [[ "${output}" == *"README"* ]]
 }
 
