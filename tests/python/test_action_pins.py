@@ -41,6 +41,11 @@ _USES_PIN = re.compile(
     r"\s*(?:#\s*(?P<version>.*?))?\s*$"
 )
 
+# `docs/` は対象外とする（Issue #160）．`docs/development-notes.md` は
+# Dependabot の挙動を示す証拠として PR #143 の差分を引いており，古い側の
+# SHA と版が残っていることに意味がある．検査へ入れると直しようのない指摘に
+# なる．オンボーディング手順（`docs/onboarding-new-repo.md`）も SHA を
+# `git/refs/tags` から変数へ解決する形で，固定 SHA を書き下していない．
 _SEARCH_GLOBS = (
     ".github/workflows/*.yml",
     ".github/actions/*/action.yml",
