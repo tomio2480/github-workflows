@@ -17,7 +17,7 @@ lint summary が案内していた「内訳は Actions ログから確認して�
 
 Issue #148 は caller から届いた報告である．summary はリポジトリ全体の件数を出すが，その内訳を取得する手段が無いという内容だった．報告者は `gh run view --log` を実際に取得していた．rule ID を含む行・ファイル名を含む行がいずれも 0 件であることを確認したうえでの起票である．
 
-回避策としてローカル再現も試みられていた．しかし中央設定と固定版ツールの組み立てが，棚卸しのたびに必要になる．さらに再現の忠実性も保証されない．実際に `markdownlint` の総数は summary と一致した一方，textlint は一致しなかったという報告があった．
+回避策としてローカル再現も試みられていた．しかし棚卸しのたび，中央設定と固定版ツールの組み立て直しが要る．さらに再現の忠実性も保証されない．実際に `markdownlint` の総数は summary と一致した一方，textlint は一致しなかったという報告があった．
 
 ## 🔍 知見 1: 案内した参照経路の実在を確認する
 
@@ -31,7 +31,7 @@ Issue #148 は caller から届いた報告である．summary はリポジト�
 
 Codex のレビューが 1 件の P2 を指摘した．内容は次のとおりである．
 
-`fail-on-error: "true"` を渡した caller を考える．`markdownlint` 側の reviewdog は `-fail-on-error` により非ゼロ終了する．composite action の step は前段の失敗で skip されるため，後続の `Run textlint with reviewdog` は走らない．ところが今回追加した upload step は `always()` を持つ．結果として `markdownlint` のレポートだけを含む artifact が，両方入りとして案内される．
+`fail-on-error: "true"` を渡した caller を考える．`markdownlint` 側の reviewdog は `-fail-on-error` により非ゼロ終了する．composite action の step は前段の失敗で skip される．後続の `Run textlint with reviewdog` は走らない．ところが今回追加した upload step は `always()` を持つ．結果として `markdownlint` のレポートだけを含む artifact が，両方入りとして案内される．
 
 指摘は正しかった．`Run textlint with reviewdog` に `if:` は無い．検証は step の条件を 1 つずつ読んで行った．
 
@@ -44,7 +44,7 @@ Codex のレビューが 1 件の P2 を指摘した．内容は次のとおり�
 
 ## 📣 知見 3: caller からの報告は中央の盲点を突く
 
-本リポジトリは Issue #109 で自身の lint 債務を段階的に解消した．そのときも内訳は必要だった．しかし中央リポジトリでは手元にレポートがあるため，不便を感じずに済んでいた．同じことを caller 側でやろうとして初めて，経路が無いことが露見した．
+本リポジトリは Issue #109 で自身の lint 債務を段階的に解消した．そのときも内訳は必要だった．しかし中央リポジトリなら手元にレポートがあるため，不便を感じずに済んでいた．同じことを caller 側でやろうとして初めて，経路が無いことが露見した．
 
 **中央リポジトリの dogfooding は，caller の体験を完全には代替しない．** 中央には配布物の中身が手元にあるという非対称がある．caller だけが踏む経路は，報告を待つか，caller の立場で 1 度なぞるかでしか見つからない．
 
