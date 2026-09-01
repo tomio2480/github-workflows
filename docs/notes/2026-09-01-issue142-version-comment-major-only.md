@@ -25,8 +25,8 @@ Issue #142 で 3 案を比較し，案 A（版コメントを major のみにす
 第一に，ドリフトは運用の不徹底ではなく要求の設計に由来していた．
 検知を機械化する案（Issue #131）でも解消 PR は依然として要り，
 往復の回数は減らない．
-第二に，`templates/.github/workflows/md-lint.yml` のヘッダー説明が
-既定を「`@<SHA> # v2` 形式」と書いており，本文だけが食い違っていた．
+第二に，`templates/.github/workflows/md-lint.yml` のヘッダー説明である．
+そこは既定を「`@<SHA> # v2` 形式」と書いており，本文だけが食い違っていた．
 `docs/architecture.md` や `docs/setup-guide.md` も同じく `# v2` で説明していた．
 patch 番号を書いていたのは実ファイル 3 件のみで，むしろそちらが外れ値だった．
 
@@ -45,7 +45,12 @@ caller が `# v2` を持つ状態で Dependabot が SHA を更新したとき，
 
 ## 影響
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 表 1. 本変更で更新した箇所
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 対象 | 変更内容 |
 |---|---|
