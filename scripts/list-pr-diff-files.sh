@@ -32,8 +32,8 @@ trap 'rm -f "${GET_RESP}" "${GET_HEADERS}"' EXIT
 
 URL="https://api.github.com/repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100"
 while [ -n "${URL}" ]; do
-  : > "${GET_RESP}"
-  : > "${GET_HEADERS}"
+  : >"${GET_RESP}"
+  : >"${GET_HEADERS}"
   GET_STATUS="$(
     curl -sS --retry 2 --retry-all-errors --max-time 10 \
       -o "${GET_RESP}" -D "${GET_HEADERS}" -w '%{http_code}' \
@@ -68,9 +68,9 @@ PY
   # `set -o pipefail` 下では次ページが無い（grep 不一致）とき pipeline の
   # 終了コードが非 0 になり，ループ最後の代入がそのままスクリプト自身の
   # 終了コードを汚染する．`|| true` で意図的に握りつぶす．
-  URL="$( (grep -i '^link:' "${GET_HEADERS}" \
-    | sed -nE 's/.*<([^>]*)>;[[:space:]]*rel=["'"'"']next["'"'"'].*/\1/p' \
-    | head -n1) || true )"
+  URL="$( (grep -i '^link:' "${GET_HEADERS}" |
+    sed -nE 's/.*<([^>]*)>;[[:space:]]*rel=["'"'"']next["'"'"'].*/\1/p' |
+    head -n1) || true)"
 done
 
 exit 0

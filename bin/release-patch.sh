@@ -141,7 +141,7 @@ if [ -n "${EXISTING_TAG_SHA}" ]; then
   fi
 fi
 
-if ! git cat-file -e "${SHA}^{commit}" 2> /dev/null; then
+if ! git cat-file -e "${SHA}^{commit}" 2>/dev/null; then
   echo "error: commit not found in local repository: ${SHA}" >&2
   exit 1
 fi
@@ -165,7 +165,7 @@ fi
 run_cmd git push origin "${VERSION}"
 
 # 再実行時に作成済み Release で失敗しないよう存在確認する（読み取り専用）
-if gh release view "${VERSION}" > /dev/null 2>&1; then
+if gh release view "${VERSION}" >/dev/null 2>&1; then
   echo "note: release ${VERSION} already exists; skipping create"
 elif [ -n "${NOTES_FILE}" ]; then
   run_cmd gh release create "${VERSION}" --title "${VERSION}" --notes-file "${NOTES_FILE}"
@@ -182,7 +182,7 @@ REMOTE_MAJOR_SHA="$(git ls-remote origin "refs/tags/${MAJOR}" | cut -f1)"
 if [ -n "${REMOTE_MAJOR_SHA}" ]; then
   # dry-run では fetch しない（FETCH_HEAD・object db への書き込みを避ける）．
   # commit がローカルに無く検査できない場合は，本実行時に検査される旨を示す
-  if [ "${DRY_RUN}" -eq 1 ] && ! git cat-file -e "${REMOTE_MAJOR_SHA}^{commit}" 2> /dev/null; then
+  if [ "${DRY_RUN}" -eq 1 ] && ! git cat-file -e "${REMOTE_MAJOR_SHA}^{commit}" 2>/dev/null; then
     echo "[dry-run] (monotonicity check for ${MAJOR} deferred to a real run)"
   else
     if [ "${DRY_RUN}" -eq 0 ]; then

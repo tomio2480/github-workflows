@@ -26,6 +26,6 @@ trap 'rm -rf "${TMP}"' ERR
 cp "${ACTION_PATH}/package.json" "${TMP}/"
 cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
 (cd "${TMP}" && npm ci)
-echo "bin=${TMP}/node_modules/.bin" >> "${GITHUB_OUTPUT}"
-echo "modules=${TMP}/node_modules" >> "${GITHUB_OUTPUT}"
+echo "bin=${TMP}/node_modules/.bin" >>"${GITHUB_OUTPUT}"
+echo "modules=${TMP}/node_modules" >>"${GITHUB_OUTPUT}"
 echo "Installed under: ${TMP}"

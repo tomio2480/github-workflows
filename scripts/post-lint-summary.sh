@@ -230,8 +230,8 @@ PY
 COMMENT_ID=""
 URL="https://api.github.com/repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100"
 while [ -n "${URL}" ]; do
-  : > "${GET_RESP}"
-  : > "${GET_HEADERS}"
+  : >"${GET_RESP}"
+  : >"${GET_HEADERS}"
   GET_STATUS="$(
     curl -sS --retry 2 --retry-all-errors --max-time 10 \
       -o "${GET_RESP}" -D "${GET_HEADERS}" -w '%{http_code}' \
@@ -270,9 +270,9 @@ PY
   # （単一・二重）と前後空白の揺れを許容するため，[[:space:]]* と
   # [\"'] を使う．GitHub API は通常二重引用符・空白 1 個で返すが，
   # プロキシや将来の仕様変更による揺れに備える．
-  URL="$(grep -i '^link:' "${GET_HEADERS}" \
-    | sed -nE 's/.*<([^>]*)>;[[:space:]]*rel=["'"'"']next["'"'"'].*/\1/p' \
-    | head -n1)"
+  URL="$(grep -i '^link:' "${GET_HEADERS}" |
+    sed -nE 's/.*<([^>]*)>;[[:space:]]*rel=["'"'"']next["'"'"'].*/\1/p' |
+    head -n1)"
 done
 
 if [ -n "${COMMENT_ID}" ]; then

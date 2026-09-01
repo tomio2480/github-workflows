@@ -1,0 +1,6 @@
+# シェル資産は OS を問わず LF で checkout する．
+# Windows の core.autocrlf=true 環境では worktree が CRLF になり，
+# ShellCheck が SC1017（Literal carriage return）を全行へ出して
+# bin/verify-shell.py のローカル実行が成立しないため．
+*.sh text eol=lf
+*.ps1 text eol=lf
