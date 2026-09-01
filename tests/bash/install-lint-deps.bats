@@ -36,6 +36,10 @@ case "$1" in
   ci)
     pwd > "${NPM_CWD_LOG}"
     mkdir -p "./node_modules/.bin"
+    # 競合相手が先に公開を終える状況を作るためのフック．
+    if [ -n "${RIVAL_PUBLISH_DIR:-}" ]; then
+      mkdir -p "${RIVAL_PUBLISH_DIR}/node_modules/.bin"
+    fi
     exit "${NPM_CI_EXIT:-0}"
     ;;
   *)
@@ -57,9 +61,15 @@ FAKE
   export RUNNER_TEMP="${BATS_TEST_TMPDIR}"
 }
 
+# スクリプトと同じ規則で鍵を組み立てる．テストから公開先を先回りして作る．
+cache_key() {
+  cat "${ACTION_STUB}/package.json" "${ACTION_STUB}/package-lock.json" |
+    sha256sum | cut -d' ' -f1
+}
+
 teardown() {
   unset ACTION_PATH RUNNER_TEMP GITHUB_OUTPUT NPM_CI_EXIT LINT_DEPS_CACHE_DIR \
-    NPM_CWD_LOG
+    NPM_CWD_LOG RIVAL_PUBLISH_DIR LINT_DEPS_PUBLISH_WAIT
 }
 
 @test "exits 0 and writes bin and modules to GITHUB_OUTPUT on success" {
@@ -216,17 +226,63 @@ FAKE
   [ -z "${output}" ]
 }
 
-@test "exits non-zero when the cache key path is not usable" {
+@test "never nests the staging tree under an already claimed cache key" {
+  # 存在検査のあとで rename すると，先に公開した側のディレクトリ配下へ
+  # 自分の組み立て先が丸ごと入り，mv は成功を返す．重複した依存一式が
+  # 消えないまま残る．公開は上書きしない操作で行う必要がある．
   export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
-  mkdir -p "${LINT_DEPS_CACHE_DIR}"
-  # 鍵の位置を通常ファイルで塞ぐ．黙って成功を返さないことを確かめる．
-  KEY="$(cat "${ACTION_STUB}/package.json" "${ACTION_STUB}/package-lock.json" |
-    sha256sum | cut -d' ' -f1)"
-  echo "blocked" > "${LINT_DEPS_CACHE_DIR}/${KEY}"
+  export LINT_DEPS_PUBLISH_WAIT=1
+  KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
+  mkdir -p "${KEY_DIR}"
 
   run bash "${SCRIPT}"
 
-  [ "${status}" -ne 0 ]
+  [ "${status}" -eq 0 ]
+  run find "${KEY_DIR}" -name ".staging.*"
+  [ -z "${output}" ]
+}
+
+@test "uses its own install when the cache key is claimed by another run" {
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+  export LINT_DEPS_PUBLISH_WAIT=1
+  KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
+  mkdir -p "${KEY_DIR}"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  INSTALLED_DIR="${output##*Installed under: }"
+  [ -d "${INSTALLED_DIR}/node_modules/.bin" ]
+}
+
+@test "adopts a cache published by another run while waiting" {
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+  export LINT_DEPS_PUBLISH_WAIT=5
+  KEY_DIR="${LINT_DEPS_CACHE_DIR}/$(cache_key)"
+  mkdir -p "${KEY_DIR}"
+  # 競合相手が公開を完了する状況を作る．
+  export RIVAL_PUBLISH_DIR="${KEY_DIR}"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q "^bin=${KEY_DIR}/node_modules/.bin$" "${GITHUB_OUTPUT}"
+  run find "${LINT_DEPS_CACHE_DIR}" -maxdepth 1 -name ".staging.*"
+  [ -z "${output}" ]
+}
+
+@test "still succeeds when the cache key path is a regular file" {
+  export LINT_DEPS_CACHE_DIR="${BATS_TEST_TMPDIR}/cache"
+  export LINT_DEPS_PUBLISH_WAIT=1
+  mkdir -p "${LINT_DEPS_CACHE_DIR}"
+  echo "blocked" > "${LINT_DEPS_CACHE_DIR}/$(cache_key)"
+
+  run bash "${SCRIPT}"
+
+  # 公開できなくても導入自体は完了している．壊れた成果は返さない．
+  [ "${status}" -eq 0 ]
+  INSTALLED_DIR="${output##*Installed under: }"
+  [ -d "${INSTALLED_DIR}/node_modules/.bin" ]
 }
 
 @test "falls back to RUNNER_TEMP when LINT_DEPS_CACHE_DIR is empty" {

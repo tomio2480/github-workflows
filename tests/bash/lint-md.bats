@@ -109,7 +109,7 @@ FAKE
 
 teardown() {
   unset FAKE_MDLINT_FINDINGS FAKE_TEXTLINT_FINDINGS FAKE_TEXTLINT_EXEC_ERROR \
-    FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE
+    FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV
 }
 
 @test "exits 0 without running lint when nothing changed" {
@@ -267,6 +267,21 @@ teardown() {
   run bash "${SCRIPT}" explicit.md
 
   [ "${status}" -eq 0 ]
+}
+
+@test "works without the mapfile builtin (bash 3.2 on macOS)" {
+  # macOS 同梱の /bin/bash は 3.2 で mapfile を持たない．set -e を使わない
+  # 設計のため command-not-found が握り潰され，対象 0 件として lint を
+  # 素通りしていた．BASH_ENV で builtin を無効化して同じ条件を作る．
+  echo "# new" > new.md
+  echo "enable -n mapfile" > "${BATS_TEST_TMPDIR}/no-mapfile.bash"
+  export BASH_ENV="${BATS_TEST_TMPDIR}/no-mapfile.bash"
+  export FAKE_MDLINT_FINDINGS=1
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"fake mdlint finding"* ]]
 }
 
 @test "exits 2 when the target selector fails" {

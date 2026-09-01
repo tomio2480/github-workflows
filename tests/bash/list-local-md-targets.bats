@@ -171,6 +171,32 @@ setup() {
   [ "${output}" = "new.md" ]
 }
 
+@test "selects every extension of a brace --glob" {
+  # git の pathspec は brace 展開をしない．`*.{md,markdown}` を合成すると
+  # 1 件も一致せず，lint を起動しないまま素通りする．
+  echo "# a" > a.md
+  echo "# b" > b.markdown
+
+  run bash "${SCRIPT}" --glob "**/*.{md,markdown}"
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"a.md"* ]]
+  [[ "${output}" == *"b.markdown"* ]]
+}
+
+@test "selects every changed file when --glob is not a simple extension" {
+  # 解釈しきれない glob では絞り込まない．多めに選んでも後段の集計が
+  # 落とすだけだが，少なく選ぶと指摘を取りこぼす．
+  echo "# a" > a.md
+  echo "# b" > b.markdown
+
+  run bash "${SCRIPT}" --glob "**/*.m[dk]"
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"a.md"* ]]
+  [[ "${output}" == *"b.markdown"* ]]
+}
+
 @test "falls back to markdown when --glob has no extension" {
   echo "# new" > new.md
 

@@ -158,7 +158,12 @@ if [ "${#FILES[@]}" -eq 0 ]; then
   bash "${SCRIPTS}/list-local-md-targets.sh" \
     --glob "${MARKDOWN_GLOB}" "${SELECT_ARGS[@]+"${SELECT_ARGS[@]}"}" \
     >"${TARGETS}" || die "failed to list target files"
-  mapfile -t FILES <"${TARGETS}"
+  # mapfile は bash 4 以降の builtin である．macOS 同梱の /bin/bash は 3.2 で
+  # 持たず，set -e を使わない本スクリプトでは command-not-found が握り潰されて
+  # 対象 0 件となり，lint を静かに素通りさせる．read ループなら 3.2 でも動く．
+  while IFS= read -r selected; do
+    [ -n "${selected}" ] && FILES+=("${selected}")
+  done <"${TARGETS}"
 fi
 
 if [ "${#FILES[@]}" -eq 0 ]; then

@@ -8,6 +8,7 @@
 #   RUNNER_TEMP   - tmpdir 作成先のベースディレクトリ（必須）
 #   GITHUB_OUTPUT - GitHub Actions output ファイルのパス（必須）
 #   LINT_DEPS_CACHE_DIR - 再利用キャッシュの置き場所（任意．Issue #134）
+#   LINT_DEPS_PUBLISH_WAIT - 別実行の公開を待つ上限秒数（任意．既定 60）
 #
 # LINT_DEPS_CACHE_DIR を空でない値にすると，インストール先を
 # <cache_dir>/<package.json と package-lock.json の内容ハッシュ> へ固定し，
@@ -31,6 +32,8 @@ set -euo pipefail
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
 CACHE_DIR="${LINT_DEPS_CACHE_DIR:-}"
+# 別の実行が公開を終えるのを待つ上限（秒）．テストから短くする．
+PUBLISH_WAIT="${LINT_DEPS_PUBLISH_WAIT:-60}"
 
 # 依存の同一性は manifest と lockfile の内容だけで決まる．sha256 の実装名は
 # 環境で割れる（GNU は sha256sum，macOS は shasum）ため両方を見る．
@@ -64,6 +67,11 @@ if [ -n "${CACHE_DIR}" ]; then
   # こちらが失敗すると後始末が相手の使用中ディレクトリを消してしまう．
   # 組み立ては専用ディレクトリで行い，完成後に鍵の位置へ移す．
   mkdir -p "${CACHE_DIR}"
+  # 競合に負けた実行が置いていった組み立て先を掃除する．公開を伴わないため
+  # そのままでは溜まり続ける．実行中のものを消さないよう十分に古いものだけを
+  # 対象とする（npm ci が 12 時間かかることはない）．
+  find "${CACHE_DIR}" -maxdepth 1 -name '.staging.*' -type d -mmin +720 \
+    -exec rm -rf {} + 2>/dev/null || true
   TMP="$(mktemp -d "${CACHE_DIR}/.staging.XXXXXX")"
 else
   TMP="$(mktemp -d "${RUNNER_TEMP}/XXXXXX")"
@@ -76,16 +84,34 @@ cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
 (cd "${TMP}" && npm ci)
 
 if [ -n "${CACHE_KEY_DIR}" ]; then
-  # 公開は 1 度の rename で行う．競合に負けた場合は相手の成果を使い，
-  # 自分の組み立て先を捨てる．どちらの経路でも未完成の状態は見えない．
-  if [ -e "${CACHE_KEY_DIR}" ] || ! mv "${TMP}" "${CACHE_KEY_DIR}" 2>/dev/null; then
+  # 公開先の確保は mkdir で行う．存在検査のあとで mv する形は競合に弱い．
+  # mv は宛先が既存ディレクトリのとき「その配下へ移す」意味になり，成功を
+  # 返したまま依存一式を重複して残す．mkdir は不可分で，既にあれば失敗する．
+  if mkdir "${CACHE_KEY_DIR}" 2>/dev/null; then
+    # node_modules を最後に移す．読み手は node_modules/.bin の有無で完成を
+    # 判定するため，中身が揃う前にキャッシュ命中と見なされることはない．
+    mv "${TMP}/package.json" "${TMP}/package-lock.json" "${CACHE_KEY_DIR}/"
+    mv "${TMP}/node_modules" "${CACHE_KEY_DIR}/node_modules"
     rm -rf "${TMP}"
+    TMP="${CACHE_KEY_DIR}"
+  else
+    # 別の実行が先に確保した．その公開の完了を待ってから相乗りする．
+    WAITED=0
+    while [ "${WAITED}" -lt "${PUBLISH_WAIT}" ] &&
+      [ ! -d "${CACHE_KEY_DIR}/node_modules/.bin" ]; do
+      sleep 1
+      WAITED=$((WAITED + 1))
+    done
+    if [ -d "${CACHE_KEY_DIR}/node_modules/.bin" ]; then
+      rm -rf "${TMP}"
+      emit_outputs "${CACHE_KEY_DIR}"
+      echo "Reusing cache: ${CACHE_KEY_DIR}"
+      exit 0
+    fi
+    # 待っても現れない．公開は諦め，自分の組み立て先をそのまま使う．
+    # 待ち続けて止まるより，1 度分の導入を無駄にするほうが害が小さい．
+    echo "could not publish the cache at ${CACHE_KEY_DIR}; using ${TMP}" >&2
   fi
-  if [ ! -d "${CACHE_KEY_DIR}/node_modules/.bin" ]; then
-    echo "cache key path is not usable: ${CACHE_KEY_DIR}" >&2
-    exit 1
-  fi
-  TMP="${CACHE_KEY_DIR}"
 fi
 
 emit_outputs "${TMP}"

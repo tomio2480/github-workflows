@@ -22,6 +22,9 @@
 #     突合できず，指摘が黙って消える
 #   - 選定する拡張子は既定で md とし，--glob に拡張子があればそれを使う．
 #     lint 対象 glob を変えた caller で，対象が 1 件も選ばれない事態を防ぐ．
+#     `{md,markdown}` の brace 記法は展開する．git の pathspec は展開しない
+#     ため，合成した `*.{md,markdown}` では 1 件も一致しない．
+#     解釈しきれない記法では絞り込みをやめ，変更ファイルをすべて出す．
 #     ディレクトリ部は選定へ使わない．絞り込みは後段の集計が行うため，
 #     多めに選んでも害はなく，少なく選ぶと指摘を取りこぼすからである
 #
@@ -73,12 +76,36 @@ cd "${TOPLEVEL}"
 # 出力の並びを環境の locale に左右させない．テストと実行結果を一致させる．
 export LC_ALL=C
 
-# 拡張子は glob の末尾から取る．`docs` のように最後のセグメントへ `.` が
-# 無いときは既定の md を使う．
-PATHSPEC='*.md'
+# 拡張子は glob の末尾から取る．`{md,markdown}` のような brace 記法は
+# git の pathspec が展開しないため，こちらで展開して複数の pathspec にする．
+# それ以外の解釈しきれない記法では絞り込みをやめ，変更ファイルをすべて出す．
+# 多めに選んでも後段の集計が落とすだけだが，少なく選ぶと指摘を取りこぼす．
+PATHSPECS=('*.md')
 GLOB_TAIL="${GLOB##*/}"
 if [ -n "${GLOB}" ] && [ "${GLOB_TAIL}" != "${GLOB_TAIL#*.}" ]; then
-  PATHSPEC="*.${GLOB_TAIL##*.}"
+  EXT_PART="${GLOB_TAIL##*.}"
+  case "${EXT_PART}" in
+    '{'*'}')
+      INNER="${EXT_PART#\{}"
+      INNER="${INNER%\}}"
+      PATHSPECS=()
+      OLD_IFS="${IFS}"
+      IFS=','
+      for ext in ${INNER}; do
+        case "${ext}" in
+          '' | *[!A-Za-z0-9]*) PATHSPECS=() && break ;;
+          *) PATHSPECS+=("*.${ext}") ;;
+        esac
+      done
+      IFS="${OLD_IFS}"
+      ;;
+    *[!A-Za-z0-9]*)
+      PATHSPECS=()
+      ;;
+    *)
+      PATHSPECS=("*.${EXT_PART}")
+      ;;
+  esac
 fi
 
 # core.quotePath=false で 8 進エスケープを止める．caller の設定を書き換えず，
@@ -88,7 +115,7 @@ git_raw() {
 }
 
 if [ "${ALL}" -eq 1 ]; then
-  git_raw ls-files -- "${PATHSPEC}" | sort -u
+  git_raw ls-files -- ${PATHSPECS[@]+"${PATHSPECS[@]}"} | sort -u
   exit 0
 fi
 
@@ -112,7 +139,7 @@ fi
   if [ -n "${BASE}" ]; then
     # ACMR は追加・コピー・変更・改名のみを拾う．削除（D）を除くことで
     # 実在しないパスが lint へ渡らない．
-    git_raw diff --name-only --diff-filter=ACMR "${BASE}" -- "${PATHSPEC}"
+    git_raw diff --name-only --diff-filter=ACMR "${BASE}" -- ${PATHSPECS[@]+"${PATHSPECS[@]}"}
   fi
-  git_raw ls-files --others --exclude-standard -- "${PATHSPEC}"
+  git_raw ls-files --others --exclude-standard -- ${PATHSPECS[@]+"${PATHSPECS[@]}"}
 } | sort -u
