@@ -129,8 +129,14 @@ github-workflows/
 │   ├── generate-mdlint-runtime.py # outputFormatters を除去した runtime config 生成
 │   ├── generate-textlint-runtime.py
 │   ├── install-lint-deps.sh       # lint 依存を lockfile から tmpdir へ npm ci
+│   ├── list-pr-diff-files.sh      # summary 絞り込み用に PR 差分ファイルを取得（fail-open）
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   └── resolve-config-path.sh
+├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
+│   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部（verify-shell.py から呼ぶ）
+│   ├── release-patch.sh           # 定例 patch リリース（タグ・Release・v2 追従）
+│   ├── release-patch.ps1          # 同上の PowerShell 版
+│   └── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
 │   ├── bash/                      # bats-core
@@ -160,10 +166,12 @@ github-workflows/
 │   ├── security.md
 │   ├── fork-usage.md
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
-│   ├── shell-quality.md            # Shell quality workflow の caller contract
+│   ├── shell-quality.md           # Shell quality workflow の caller contract
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
+├── .gitattributes                 # シェル資産を LF で checkout する
 ├── README.md
-├── CLAUDE.md                   # AI エージェント向けの作業指針
+├── AGENTS.md                      # Codex 向けの作業指針
+├── CLAUDE.md                      # Claude 向けの作業指針
 └── LICENSE
 ```
 

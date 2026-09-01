@@ -40,11 +40,15 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 - `.github/actions/markdown-lint/action.yml`（composite action 本体）
 - `.github/workflows/test-self-lint.yml`（単体／統合テスト CI）
 - `.github/dependabot.yml`
-- `scripts/` 配下のスクリプト 2 本（`generate-textlint-runtime.py` / `resolve-config-path.sh`）
-- `tests/` 配下（`python/` / `bash/` / `fixtures/markdown/`）
-- `templates/` 配下の 5 ファイル
-- `docs/` 配下の 7 ファイル
-- `README.md` / `LICENSE` / `CLAUDE.md` / `.gitignore`
+- `scripts/` 配下のスクリプト一式（composite action が呼ぶ抽出ロジック）
+- `bin/` 配下のスクリプト一式（中央リポジトリ自身の運用・検査用）
+- `tests/` 配下（`python/` / `bash/` / `fixtures/`）
+- `templates/` 配下の設定・caller テンプレート一式
+- `docs/` 配下の運用ガイド一式
+- `README.md` / `LICENSE` / `AGENTS.md` / `CLAUDE.md` / `.gitignore` / `.gitattributes`
+
+ファイル数は変更のたびに動くため書かない．最新の一覧は
+[README.md](../README.md) のディレクトリ構成を参照する．
 
 ## 3️⃣ セキュリティ関連の GitHub 設定
 
@@ -58,19 +62,26 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 
 ## 4️⃣ ローカルテスト（pytest / bats）
 
-`scripts/` 配下のロジックを変更したら，まずローカルで単体テストを通す．
+`scripts/`・`bin/` 配下のロジックを変更したら，まずローカルで単体テストを通す．
 
 ```bash
-# Python: pytest 5 ケース
+# Python: pytest
 python -m pip install -r tests/python/requirements.txt
 python -m pytest tests/python -v
 
-# Bash: bats 3 ケース．bats は npm 経由が手軽
+# Bash: bats は npm 経由が手軽
 npm install --no-save bats
 npx bats tests/bash
 ```
 
-GitHub Actions 上でも `.github/workflows/test-self-lint.yml` が同じ検証を走らせる．`unit-python` / `unit-bash` job が単体テストを，`integration-action` job が統合テストを担う．ローカルが緑でも CI が真の判定．
+シェル資産を変更したときは repo-local gate も実行する．
+ShellCheck・shfmt・PSScriptAnalyzer が要る（[docs/shell-quality.md](shell-quality.md)）．
+
+```bash
+python bin/verify-shell.py --require-all
+```
+
+GitHub Actions 上でも `.github/workflows/test-self-lint.yml` が同じ検証を走らせる．`unit-python` / `unit-bash` job が単体テストを，`integration-action` job が統合テストを担う．シェル資産の静的解析は `shell-quality-self` job が担う．ローカルが緑でも CI が真の判定．
 
 ## 5️⃣ v2 タグを打つ（任意）
 

@@ -22,7 +22,8 @@
 - caller から受け取る path と値は quoting し，command string として評価しない．
 - `pull_request_target` と `secrets: inherit` は使わない．
 - reusable workflow の変更は local caller による self-test job を追加・更新する．
-- `scripts/` のロジック変更は `tests/` で test-first に進める．
+- `scripts/`・`bin/` のロジック変更は `tests/` で test-first に進める．
+- シェル資産の変更は `python bin/verify-shell.py --require-all` を通す．
 - Markdown の書式は既存の Markdown lint・textlint CI を正とする．
 
 ## 🔀 GitHub 運用
