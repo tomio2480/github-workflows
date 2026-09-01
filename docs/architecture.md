@@ -246,6 +246,7 @@ reviewdog の `github-pr-review` reporter は findings ゼロのとき何も投�
 | fork PR | `pull-requests: write` が降格されるため事前に skip．reviewdog inline コメントの制約と整合 |
 | opt-out | composite action の `post-summary` input に `"false"` を渡せば投稿 step ごと skip．同一 PR で複数 job が同 marker を奪い合うケースの逃げ道．reviewdog の inline コメント投稿には影響しない |
 | 件数フィルタ | composite action の `markdown-ignore` input に path glob を改行区切りで渡すと summary 件数から除外できる．`tests/fixtures/**` のような prefix 形式で相対・絶対両方のパスを除外する．reviewdog の inline コメントは `filter-mode` で別途制御されるため本 input の影響を受けない |
+| レポート artifact | `upload-reports`（既定 `true`）が有効なら，生レポート（`markdownlint-report.txt`・`textlint-report.xml`・`textlint-stderr.log`）を run の artifact `lint-reports-<job id>` として添付する．リポジトリ全体の内訳を得る唯一の経路である（[Issue #148](https://github.com/tomio2480/github-workflows/issues/148)）．artifact 名は `report-artifact-name` で上書きできる |
 | 集計スコープ | summary の findings 一覧は PR 差分ファイルのみを対象にする（[Issue #59](https://github.com/tomio2480/github-workflows/issues/59)）．取得失敗時はリポジトリ全体スコープにフォールバックする．件数表には差分の件数と全体の件数を併記し，差分に現れない既存指摘の存在を可視化する（Issue #104） |
 
 集計と投稿は責務分離して 2 つのスクリプトで実装される．[scripts/count-lint-findings.py](../scripts/count-lint-findings.py) は件数と findings 一覧を集計し，JSON を stdout に出す．入力は textlint の checkstyle XML（`textlint-report.xml`）である．加えて `markdownlint-cli2` のテキストレポート（`markdownlint-report.txt`）も読む．[scripts/post-lint-summary.sh](../scripts/post-lint-summary.sh) はその JSON を本文化して PR コメントを upsert する．`markdownlint` の実行は composite action 内の `markdownlint-cli2` 1 回である．結果テキストは reviewdog への入力（errorformat 経由の inline 投稿）と summary 集計で共用する．v2.11.0 で一本化した（[Issue #117](https://github.com/tomio2480/github-workflows/issues/117)）．
@@ -261,6 +262,14 @@ reviewdog の `filter-mode: added`（既定）は PR 差分行に該当しない
 - Actions の workflow run へのリンク．`GITHUB_SERVER_URL` と `GITHUB_REPOSITORY` で URL の前半を組み立てる．`GITHUB_RUN_ID` と `GITHUB_RUN_ATTEMPT` で run 部分を続ける
 
 これにより，filter-mode='added' で除外された指摘も PR コメントから直接辿れる．
+
+ただし `<details>` に出るのは差分スコープの findings 上位 20 件までである．リポジトリ全体の内訳は summary からは辿れなかった．個別の指摘は reviewdog へ渡るだけで，Actions のログには rule ID とファイル名のどちらも残らないためである．案内文が「内訳は Actions ログから確認してください」と書いていたのは誤りであった（[Issue #148](https://github.com/tomio2480/github-workflows/issues/148)）．
+
+対策として `Upload lint reports` step を追加した．生レポートをそのまま run の artifact として添付する．summary の肥大を避けたまま，必要な caller だけが内訳を取得できる．caller は既存指摘の棚卸しに使える．本リポジトリが [Issue #109](https://github.com/tomio2480/github-workflows/issues/109) で行った段階的な解消と同じことが caller 側でもできる．
+
+添付するのは実在するレポートだけである．`fail-on-error: true` の caller を考える．`markdownlint` 側の reviewdog が非ゼロ終了した時点で textlint の step は skip される．この run の artifact は `markdownlint` のレポートだけになる．欠けているファイルは `::warning::` で通知し，summary の案内文にも実在するファイル名だけを載せる．どちらのレポートも無い run では添付そのものを見送る．
+
+artifact 名の既定は `lint-reports-<job id>` である．`actions/upload-artifact` は同一 run 内で同名 artifact のアップロードに失敗する．matrix で同じ job を並列展開する caller は `report-artifact-name` で job ごとに別名を渡す．アップロードの失敗は job を落とさない（`continue-on-error`）．失敗・skip のときは summary の案内文が「取得できない」旨へ切り替わる．
 
 同一 PR で複数の job が同じ marker で upsert すると race するため，integration テストは単一 job に絞る方針．caller 側で複数 job が並走する構成にしたい場合は別マーカー運用が必要（現状 input 化していないため job 分割は推奨しない）．
 

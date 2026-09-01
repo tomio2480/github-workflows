@@ -40,6 +40,12 @@ inputs:
   markdown-ignore:
     description: "summary 件数の集計から除外する path glob．改行区切りで複数指定可．`tests/fixtures/**` のような prefix 形式で，相対・絶対両方のパスを除外する．reviewdog の inline コメントは別経路で `filter-mode` により制御されるため本 input の影響を受けない．自リポジトリの dogfooding で fixture を summary から外す等の用途を想定"
     default: ""
+  upload-reports:
+    description: "markdownlint / textlint の生レポートを run の artifact としてアップロードするかどうか．`true`（既定）なら caller はリポジトリ全体の指摘内訳を artifact から取得できる．個別の指摘は reviewdog へ流れるだけで Actions ログには残らないため，既存指摘の棚卸しにはこの artifact が唯一の経路になる（Issue #148）"
+    default: "true"
+  report-artifact-name:
+    description: "アップロードする artifact の名前．同一 run 内で名前が重複するとアップロードが失敗するため，matrix で複数回この action を呼ぶ caller は job ごとに別名を渡す．既定は `lint-reports-<job id>`"
+    default: ""
 
 runs:
   using: composite
@@ -332,6 +338,84 @@ runs:
           -filter-mode="${RD_FILTER_MODE}" \
           < textlint-report.xml
 
+    - name: Resolve lint report artifact name
+      # artifact 名を 1 箇所で決め，アップロードと summary の案内文で同じ値を使う．
+      # upload-reports が false のときは空文字を返し，後続の upload step を
+      # skip させる（summary 側も空文字を受けて案内文を切り替える）．
+      #
+      # 併せて，実在するレポートの一覧も出す．fail-on-error: true の caller では
+      # markdownlint 側 reviewdog の非ゼロ終了で textlint step が skip され，
+      # artifact が markdownlint のレポートだけになる．両方入りと案内すると
+      # 実態と食い違うため，存在するファイルだけを summary へ渡す（PR #152 の
+      # レビュー指摘）．
+      id: report_artifact
+      if: always()
+      shell: bash
+      env:
+        UPLOAD_REPORTS: ${{ inputs.upload-reports }}
+        ARTIFACT_NAME: ${{ inputs.report-artifact-name }}
+        JOB_ID: ${{ github.job }}
+      run: |
+        set -uo pipefail
+        if [ "${UPLOAD_REPORTS}" != "true" ]; then
+          echo "name=" >> "${GITHUB_OUTPUT}"
+          echo "files=" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+        PRESENT=()
+        MISSING=()
+        for report in markdownlint-report.txt textlint-report.xml; do
+          if [ -s "${report}" ]; then
+            PRESENT+=("${report}")
+          else
+            MISSING+=("${report}")
+          fi
+        done
+        if [ "${#PRESENT[@]}" -eq 0 ]; then
+          # どちらのレポートも無い run では添付するものが無い．summary は
+          # 「取得できない」旨の案内へ落ちる．
+          echo "::warning::No lint report was produced; skipping report artifact upload"
+          echo "name=" >> "${GITHUB_OUTPUT}"
+          echo "files=" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+        if [ "${#MISSING[@]}" -gt 0 ]; then
+          echo "::warning::Lint report artifact is partial; missing: ${MISSING[*]}"
+        fi
+        # 既定は job id を含めることで，同一 run 内の別 job との衝突を避ける
+        # （actions/upload-artifact は同名 artifact の重複アップロードで失敗する）．
+        # matrix で同一 job を並列展開する caller は report-artifact-name で明示する．
+        echo "name=${ARTIFACT_NAME:-lint-reports-${JOB_ID}}" >> "${GITHUB_OUTPUT}"
+        PRESENT_CSV="$(
+          IFS=,
+          printf '%s' "${PRESENT[*]}"
+        )"
+        echo "files=${PRESENT_CSV}" >> "${GITHUB_OUTPUT}"
+
+    - name: Upload lint reports
+      # Issue #148: 個別の指摘は reviewdog へ渡るだけで Actions ログには残らない．
+      # summary はリポジトリ全体の件数を出すが内訳を得る経路が無く，caller は
+      # 既存指摘の棚卸しができなかった．生レポートを artifact として添付し，
+      # summary の肥大を避けたまま内訳を取得できるようにする．
+      #
+      # 失敗は job を落とさない（reviewdog 本体は既に投稿済みのため UX nicety
+      # 扱い．summary 側は outcome を見て案内文を artifact 無しへ切り替える）．
+      id: upload_reports
+      if: always() && steps.report_artifact.outputs.name != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ steps.report_artifact.outputs.name }}
+        # textlint の stderr も併せる．Issue #148 では caller のローカル再現で
+        # textlint の総数が summary と一致しない事象が報告されており，
+        # 実行時の警告を突き合わせられるようにしておく．
+        path: |
+          markdownlint-report.txt
+          textlint-report.xml
+          textlint-stderr.log
+        if-no-files-found: warn
+        retention-days: 14
+
     - name: List PR diff files (for summary scoping)
       # lint summary の集計対象を PR 差分ファイルのみに絞るための入力を
       # 用意する（Issue #59: markdown-glob（既定 **/*.md）はリポジトリ全体を
@@ -413,6 +497,11 @@ runs:
         # post-lint-summary.sh 側が行ごと省略する（後方互換）．
         LINT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         LINT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        # Issue #148: アップロードが成功したときだけ artifact 名を渡す．
+        # skip / 失敗時は空文字となり，summary は「内訳は取得できない」と案内する．
+        LINT_REPORT_ARTIFACT: ${{ steps.upload_reports.outcome == 'success' && steps.report_artifact.outputs.name || '' }}
+        # 実在するレポートだけを案内するためのファイル名一覧（カンマ区切り）．
+        LINT_REPORT_FILES: ${{ steps.report_artifact.outputs.files }}
       run: |
         set -uo pipefail
         # ワークスペース非汚染のため RUNNER_TEMP 配下に置く（pr-diff-files.txt と同じ規約）．

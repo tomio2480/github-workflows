@@ -58,3 +58,5 @@ jobs:
           # post-summary: "false"           # 同一 PR で複数 job が並走するときの marker 競合回避
           # markdown-ignore: |              # summary 件数から除外する path glob（改行区切り）
           #   tests/fixtures/**             #   reviewdog の inline コメント側には影響しない
+          # upload-reports: "false"         # 生レポートの artifact 添付をやめる（既定は true）
+          # report-artifact-name: "lint-reports-docs"  # matrix 等で artifact 名が衝突する場合

@@ -101,3 +101,25 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-error: "false"
           post-summary: "false"
+
+      - name: Download uploaded lint reports
+        # Issue #148: 生レポートが artifact として取得できることを実機で確認する．
+        # 既定の artifact 名は `lint-reports-<job id>` のため本 job では
+        # `lint-reports-integration-action` になる．
+        # actions/download-artifact v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: lint-reports-integration-action
+          path: downloaded-reports
+
+      - name: Assert lint reports are retrievable
+        # 内訳が取れることまで見る．fixture には意図的な違反があるため，
+        # markdownlint のレポートは必ず 1 件以上の指摘行を含む．
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -l downloaded-reports
+          test -s downloaded-reports/markdownlint-report.txt
+          test -s downloaded-reports/textlint-report.xml
+          grep -qE ':[0-9]+ MD[0-9]{3}' downloaded-reports/markdownlint-report.txt
+          grep -q '<checkstyle' downloaded-reports/textlint-report.xml

@@ -543,6 +543,69 @@ FAKE
   ! grep -q 'BODY: .*この PR の差分に指摘はありません' "${FAKE_CURL_LOG}"
 }
 
+@test "LINT_REPORT_ARTIFACT があるとき全体の内訳を artifact から辿れると案内する（Issue #148）" {
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":0,"repo_total":21,"findings":[]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+  export LINT_REPORT_ARTIFACT="lint-reports-lint"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*artifact `lint-reports-lint`' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*markdownlint-report\.txt' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*textlint-report\.xml' "${FAKE_CURL_LOG}"
+  # 個別の指摘は Actions ログに出ないため，ログ参照の案内は残さない
+  ! grep -q 'BODY: .*Actions ログ' "${FAKE_CURL_LOG}"
+
+  unset LINT_REPORT_ARTIFACT
+}
+
+@test "LINT_REPORT_ARTIFACT が無いとき全体の内訳を取得できない旨を案内する（Issue #148）" {
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":0,"repo_total":21,"findings":[]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*このコメントからは取得できません' "${FAKE_CURL_LOG}"
+  # 有効化の手段を示す
+  grep -q 'BODY: .*upload-reports' "${FAKE_CURL_LOG}"
+  ! grep -q 'BODY: .*Actions ログ' "${FAKE_CURL_LOG}"
+}
+
+@test "LINT_REPORT_FILES があるとき実際に含まれるレポートだけを案内する（Issue #148）" {
+  # fail-on-error: true の caller では markdownlint 側の非ゼロ終了で textlint step が
+  # skip される．artifact が片方のレポートしか持たないため，案内も実態に合わせる．
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":0,"repo_total":21,"findings":[]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+  export LINT_REPORT_ARTIFACT="lint-reports-lint"
+  export LINT_REPORT_FILES="markdownlint-report.txt"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*artifact `lint-reports-lint`' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*markdownlint-report\.txt' "${FAKE_CURL_LOG}"
+  ! grep -q 'BODY: .*textlint-report\.xml' "${FAKE_CURL_LOG}"
+
+  unset LINT_REPORT_ARTIFACT LINT_REPORT_FILES
+}
+
+@test "指摘ありのときも Actions ログではなく artifact を案内する（Issue #148）" {
+  _write_summary '{"diff_scoped":true,"markdownlint":{"total":1,"repo_total":21,"findings":[{"file":"a.md","line":1,"rule":"MD041/x","message":"top heading"}]},"textlint":{"error":0,"warning":0,"info":0,"total":0,"repo_total":95,"findings":[]}}'
+  export FAKE_CURL_GET_BODY='[]'
+  export LINT_REPORT_ARTIFACT="lint-reports-lint"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  grep -q 'BODY: .*下の details 一覧' "${FAKE_CURL_LOG}"
+  grep -q 'BODY: .*artifact `lint-reports-lint`' "${FAKE_CURL_LOG}"
+  ! grep -q 'BODY: .*Actions ログ' "${FAKE_CURL_LOG}"
+
+  unset LINT_REPORT_ARTIFACT
+}
+
 @test "diff_scoped でない payload では全体件数の列を出さない（後方互換）" {
   _write_summary '{"markdownlint":{"total":2},"textlint":{"error":1,"warning":1,"info":0,"total":2}}'
   export FAKE_CURL_GET_BODY='[]'

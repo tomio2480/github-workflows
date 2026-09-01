@@ -18,6 +18,13 @@
 #     その時点の base に対する値である．どの base を数えたかを summary に
 #     残すことで，解消済みの件数が古い base のせいで残って見えるケースを
 #     summary 単体で判別できるようにする．
+#   LINT_REPORT_ARTIFACT - lint レポートをまとめた artifact 名（任意）．
+#     渡されたときは「リポジトリ全体の内訳はこの artifact から取れる」と案内し，
+#     空・未設定のときは取得できない旨と有効化手段を案内する（Issue #148）．
+#   LINT_REPORT_FILES - artifact に実際に入ったレポートのファイル名（任意）．
+#     カンマ区切り．未設定なら markdownlint / textlint 両方が入っている前提で
+#     案内する．片方の lint が skip された run では実態と食い違うため，
+#     composite action 側が存在するファイルだけを渡す．
 #
 # 仕様:
 #   - hidden marker `<!-- gh-workflows-lint-summary -->` 付きコメントを GET で
@@ -190,12 +197,40 @@ if base_sha and head_sha:
         "",
     ]
 
+# Issue #148: リポジトリ全体の内訳をどこで得られるかを案内する．個別の指摘は
+# reviewdog へ流れるだけで Actions ログには残らないため，従来の「Actions ログ
+# から確認」は誤案内だった．artifact 名が渡っていればそれを案内し，渡って
+# いなければ取得できない旨と有効化の手段を明示する．
+report_artifact = os.environ.get("LINT_REPORT_ARTIFACT", "")
+# diff 絞り込みのない payload では「リポジトリ全体」という対比が成り立たない．
+# 表の見出しと同じ語彙で案内するため，主語を切り替える．
+detail_subject = "リポジトリ全体の内訳" if diff_scoped else "指摘の全件"
+if report_artifact:
+    # 実際に artifact へ入ったレポートだけを案内する．fail-on-error: true の
+    # caller では markdownlint の非ゼロ終了で textlint step が skip され，
+    # 片方のレポートしか存在しないことがあるため（PR #152 のレビュー指摘）．
+    report_files = [
+        name.strip()
+        for name in os.environ.get("LINT_REPORT_FILES", "").split(",")
+        if name.strip()
+    ] or ["markdownlint-report.txt", "textlint-report.xml"]
+    joined_files = " と ".join(f"`{name}`" for name in report_files)
+    repo_detail_hint = (
+        f"{detail_subject}は Actions run の artifact `{report_artifact}` "
+        f"にある {joined_files} から確認できます．"
+    )
+else:
+    repo_detail_hint = (
+        f"{detail_subject}はこのコメントからは取得できません．"
+        "action の `upload-reports` input を `true` にすると，"
+        "lint レポートが run の artifact として添付されます．"
+    )
+
 if md_total == 0 and tx_total == 0:
     if diff_scoped and (md_repo_total + tx_repo_total) > 0:
         lines.append(
             "この PR の差分に指摘はありません．"
-            "リポジトリ全体には既存の指摘が残っています．"
-            "内訳は Actions ログから確認してください．"
+            "リポジトリ全体には既存の指摘が残っています．" + repo_detail_hint
         )
     else:
         lines.append("指摘はありません．")
@@ -203,7 +238,7 @@ else:
     lines.append(
         "差分行に該当する指摘は inline コメントとして該当行に付きます．"
         "filter-mode（既定 `added`）の都合で inline 化されない指摘は"
-        "下の details 一覧と Actions ログから確認してください．"
+        "下の details 一覧から確認してください．" + repo_detail_hint
     )
     lines += render_findings("markdownlint", md_findings)
     lines += render_findings("textlint", tx_findings)

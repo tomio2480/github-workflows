@@ -27,7 +27,25 @@
 
 ## 2️⃣ 既存指摘を棚卸し（任意）
 
-既存ファイル全体を lint して指摘を一覧化する．
+既存ファイル全体を lint して指摘を一覧化する．手段は 2 つある．導入後に PR を 1 度でも動かしていれば，run の artifact を取る方が確実である．
+
+### 方法 A: run の artifact から取る（推奨）
+
+composite action は生レポートを artifact として添付する（`upload-reports` の既定は `true`）．中央設定と固定版のツールで実行した結果そのものであり，ローカル再現の忠実性を気にしなくてよい．artifact 名の既定は `lint-reports-<job id>` である．テンプレートどおりの caller workflow なら job id は `lint` になる．
+
+```bash
+# 直近の Markdown Lint run を調べる
+gh run list --workflow md-lint.yml --limit 5
+
+# 生レポートを取得する（markdownlint-report.txt / textlint-report.xml）
+gh run download <run-id> --name lint-reports-lint --dir lint-reports
+```
+
+`markdownlint-report.txt` は `<ファイル>:<行> <ルール ID> <メッセージ>` の形式である．`textlint-report.xml` は checkstyle 形式である．PR コメントの summary はリポジトリ全体の件数だけを出す．内訳はこの artifact から取る（[Issue #148](https://github.com/tomio2480/github-workflows/issues/148)）．
+
+### 方法 B: ローカルで再現する
+
+導入前に棚卸ししたい場合はこちらを使う．
 
 **注意**：この時点の caller repo には中央設定ファイルが無い．対象は `.markdownlint-cli2.yaml` / `.textlintrc.json` / `prh.yml` である．このため `npx -y` コマンドは各ツールのデフォルト設定で動作する．中央設定の結果と一致させたい場合は，事前に中央テンプレートを取得してから lint を走らせる．また textlint は，`.textlintrc.json` が指定するプリセット・プラグインをローカルの `node_modules` から読む必要がある．事前に `npm install --no-save` で取得しておく．
 
