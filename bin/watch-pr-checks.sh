@@ -12,7 +12,7 @@
 # --watch は使わず自前で状態を polling する．
 #
 # 実行列:
-#   1. origin の実体（git ls-remote）を監視対象 commit の正とする
+#   1. head リポジトリの実体（git ls-remote）を監視対象 commit の正とする
 #   2. gh pr view の headRefOid がその commit へ追いつくまで待つ
 #   3. checks の状態を polling し，1 件以上あり，pending が無く，
 #      件数が --settle 秒のあいだ動いていない状態になるまで待つ
@@ -33,7 +33,7 @@ Usage: watch-pr-checks.sh <pr-number> [--timeout SECONDS] [--interval SECONDS]
                           [--settle SECONDS] [--expect-sha SHA]
 
   pr-number      監視する PR の番号
-  --timeout      監視全体のタイムアウト秒（既定: 600）
+  --timeout      監視全体のタイムアウト秒（既定: 600）．段ごとに取り直さない
   --interval     ポーリング間隔秒（既定: 10）
   --settle       件数が動かなくなってから完了と見なすまでの秒数（既定: 60）
   --expect-sha   監視対象 commit を明示する（40 桁）．origin への問い合わせを省く
@@ -123,20 +123,37 @@ fi
 
 # --- 監視対象 commit の確定 ---
 
-# gh は push 直後に古い head を返すことがある．遅れない側である origin の
-# 実体を正とし，gh の側をそこへ追いつかせる
+# gh は push 直後に古い head を返すことがある．遅れない側であるリモートの
+# 実体を正とし，gh の側をそこへ追いつかせる．
+#
+# fork からの PR では head ブランチが origin に無い．同名のブランチが base に
+# あると，無関係な commit を掴んだまま待つ．head の所属先を解決してから引く
 if [ -z "${EXPECT_SHA}" ]; then
-  BRANCH="$(gh pr view "${PR}" --json headRefName --jq .headRefName)"
+  PR_INFO="$(gh pr view "${PR}" \
+    --json headRefName,isCrossRepository,headRepositoryOwner,headRepository \
+    --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv')"
+  IFS=$'\t' read -r BRANCH CROSS_REPO HEAD_OWNER HEAD_REPO <<<"${PR_INFO}"
   if [ -z "${BRANCH}" ]; then
     echo "error: could not resolve the head branch of PR #${PR}" >&2
     exit 1
   fi
-  EXPECT_SHA="$(git ls-remote origin "refs/heads/${BRANCH}" | cut -f1)"
+
+  if [ "${CROSS_REPO}" = "true" ]; then
+    if [ -z "${HEAD_OWNER}" ] || [ -z "${HEAD_REPO}" ]; then
+      echo "error: could not resolve the head repository of PR #${PR}" >&2
+      exit 1
+    fi
+    REMOTE="https://github.com/${HEAD_OWNER}/${HEAD_REPO}.git"
+  else
+    REMOTE="origin"
+  fi
+
+  EXPECT_SHA="$(git ls-remote "${REMOTE}" "refs/heads/${BRANCH}" | cut -f1)"
   if [ -z "${EXPECT_SHA}" ]; then
-    echo "error: branch ${BRANCH} not found on origin (push it first)" >&2
+    echo "error: branch ${BRANCH} not found on ${REMOTE} (push it first)" >&2
     exit 1
   fi
-  echo "watch-pr-checks: target commit ${EXPECT_SHA} (branch ${BRANCH})"
+  echo "watch-pr-checks: target commit ${EXPECT_SHA} (branch ${BRANCH} on ${REMOTE})"
 else
   echo "watch-pr-checks: target commit ${EXPECT_SHA}"
 fi
@@ -163,9 +180,9 @@ checks_buckets() {
   gh pr checks "${PR}" --json name,state,bucket --jq '.[].bucket' 2>"${LAST_ERR}" || true
 }
 
-deadline_from_now() {
-  echo $(($(date +%s) + TIMEOUT))
-}
+# --timeout は監視全体に掛かる．段ごとに取り直すと合計が 2 倍になりうるため，
+# 締切は 1 度だけ決めて両方の待機で使い回す
+DEADLINE=$(($(date +%s) + TIMEOUT))
 
 report_timeout() {
   echo "error: timed out waiting for $1 (commit ${EXPECT_SHA})" >&2
@@ -178,10 +195,9 @@ report_timeout() {
 
 # --- gh がリモートへ追いつくのを待つ ---
 
-echo "watch-pr-checks: waiting for gh to catch up with origin"
-CATCHUP_DEADLINE="$(deadline_from_now)"
+echo "watch-pr-checks: waiting for gh to catch up with the remote"
 while ! gh_head_matches; do
-  if [ "$(date +%s)" -ge "${CATCHUP_DEADLINE}" ]; then
+  if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
     report_timeout "gh to report the target commit"
   fi
   if [ "${INTERVAL}" -gt 0 ]; then
@@ -202,7 +218,6 @@ done
 # それでも --settle より後に現れる check は追えない．そこまで要るなら
 # GitHub 側の required checks 設定で担保する
 echo "watch-pr-checks: waiting for checks to settle"
-CHECKS_DEADLINE="$(deadline_from_now)"
 PREV_TOTAL=-1
 PREV_REPORT=""
 STABLE_SINCE="$(date +%s)"
@@ -234,7 +249,7 @@ while :; do
   fi
   PREV_TOTAL="${TOTAL}"
 
-  if [ "$(date +%s)" -ge "${CHECKS_DEADLINE}" ]; then
+  if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
     report_timeout "checks to settle"
   fi
   if [ "${INTERVAL}" -gt 0 ]; then

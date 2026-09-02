@@ -54,22 +54,46 @@ if ($ExpectSha -ne '' -and $ExpectSha -notmatch '^[0-9a-f]{40}$') {
 
 # --- 監視対象 commit の確定 ---
 
-# gh は push 直後に古い head を返すことがある．遅れない側である origin の
-# 実体を正とし，gh の側をそこへ追いつかせる
+# gh は push 直後に古い head を返すことがある．遅れない側であるリモートの
+# 実体を正とし，gh の側をそこへ追いつかせる．
+#
+# fork からの PR では head ブランチが origin に無い．同名のブランチが base に
+# あると，無関係な commit を掴んだまま待つ．head の所属先を解決してから引く
 if ($ExpectSha -eq '') {
-  $Branch = gh pr view $Pr --json headRefName --jq .headRefName
-  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Branch)) {
+  $Fields = gh pr view $Pr `
+    --json headRefName, isCrossRepository, headRepositoryOwner, headRepository `
+    --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv'
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Fields)) {
     Write-Error "could not resolve the head branch of PR #${Pr}"
     exit 1
   }
-  $Branch = $Branch.Trim()
-  $RemoteLine = git ls-remote origin "refs/heads/${Branch}"
-  $ExpectSha = if ($RemoteLine) { ($RemoteLine -split "`t")[0] } else { '' }
-  if ($ExpectSha -eq '') {
-    Write-Error "branch ${Branch} not found on origin (push it first)"
+  $Parts = ($Fields | Out-String).Trim() -split "`t"
+  $Branch = $Parts[0]
+  $CrossRepo = if ($Parts.Count -gt 1) { $Parts[1] } else { '' }
+  $HeadOwner = if ($Parts.Count -gt 2) { $Parts[2] } else { '' }
+  $HeadRepo = if ($Parts.Count -gt 3) { $Parts[3] } else { '' }
+  if ([string]::IsNullOrWhiteSpace($Branch)) {
+    Write-Error "could not resolve the head branch of PR #${Pr}"
     exit 1
   }
-  Write-Output "watch-pr-checks: target commit ${ExpectSha} (branch ${Branch})"
+
+  if ($CrossRepo -eq 'true') {
+    if ($HeadOwner -eq '' -or $HeadRepo -eq '') {
+      Write-Error "could not resolve the head repository of PR #${Pr}"
+      exit 1
+    }
+    $Remote = "https://github.com/${HeadOwner}/${HeadRepo}.git"
+  } else {
+    $Remote = 'origin'
+  }
+
+  $RemoteLine = git ls-remote $Remote "refs/heads/${Branch}"
+  $ExpectSha = if ($RemoteLine) { ($RemoteLine -split "`t")[0] } else { '' }
+  if ($ExpectSha -eq '') {
+    Write-Error "branch ${Branch} not found on ${Remote} (push it first)"
+    exit 1
+  }
+  Write-Output "watch-pr-checks: target commit ${ExpectSha} (branch ${Branch} on ${Remote})"
 } else {
   Write-Output "watch-pr-checks: target commit ${ExpectSha}"
 }
@@ -122,10 +146,13 @@ function Write-TimeoutReport {
 try {
   # --- gh がリモートへ追いつくのを待つ ---
 
-  Write-Output 'watch-pr-checks: waiting for gh to catch up with origin'
-  $CatchupDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  # -TimeoutSeconds は監視全体に掛かる．段ごとに取り直すと合計が 2 倍に
+  # なりうるため，締切は 1 度だけ決めて両方の待機で使い回す
+  $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+  Write-Output 'watch-pr-checks: waiting for gh to catch up with the remote'
   while ((Get-HeadOid) -ne $ExpectSha) {
-    if ((Get-Date) -ge $CatchupDeadline) {
+    if ((Get-Date) -ge $Deadline) {
       Write-TimeoutReport -Description 'gh to report the target commit'
       exit 2
     }
@@ -147,7 +174,6 @@ try {
   # それでも settle より後に現れる check は追えない．そこまで要るなら
   # GitHub 側の required checks 設定で担保する
   Write-Output 'watch-pr-checks: waiting for checks to settle'
-  $ChecksDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
   $PrevTotal = -1
   $PrevReport = ''
   $Total = 0
@@ -177,7 +203,7 @@ try {
     }
     $PrevTotal = $Total
 
-    if ((Get-Date) -ge $ChecksDeadline) {
+    if ((Get-Date) -ge $Deadline) {
       Write-TimeoutReport -Description 'checks to settle'
       exit 2
     }

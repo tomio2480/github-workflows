@@ -26,7 +26,7 @@ BeforeAll {
 
     $names = @(
       'STUB_LOG', 'STUB_STATE_DIR', 'STUB_REMOTE_EMPTY', 'STUB_GH_LAG',
-      'STUB_CHECKS_LAG', 'STUB_CHECKS', 'STUB_HEAD_MOVES'
+      'STUB_CHECKS_LAG', 'STUB_CHECKS', 'STUB_HEAD_MOVES', 'STUB_CROSS_REPO'
     )
     $saved = @{}
     foreach ($name in $names) {
@@ -96,6 +96,17 @@ Describe 'remote の実体を正とする' {
     $result.ExitCode | Should -Be 1
     $result.Output | Should -Match 'origin'
     ($result.Commands -match 'gh pr checks') | Should -BeNullOrEmpty
+  }
+
+  It 'fork からの PR では head リポジトリへ問い合わせる' {
+    $result = Invoke-Watch -Stub @{ STUB_CROSS_REPO = '1' } -ScriptArgs @(
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0',
+      '-TimeoutSeconds', '30'
+    )
+
+    $result.ExitCode | Should -Be 0
+    ($result.Commands -match 'ls-remote https://github.com/forker/github-workflows.git') |
+      Should -Not -BeNullOrEmpty
   }
 
   It '-ExpectSha を渡すと remote へ問い合わせない' {

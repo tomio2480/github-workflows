@@ -59,7 +59,12 @@ bump() {
 case "$1 $2" in
   "pr view")
     if [[ "$*" == *headRefName* ]]; then
-      echo "feature/example"
+      # 実物は --jq で TSV へ畳んだ 4 列を返す
+      if [ "${STUB_CROSS_REPO:-0}" = "1" ]; then
+        printf 'feature/example\ttrue\tforker\tgithub-workflows\n'
+      else
+        printf 'feature/example\tfalse\ttomio2480\tgithub-workflows\n'
+      fi
       exit 0
     fi
     if [[ "$*" == *headRefOid* ]]; then
@@ -184,6 +189,16 @@ checks_queries() {
   [[ "${output}" == *"origin"* ]]
   run grep -q "gh pr checks" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
+}
+
+@test "asks the head repository for a fork PR" {
+  # origin は base を指す．fork の head ブランチは origin に無く，同名の
+  # ブランチが base にあると無関係な commit を掴む
+  STUB_CROSS_REPO=1 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
+
+  [ "${status}" -eq 0 ]
+  run grep -q "^git ls-remote https://github.com/forker/github-workflows.git" "${CMD_LOG}"
+  [ "${status}" -eq 0 ]
 }
 
 @test "uses --expect-sha instead of consulting the remote" {

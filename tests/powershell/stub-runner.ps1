@@ -14,6 +14,7 @@
 #   STUB_CHECKS_LAG     checks が未登録（出力なし）の回数
 #   STUB_CHECKS         pass / fail / pending / late / growing
 #   STUB_HEAD_MOVES     1 で checks 照会後の headRefOid を別 commit にする
+#   STUB_CROSS_REPO     1 で fork からの PR を再現する
 
 # param ブロックは置かない．-Pr のような対象スクリプト側の引数名が
 # 共通パラメーター（-ProgressAction 等）の前方一致で吸われるためである．
@@ -70,7 +71,11 @@ function gh {
 
   if ($GhArgs[0] -eq 'pr' -and $GhArgs[1] -eq 'view') {
     if ($joined -like '*headRefName*') {
-      return 'feature/example'
+      # 実物は --jq で TSV へ畳んだ 4 列を返す
+      if ($env:STUB_CROSS_REPO -eq '1') {
+        return "feature/example`ttrue`tforker`tgithub-workflows"
+      }
+      return "feature/example`tfalse`ttomio2480`tgithub-workflows"
     }
     if ($joined -like '*headRefOid*') {
       # checks を 1 度でも照会した後は「監視の後」とみなす

@@ -394,8 +394,14 @@ checks が未登録の時点では「no checks reported」を返して即座に�
 `--watch` は完了までブロックし，中断の手立てを持たない．
 タイムアウトを効かせるには，待つ側が制御を握っている必要がある．
 
-まず監視対象 commit の正を `git ls-remote origin` の実体とし，
+まず監視対象 commit の正を `git ls-remote` が返す実体とし，
 `gh` の `headRefOid` がそこへ追いつくまで待つ．
+問い合わせ先は head の所属先である．fork からの PR では head ブランチが
+`origin` に無く，同名のブランチが base にあると無関係な commit を掴む．
+`isCrossRepository` で判定し，fork なら head リポジトリの URL へ引く．
+
+`--timeout` は監視全体に掛かる．段ごとに締切を取り直すと合計が 2 倍に
+なりうるため，締切は 1 度だけ決めて両方の待機で使い回す．
 次に checks の状態を間隔ごとに取り，完了の条件を 3 つ課す．
 1 件以上あること，pending が無いこと，
 件数が `--settle` 秒のあいだ動いていないことである．
