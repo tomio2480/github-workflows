@@ -15,7 +15,7 @@
 #   1. origin の実体（git ls-remote）を監視対象 commit の正とする
 #   2. gh pr view の headRefOid がその commit へ追いつくまで待つ
 #   3. checks の状態を polling し，1 件以上あり，pending が無く，
-#      件数が前回から増えていない状態になるまで待つ
+#      件数が --settle 秒のあいだ動いていない状態になるまで待つ
 #   4. head が動いていないことを確認する
 #   5. fail・cancel の有無で終了コードを決める
 #
@@ -30,11 +30,12 @@ set -euo pipefail
 usage() {
   cat >&2 <<'USAGE'
 Usage: watch-pr-checks.sh <pr-number> [--timeout SECONDS] [--interval SECONDS]
-                          [--expect-sha SHA]
+                          [--settle SECONDS] [--expect-sha SHA]
 
   pr-number      監視する PR の番号
   --timeout      監視全体のタイムアウト秒（既定: 600）
   --interval     ポーリング間隔秒（既定: 10）
+  --settle       件数が動かなくなってから完了と見なすまでの秒数（既定: 60）
   --expect-sha   監視対象 commit を明示する（40 桁）．origin への問い合わせを省く
 USAGE
   exit 1
@@ -46,6 +47,7 @@ shift
 
 TIMEOUT=600
 INTERVAL=10
+SETTLE=60
 EXPECT_SHA=""
 
 # 値必須オプションが後続オプションを値として吸うと，指定の欠落が既定値へ
@@ -67,6 +69,11 @@ while [ $# -gt 0 ]; do
     --interval)
       require_value --interval "${2:-}"
       INTERVAL="$2"
+      shift 2
+      ;;
+    --settle)
+      require_value --settle "${2:-}"
+      SETTLE="$2"
       shift 2
       ;;
     --expect-sha)
@@ -95,6 +102,17 @@ fi
 
 if ! [[ "${INTERVAL}" =~ ^[0-9]+$ ]]; then
   echo "error: --interval must be a non-negative integer: ${INTERVAL}" >&2
+  exit 1
+fi
+
+if ! [[ "${SETTLE}" =~ ^[0-9]+$ ]]; then
+  echo "error: --settle must be a non-negative integer: ${SETTLE}" >&2
+  exit 1
+fi
+
+# settle が timeout を超えると，どれだけ静かでも必ずタイムアウトする
+if [ "${SETTLE}" -gt "${TIMEOUT}" ]; then
+  echo "error: --settle (${SETTLE}) must not exceed --timeout (${TIMEOUT})" >&2
   exit 1
 fi
 
@@ -174,14 +192,20 @@ done
 # --- checks が出そろうのを待つ ---
 
 # 完了の条件は 3 つである．1 件以上あること，pending が無いこと，件数が
-# 前回の照会から増えていないこと．3 つ目は，登録の時刻が workflow ごとに
+# --settle 秒のあいだ動いていないこと．3 つ目は，登録の時刻が workflow ごとに
 # 異なるためである．先に見えた check だけで「全 pass」と読む余地を消す．
-# 最後の照会より後に現れる check までは追えない．そこまで要るなら
+#
+# 待つ長さが要る．本リポジトリでは CodeRabbit の status が push 直後に付き，
+# workflow の登録は約 1 分後だった．1 間隔だけの据え置きでは，前者だけを見て
+# 「1 件が全 pass」と報告してしまう（2026-09-02 に本スクリプトで実際に発生）．
+#
+# それでも --settle より後に現れる check は追えない．そこまで要るなら
 # GitHub 側の required checks 設定で担保する
 echo "watch-pr-checks: waiting for checks to settle"
 CHECKS_DEADLINE="$(deadline_from_now)"
 PREV_TOTAL=-1
 PREV_REPORT=""
+STABLE_SINCE="$(date +%s)"
 while :; do
   BUCKETS="$(checks_buckets)"
   TOTAL=0
@@ -193,7 +217,13 @@ while :; do
     FAILED="$(printf '%s\n' "${BUCKETS}" | grep -cE '^(fail|cancel)$' || true)"
   fi
 
-  if [ "${TOTAL}" -gt 0 ] && [ "${PENDING}" -eq 0 ] && [ "${TOTAL}" -eq "${PREV_TOTAL}" ]; then
+  NOW="$(date +%s)"
+  if [ "${TOTAL}" -ne "${PREV_TOTAL}" ]; then
+    STABLE_SINCE="${NOW}"
+  fi
+
+  if [ "${TOTAL}" -gt 0 ] && [ "${PENDING}" -eq 0 ] &&
+    [ "${TOTAL}" -eq "${PREV_TOTAL}" ] && [ $((NOW - STABLE_SINCE)) -ge "${SETTLE}" ]; then
     break
   fi
 

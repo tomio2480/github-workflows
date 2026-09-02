@@ -70,6 +70,15 @@ Describe '入力検証' {
     $result.Output | Should -Match 'pr-number'
   }
 
+  It '-SettleSeconds が -TimeoutSeconds を超えたら 1 で終える' {
+    $result = Invoke-Watch -ScriptArgs @(
+      '-Pr', '165', '-SettleSeconds', '30', '-TimeoutSeconds', '10'
+    )
+
+    $result.ExitCode | Should -Be 1
+    $result.Output | Should -Match 'SettleSeconds'
+  }
+
   It '-ExpectSha が 40 桁でなければ 1 で終える' {
     $result = Invoke-Watch -ScriptArgs @('-Pr', '165', '-ExpectSha', 'abc1234')
 
@@ -81,7 +90,7 @@ Describe '入力検証' {
 Describe 'remote の実体を正とする' {
   It 'ブランチが remote に無ければ checks を照会せず 1 で終える' {
     $result = Invoke-Watch -Stub @{ STUB_REMOTE_EMPTY = '1' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '0'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '0'
     )
 
     $result.ExitCode | Should -Be 1
@@ -91,7 +100,7 @@ Describe 'remote の実体を正とする' {
 
   It '-ExpectSha を渡すと remote へ問い合わせない' {
     $result = Invoke-Watch -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30',
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30',
       '-ExpectSha', $script:RemoteSha
     )
 
@@ -103,7 +112,7 @@ Describe 'remote の実体を正とする' {
 Describe 'gh がリモートへ追いつくまで待つ' {
   It '追いつくまで headRefOid を引き直す' {
     $result = Invoke-Watch -Stub @{ STUB_GH_LAG = '2' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30'
     )
 
     $result.ExitCode | Should -Be 0
@@ -112,7 +121,7 @@ Describe 'gh がリモートへ追いつくまで待つ' {
 
   It '追いつかないまま締切に達したら checks を照会せず 2 で終える' {
     $result = Invoke-Watch -Stub @{ STUB_GH_LAG = '99' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '0'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '0'
     )
 
     $result.ExitCode | Should -Be 2
@@ -124,7 +133,7 @@ Describe 'gh がリモートへ追いつくまで待つ' {
 Describe 'checks が出そろうまで待つ' {
   It '登録されるまで照会を繰り返す' {
     $result = Invoke-Watch -Stub @{ STUB_CHECKS_LAG = '2' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30'
     )
 
     $result.ExitCode | Should -Be 0
@@ -133,7 +142,7 @@ Describe 'checks が出そろうまで待つ' {
 
   It '1 件も登録されないまま締切に達したら 2 で終える' {
     $result = Invoke-Watch -Stub @{ STUB_CHECKS_LAG = '99' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '0'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '0'
     )
 
     $result.ExitCode | Should -Be 2
@@ -141,7 +150,7 @@ Describe 'checks が出そろうまで待つ' {
 
   It 'pending がある間は待ち続ける' {
     $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'pending' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30'
     )
 
     $result.ExitCode | Should -Be 0
@@ -150,7 +159,18 @@ Describe 'checks が出そろうまで待つ' {
 
   It '件数が増えなくなるまで待つ' {
     $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'late' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30'
+    )
+
+    $result.ExitCode | Should -Be 0
+    $result.Output | Should -Match 'all 2 checks passed'
+  }
+
+  It '静かな時間が続くのを見届けてから完了とする' {
+    # 1 間隔だけの据え置きでは，遅れて現れる check を取りこぼす
+    $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'late' } -ScriptArgs @(
+      '-Pr', '165', '-IntervalSeconds', '1', '-SettleSeconds', '2',
+      '-TimeoutSeconds', '30'
     )
 
     $result.ExitCode | Should -Be 0
@@ -159,7 +179,7 @@ Describe 'checks が出そろうまで待つ' {
 
   It '件数が増え続ける場合は締切で 2 で終える' {
     $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'growing' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '0'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '0'
     )
 
     $result.ExitCode | Should -Be 2
@@ -170,7 +190,7 @@ Describe 'checks が出そろうまで待つ' {
 Describe '判定' {
   It '成功時は検査した commit を報告する' {
     $result = Invoke-Watch -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30'
     )
 
     $result.ExitCode | Should -Be 0
@@ -179,7 +199,7 @@ Describe '判定' {
 
   It 'checks が失敗したら 3 で終える' {
     $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'fail' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30'
     )
 
     $result.ExitCode | Should -Be 3
@@ -188,7 +208,7 @@ Describe '判定' {
 
   It '監視中に head が動いたら 2 で終える' {
     $result = Invoke-Watch -Stub @{ STUB_HEAD_MOVES = '1' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-TimeoutSeconds', '30'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '30'
     )
 
     $result.ExitCode | Should -Be 2

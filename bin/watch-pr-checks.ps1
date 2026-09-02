@@ -12,6 +12,8 @@ param(
 
   [int]$IntervalSeconds = 10,
 
+  [int]$SettleSeconds = 60,
+
   [string]$ExpectSha = ''
 )
 
@@ -31,6 +33,17 @@ if ($TimeoutSeconds -lt 0) {
 
 if ($IntervalSeconds -lt 0) {
   Write-Error "-IntervalSeconds must be non-negative: ${IntervalSeconds}"
+  exit 1
+}
+
+if ($SettleSeconds -lt 0) {
+  Write-Error "-SettleSeconds must be non-negative: ${SettleSeconds}"
+  exit 1
+}
+
+# settle が timeout を超えると，どれだけ静かでも必ずタイムアウトする
+if ($SettleSeconds -gt $TimeoutSeconds) {
+  Write-Error "-SettleSeconds (${SettleSeconds}) must not exceed -TimeoutSeconds (${TimeoutSeconds})"
   exit 1
 }
 
@@ -124,9 +137,14 @@ try {
   # --- checks が出そろうのを待つ ---
 
   # 完了の条件は 3 つである．1 件以上あること，pending が無いこと，件数が
-  # 前回の照会から増えていないこと．3 つ目は，登録の時刻が workflow ごとに
-  # 異なるためである．先に見えた check だけで「全 pass」と読む余地を消す．
-  # 最後の照会より後に現れる check までは追えない．そこまで要るなら
+  # -SettleSeconds のあいだ動いていないこと．3 つ目は，登録の時刻が workflow
+  # ごとに異なるためである．先に見えた check だけで「全 pass」と読む余地を消す．
+  #
+  # 待つ長さが要る．本リポジトリでは CodeRabbit の status が push 直後に付き，
+  # workflow の登録は約 1 分後だった．1 間隔だけの据え置きでは，前者だけを見て
+  # 「1 件が全 pass」と報告してしまう（2026-09-02 に本スクリプトで実際に発生）．
+  #
+  # それでも settle より後に現れる check は追えない．そこまで要るなら
   # GitHub 側の required checks 設定で担保する
   Write-Output 'watch-pr-checks: waiting for checks to settle'
   $ChecksDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -134,13 +152,21 @@ try {
   $PrevReport = ''
   $Total = 0
   $Failed = 0
+  $StableSince = Get-Date
   while ($true) {
     $buckets = Get-CheckBucket
     $Total = $buckets.Count
     $pending = @($buckets | Where-Object { $_ -eq 'pending' }).Count
     $Failed = @($buckets | Where-Object { $_ -eq 'fail' -or $_ -eq 'cancel' }).Count
 
-    if ($Total -gt 0 -and $pending -eq 0 -and $Total -eq $PrevTotal) {
+    $now = Get-Date
+    if ($Total -ne $PrevTotal) {
+      $StableSince = $now
+    }
+
+    $stableFor = ($now - $StableSince).TotalSeconds
+    if ($Total -gt 0 -and $pending -eq 0 -and $Total -eq $PrevTotal -and
+      $stableFor -ge $SettleSeconds) {
       break
     }
 

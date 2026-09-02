@@ -160,6 +160,14 @@ checks_queries() {
   [[ "${output}" == *"--timeout"* ]]
 }
 
+@test "rejects a settle window longer than the timeout" {
+  # どれだけ静かでも必ずタイムアウトする組み合わせを受け付けない
+  run bash "${SCRIPT}" 165 --settle 30 --timeout 10
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"--settle"* ]]
+}
+
 @test "rejects --expect-sha that is not a full SHA" {
   run bash "${SCRIPT}" 165 --expect-sha abc1234
 
@@ -170,7 +178,7 @@ checks_queries() {
 # --- remote の実体を正とする ---
 
 @test "fails when the branch is absent from the remote" {
-  STUB_REMOTE_EMPTY=1 run bash "${SCRIPT}" 165 --interval 0 --timeout 0
+  STUB_REMOTE_EMPTY=1 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 0
 
   [ "${status}" -eq 1 ]
   [[ "${output}" == *"origin"* ]]
@@ -179,7 +187,7 @@ checks_queries() {
 }
 
 @test "uses --expect-sha instead of consulting the remote" {
-  run bash "${SCRIPT}" 165 --interval 0 --timeout 30 --expect-sha "${REMOTE_SHA}"
+  run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30 --expect-sha "${REMOTE_SHA}"
 
   [ "${status}" -eq 0 ]
   run grep -q "^git ls-remote" "${CMD_LOG}"
@@ -189,7 +197,7 @@ checks_queries() {
 # --- gh がリモートへ追いつくまで待つ ---
 
 @test "waits for gh to report the remote commit before querying checks" {
-  STUB_GH_LAG=2 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+  STUB_GH_LAG=2 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
 
   [ "${status}" -eq 0 ]
   count="$(grep -c -- "--json headRefOid" "${CMD_LOG}")"
@@ -197,7 +205,7 @@ checks_queries() {
 }
 
 @test "times out without querying checks when gh never catches up" {
-  STUB_GH_LAG=99 run bash "${SCRIPT}" 165 --interval 0 --timeout 0
+  STUB_GH_LAG=99 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 0
 
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
@@ -208,7 +216,7 @@ checks_queries() {
 # --- checks が出そろうまで待つ ---
 
 @test "waits for checks to be registered" {
-  STUB_CHECKS_LAG=2 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+  STUB_CHECKS_LAG=2 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
 
   [ "${status}" -eq 0 ]
   run checks_queries
@@ -216,13 +224,13 @@ checks_queries() {
 }
 
 @test "times out when no check is ever registered" {
-  STUB_CHECKS_LAG=99 run bash "${SCRIPT}" 165 --interval 0 --timeout 0
+  STUB_CHECKS_LAG=99 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 0
 
   [ "${status}" -eq 2 ]
 }
 
 @test "keeps polling while a check is pending" {
-  STUB_CHECKS=pending run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+  STUB_CHECKS=pending run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
 
   [ "${status}" -eq 0 ]
   run checks_queries
@@ -231,14 +239,23 @@ checks_queries() {
 
 @test "keeps polling until the check set stops growing" {
   # 別 workflow の登録が遅れる場合，先に見えた check だけで完了と読まない
-  STUB_CHECKS=late run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+  STUB_CHECKS=late run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"all 2 checks passed"* ]]
+}
+
+@test "keeps polling through the settle window" {
+  # 遅れて現れる check を拾うには，静かな時間が続くのを見届ける必要がある．
+  # 1 間隔だけの据え置きでは足りない（2026-09-02 の実害）
+  STUB_CHECKS=late run bash "${SCRIPT}" 165 --interval 1 --settle 2 --timeout 30
 
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"all 2 checks passed"* ]]
 }
 
 @test "times out when checks keep appearing" {
-  STUB_CHECKS=growing run bash "${SCRIPT}" 165 --interval 0 --timeout 0
+  STUB_CHECKS=growing run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 0
 
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
@@ -247,21 +264,21 @@ checks_queries() {
 # --- 判定 ---
 
 @test "reports the inspected commit on success" {
-  run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+  run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
 
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
 }
 
 @test "exits 3 when a check failed" {
-  STUB_CHECKS=fail run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+  STUB_CHECKS=fail run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
 
   [ "${status}" -eq 3 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
 }
 
 @test "fails when the head moved while watching" {
-  STUB_HEAD_MOVES=1 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+  STUB_HEAD_MOVES=1 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
 
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"${STALE_SHA}"* ]]
