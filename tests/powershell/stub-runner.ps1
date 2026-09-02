@@ -69,6 +69,19 @@ function gh {
   $joined = $GhArgs -join ' '
   Write-StubLog ('gh ' + $joined)
 
+  # 実物の gh は --json をカンマ区切りの 1 引数として受け取り，位置引数が
+  # 増えると拒否する．PowerShell が引用符なしのカンマを配列へ分割する事故を
+  # 検出するため，スタブでも同じ厳しさを持たせる（2026-09-02 の実害）
+  $jsonIndex = [array]::IndexOf($GhArgs, '--json')
+  $jsonFields = ''
+  if ($jsonIndex -ge 0 -and ($jsonIndex + 1) -lt $GhArgs.Count) {
+    $jsonFields = $GhArgs[$jsonIndex + 1]
+  }
+  if ($jsonIndex -ge 0 -and $jsonFields -notmatch '^[A-Za-z]+(,[A-Za-z]+)*$') {
+    Write-Error 'gh: accepts at most 1 arg(s)'
+    return
+  }
+
   if ($GhArgs[0] -eq 'pr' -and $GhArgs[1] -eq 'view') {
     if ($joined -like '*headRefName*') {
       # 実物は --jq で TSV へ畳んだ 4 列を返す

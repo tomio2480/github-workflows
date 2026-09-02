@@ -60,8 +60,10 @@ if ($ExpectSha -ne '' -and $ExpectSha -notmatch '^[0-9a-f]{40}$') {
 # fork からの PR では head ブランチが origin に無い．同名のブランチが base に
 # あると，無関係な commit を掴んだまま待つ．head の所属先を解決してから引く
 if ($ExpectSha -eq '') {
+  # --json の値はカンマ区切りの 1 引数である．引用符で括らないと PowerShell が
+  # カンマで配列へ分割し，gh が「引数が多い」と拒否する
   $Fields = gh pr view $Pr `
-    --json headRefName, isCrossRepository, headRepositoryOwner, headRepository `
+    --json 'headRefName,isCrossRepository,headRepositoryOwner,headRepository' `
     --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv'
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Fields)) {
     Write-Error "could not resolve the head branch of PR #${Pr}"
