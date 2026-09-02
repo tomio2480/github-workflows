@@ -95,9 +95,11 @@ repo-local gate は `bin/verify-shell.py` に置く．
 |---|---|
 | `bin/*.sh`・`scripts/*.sh` | ShellCheck，shfmt（`-d -i 2 -ci`） |
 | `bin/*.ps1` | PSScriptAnalyzer（Error と Warning） |
+| `tests/powershell/*.Tests.ps1` | Pester（`bin/run-pester.ps1` 経由） |
 
 Bats は `unit-bash` job が同じ suite を実行するため gate へ含めない．
-Pester は対象となる `*.Tests.ps1` が無いため実行しない．
+Pester は bats を持たない PowerShell 版の振る舞いを担保するため gate で実行する．
+対象が 1 つも無ければ実行しない．
 
 fixture 呼び出し（`shell-quality-reusable` job）とは統合しない．
 前者は toolchain と caller contract を検証する自己テストである．

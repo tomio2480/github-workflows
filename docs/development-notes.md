@@ -432,6 +432,12 @@ powershell -ExecutionPolicy Bypass -File bin\watch-pr-checks.ps1 -Pr 165
 報告には必ず検査した commit を書く．
 「全 pass」だけでは，どの commit を検査したのか読み取れない．
 
+PowerShell 版は bats の対象にできないため，Pester で同じ観点をなぞる．
+`tests/powershell/` に置き，repo-local gate（`bin/verify-shell.py`）が実行する．
+スタブは PATH へ実行ファイルを置かず，同一セッションで `gh`・`git` の
+関数を定義して覆う．関数の探索は呼び出し元まで遡るためである．
+実行権限や拡張子に依存せず，Windows と Linux で同じ手順が使える．
+
 ## 🏷 リリース運用
 
 ### SemVer 風 patch tag 運用へ移行した
