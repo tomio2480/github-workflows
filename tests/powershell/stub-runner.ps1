@@ -140,6 +140,9 @@ function gh {
       'skip' {
         return @('pass', 'skipping')
       }
+      'allskip' {
+        return @('skipping', 'skipping')
+      }
       'growing' {
         # 照会のたびに 1 件増え続け，件数が安定しない
         return @(1..$n | ForEach-Object { 'pass' })
