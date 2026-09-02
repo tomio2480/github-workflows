@@ -45,8 +45,15 @@ workflow の登録は約 1 分後であった．
 **教訓は「静かであること」と「出そろったこと」は別だという点にある．**
 観測の間隔が短いと，前者を後者と読み違える．
 同じ筋で `skipping` の扱いも決めた．
-path filter で飛ばした check を pass に混ぜず，件数を分けて報告する．
+path filter で飛ばした check を通過件数へ数えず，`(N skipped)` として別に示す．
 「検査した」と「検査を飛ばした」を報告で同じにしない．
+
+当初の実装は総数へ skip を含めたまま括弧書きだけを足していた．
+`pass` 1 件と `skipping` 1 件で「all 2 checks passed」と出る形である．
+記録が実装より先に「混ぜない」と書いており，Codex のレビューが食い違いを突いた．
+指摘を受けて実装側を記録へ寄せた．あわせて，すべて skip の場合は
+「all 0 checks passed」ではなく `no checks ran` と出す．
+通過 0 件を全 pass と読ませると，path filter の設定ミスが green として沈黙する．
 
 なお残余は消えていない．`--settle` より後に現れる check は追えない．
 本来これは GitHub 側の required checks で担保する筋である．
