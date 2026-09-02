@@ -390,16 +390,25 @@ checks が未登録の時点では「no checks reported」を返して即座に�
 1 つ前の commit の run を掴んだまま全 pass を返した実例が PR #159 にある．
 いずれも「CI green」の誤認を生む（Issue #133）．
 
-`bin/watch-pr-checks.sh` は監視の前へ 2 つの待機を置く．
+`bin/watch-pr-checks.sh` は `--watch` を使わず，状態を自前で polling する．
+`--watch` は完了までブロックし，中断の手立てを持たない．
+タイムアウトを効かせるには，待つ側が制御を握っている必要がある．
+
 まず監視対象 commit の正を `git ls-remote origin` の実体とし，
 `gh` の `headRefOid` がそこへ追いつくまで待つ．
-次に checks が 1 件以上登録されるまで待つ．
-`--watch` の完了後にも head が動いていないことを確かめる．
+次に checks の状態を間隔ごとに取り，完了の条件を 3 つ課す．
+1 件以上あること，pending が無いこと，件数が前回から増えていないことである．
 
-登録の時刻は workflow ごとに異なる．先に見えていた check だけで
-`--watch` が完了する余地が残る．そこで完了時に件数を取り直し，
-増えていれば watch をやり直す．最後の照会より後に現れる check までは追えない．
+3 つ目は，登録の時刻が workflow ごとに異なるためである．
+先に見えた check だけで「全 pass」と読む余地を消す．
+最後の照会より後に現れる check までは追えない．
 そこまで要る場合は GitHub 側の required checks 設定で担保する．
+
+判定の材料は出力だけとし，`gh` の終了コードは見ない．
+`gh pr checks` は pending で exit 8，failure でも非 0 を返しつつ結果を出す．
+終了コードで判定すると，検査中の PR を照会失敗と誤読する．
+
+監視の後には head が動いていないことを確かめる．
 
 ```bash
 bash bin/watch-pr-checks.sh 165

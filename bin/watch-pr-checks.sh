@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 
-# PR の checks が登録されるのを待ってから監視する（Issue #133）．
+# PR の checks が出そろうまで監視する（Issue #133）．
 #
 # gh pr checks --watch を push 直後に実行すると，checks 未登録の時点で
 # 「no checks reported」を返して即終了する．また gh 側の PR head 情報は
 # push へ数十秒遅れることがあり，1 つ前の commit の run を掴んだまま
 # 「全 pass」を返す（PR #159 の実例）．どちらも「CI green」の誤認を生む．
 #
+# --watch は完了までブロックし，中断の手立てを持たない．タイムアウトを
+# 効かせるため，またワークフローごとに異なる登録の時刻を吸収するため，
+# --watch は使わず自前で状態を polling する．
+#
 # 実行列:
 #   1. origin の実体（git ls-remote）を監視対象 commit の正とする
 #   2. gh pr view の headRefOid がその commit へ追いつくまで待つ
-#   3. checks が 1 件以上登録されるまで待つ
-#   4. gh pr checks --watch へ移行する．完了時に件数が増えていれば watch し直す
-#   5. watch 完了後に head が動いていないことを確認する
+#   3. checks の状態を polling し，1 件以上あり，pending が無く，
+#      件数が前回から増えていない状態になるまで待つ
+#   4. head が動いていないことを確認する
+#   5. fail・cancel の有無で終了コードを決める
 #
 # 終了コード:
 #   0  監視対象 commit で全 checks が pass した
@@ -28,7 +33,7 @@ Usage: watch-pr-checks.sh <pr-number> [--timeout SECONDS] [--interval SECONDS]
                           [--expect-sha SHA]
 
   pr-number      監視する PR の番号
-  --timeout      各待機段のタイムアウト秒（既定: 600）
+  --timeout      監視全体のタイムアウト秒（既定: 600）
   --interval     ポーリング間隔秒（既定: 10）
   --expect-sha   監視対象 commit を明示する（40 桁）．origin への問い合わせを省く
 USAGE
@@ -118,35 +123,12 @@ else
   echo "watch-pr-checks: target commit ${EXPECT_SHA}"
 fi
 
-# --- 待機 ---
+# --- 問い合わせ ---
 
 # gh の失敗を「条件未成立」と区別できないまま待ち続けると，認証切れが
 # 単なるタイムアウトに見える．最後の stderr を残してタイムアウト時に示す
 LAST_ERR="$(mktemp)"
 trap 'rm -f "${LAST_ERR}"' EXIT
-
-wait_until() {
-  local desc="$1"
-  shift
-  local deadline
-  deadline=$(($(date +%s) + TIMEOUT))
-  while :; do
-    if "$@"; then
-      return 0
-    fi
-    if [ "$(date +%s)" -ge "${deadline}" ]; then
-      echo "error: timed out waiting for ${desc} (commit ${EXPECT_SHA})" >&2
-      if [ -s "${LAST_ERR}" ]; then
-        echo "error: last gh error was:" >&2
-        cat "${LAST_ERR}" >&2
-      fi
-      exit 2
-    fi
-    if [ "${INTERVAL}" -gt 0 ]; then
-      sleep "${INTERVAL}"
-    fi
-  done
-}
 
 gh_head_oid() {
   gh pr view "${PR}" --json headRefOid --jq .headRefOid 2>"${LAST_ERR}" || true
@@ -156,53 +138,83 @@ gh_head_matches() {
   [ "$(gh_head_oid)" = "${EXPECT_SHA}" ]
 }
 
-checks_count() {
-  local out
-  # pending・failure でも gh は件数を出しつつ非 0 で終える（pending は exit 8）．
-  # 終了コードで判定すると検査中の PR を照会失敗と誤読するため，出力だけを見る
-  out="$(gh pr checks "${PR}" --json name,state --jq length 2>"${LAST_ERR}" || true)"
-  if [[ "${out}" =~ ^[0-9]+$ ]]; then
-    echo "${out}"
-  else
-    # 数値以外（照会失敗・空）は 0 件として扱い，未登録と同じ経路へ落とす
-    echo 0
-  fi
+# pending・failure でも gh は結果を出しつつ非 0 で終える（pending は exit 8）．
+# 終了コードで判定すると検査中の PR を照会失敗と誤読するため，出力だけを見る．
+# 出力が無い状態は「未登録」と「照会失敗」の両方を含み，どちらも待機を続ける
+checks_buckets() {
+  gh pr checks "${PR}" --json name,state,bucket --jq '.[].bucket' 2>"${LAST_ERR}" || true
 }
 
-checks_registered() {
-  [ "$(checks_count)" -gt 0 ]
+deadline_from_now() {
+  echo $(($(date +%s) + TIMEOUT))
 }
+
+report_timeout() {
+  echo "error: timed out waiting for $1 (commit ${EXPECT_SHA})" >&2
+  if [ -s "${LAST_ERR}" ]; then
+    echo "error: last gh error was:" >&2
+    cat "${LAST_ERR}" >&2
+  fi
+  exit 2
+}
+
+# --- gh がリモートへ追いつくのを待つ ---
 
 echo "watch-pr-checks: waiting for gh to catch up with origin"
-wait_until "gh to report the target commit" gh_head_matches
-
-echo "watch-pr-checks: waiting for checks to be registered"
-wait_until "checks to be registered" checks_registered
-
-# --- 監視 ---
-
-# workflow ごとに登録の時刻が異なるため，先に見えていた check だけで watch が
-# 完了しうる．件数が増えていれば，遅れて現れた check を含めて watch し直す．
-# 最後の照会より後に現れる check までは追えない．そこまで要るなら
-# GitHub 側の required checks 設定で担保する
-WATCH_DEADLINE=$(($(date +%s) + TIMEOUT))
-WATCH_STATUS=0
-while :; do
-  COUNT_BEFORE="$(checks_count)"
-  WATCH_STATUS=0
-  gh pr checks "${PR}" --watch || WATCH_STATUS=$?
-  COUNT_AFTER="$(checks_count)"
-  if [ "${COUNT_AFTER}" -le "${COUNT_BEFORE}" ]; then
-    break
+CATCHUP_DEADLINE="$(deadline_from_now)"
+while ! gh_head_matches; do
+  if [ "$(date +%s)" -ge "${CATCHUP_DEADLINE}" ]; then
+    report_timeout "gh to report the target commit"
   fi
-  echo "watch-pr-checks: checks grew from ${COUNT_BEFORE} to ${COUNT_AFTER}; watching again"
-  if [ "$(date +%s)" -ge "${WATCH_DEADLINE}" ]; then
-    echo "error: checks kept appearing until the timeout (commit ${EXPECT_SHA})" >&2
-    exit 2
+  if [ "${INTERVAL}" -gt 0 ]; then
+    sleep "${INTERVAL}"
   fi
 done
 
-# watch 中に新しい push があれば，結果は別 commit のものである
+# --- checks が出そろうのを待つ ---
+
+# 完了の条件は 3 つである．1 件以上あること，pending が無いこと，件数が
+# 前回の照会から増えていないこと．3 つ目は，登録の時刻が workflow ごとに
+# 異なるためである．先に見えた check だけで「全 pass」と読む余地を消す．
+# 最後の照会より後に現れる check までは追えない．そこまで要るなら
+# GitHub 側の required checks 設定で担保する
+echo "watch-pr-checks: waiting for checks to settle"
+CHECKS_DEADLINE="$(deadline_from_now)"
+PREV_TOTAL=-1
+PREV_REPORT=""
+while :; do
+  BUCKETS="$(checks_buckets)"
+  TOTAL=0
+  PENDING=0
+  FAILED=0
+  if [ -n "${BUCKETS}" ]; then
+    TOTAL="$(printf '%s\n' "${BUCKETS}" | grep -c . || true)"
+    PENDING="$(printf '%s\n' "${BUCKETS}" | grep -c '^pending$' || true)"
+    FAILED="$(printf '%s\n' "${BUCKETS}" | grep -cE '^(fail|cancel)$' || true)"
+  fi
+
+  if [ "${TOTAL}" -gt 0 ] && [ "${PENDING}" -eq 0 ] && [ "${TOTAL}" -eq "${PREV_TOTAL}" ]; then
+    break
+  fi
+
+  REPORT="${TOTAL} registered, ${PENDING} pending"
+  if [ "${REPORT}" != "${PREV_REPORT}" ]; then
+    echo "watch-pr-checks: ${REPORT}"
+    PREV_REPORT="${REPORT}"
+  fi
+  PREV_TOTAL="${TOTAL}"
+
+  if [ "$(date +%s)" -ge "${CHECKS_DEADLINE}" ]; then
+    report_timeout "checks to settle"
+  fi
+  if [ "${INTERVAL}" -gt 0 ]; then
+    sleep "${INTERVAL}"
+  fi
+done
+
+# --- 判定 ---
+
+# 監視の間に新しい push があれば，見ていた結果は別 commit のものである
 AFTER_OID="$(gh_head_oid)"
 if [ "${AFTER_OID}" != "${EXPECT_SHA}" ]; then
   echo "error: head moved to ${AFTER_OID} while watching ${EXPECT_SHA}" >&2
@@ -210,9 +222,9 @@ if [ "${AFTER_OID}" != "${EXPECT_SHA}" ]; then
   exit 2
 fi
 
-if [ "${WATCH_STATUS}" -ne 0 ]; then
-  echo "error: checks did not pass on ${EXPECT_SHA} (gh exit ${WATCH_STATUS})" >&2
+if [ "${FAILED}" -gt 0 ]; then
+  echo "error: ${FAILED} of ${TOTAL} checks did not pass on ${EXPECT_SHA}" >&2
   exit 3
 fi
 
-echo "watch-pr-checks: all checks passed on ${EXPECT_SHA}"
+echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA}"

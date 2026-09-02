@@ -3,12 +3,12 @@
 # bin/watch-pr-checks.sh の単体テスト．
 #
 # 仕様（Issue #133）:
-#   - 引数: <pr-number> と任意の --timeout / --interval / --expect-sha / --remote
+#   - 引数: <pr-number> と任意の --timeout / --interval / --expect-sha
 #   - 監視対象の commit は origin の実体（git ls-remote）を正とする
-#   - gh の headRefOid が実体へ追いつくまで待ってから checks の登録を待つ
-#   - checks が登録されてから gh pr checks --watch へ移行する
-#   - watch 完了時に件数が増えていれば，登録の遅れた check を含めて watch し直す
-#   - watch 完了後に head が動いていないことを確認する
+#   - gh の headRefOid が実体へ追いつくまで待つ
+#   - checks は自前で polling する．1 件以上あり，pending が無く，
+#     件数が前回から増えていない状態になるまで待つ
+#   - 監視の後に head が動いていないことを確認する
 #   - 終了コード: 0 全 pass / 1 入力・環境エラー / 2 タイムアウト・commit 不一致 /
 #     3 checks の失敗
 #   - git / gh はスタブで置き換え，発行コマンドの列を検証する
@@ -40,11 +40,11 @@ exit 0
 STUB
   chmod +x "${STUB_DIR}/git"
 
-  # gh スタブ: pr view と pr checks を状態ファイルで制御する．
+  # gh スタブ: pr view と pr checks を呼び出し回数で制御する．
   #   STUB_GH_LAG        gh が古い SHA を返し続ける回数
-  #   STUB_CHECKS_LAG    checks 一覧が空配列を返し続ける回数
-  #   STUB_WATCH_EXIT    gh pr checks --watch の終了コード
-  #   STUB_HEAD_MOVES    watch 後の headRefOid を別 commit にする
+  #   STUB_CHECKS_LAG    checks が未登録（出力なし）の回数
+  #   STUB_CHECKS        pass / fail / pending / late / growing
+  #   STUB_HEAD_MOVES    checks が出そろった後の headRefOid を別 commit にする
   cat > "${STUB_DIR}/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "gh $*" >> "${CMD_LOG}"
@@ -63,7 +63,8 @@ case "$1 $2" in
       exit 0
     fi
     if [[ "$*" == *headRefOid* ]]; then
-      if [ "${STUB_HEAD_MOVES:-0}" = "1" ] && [ -f "${STUB_STATE_DIR}/watched" ]; then
+      # checks を 1 度でも照会した後は「監視の後」とみなす
+      if [ "${STUB_HEAD_MOVES:-0}" = "1" ] && [ -f "${STUB_STATE_DIR}/checks" ]; then
         echo "${STALE_SHA}"
         exit 0
       fi
@@ -78,25 +79,45 @@ case "$1 $2" in
     exit 0
     ;;
   "pr checks")
-    if [[ "$*" == *--watch* ]]; then
-      bump watched > /dev/null
-      exit "${STUB_WATCH_EXIT:-0}"
-    fi
     n="$(bump checks)"
-    watched=0
-    [ -f "${STUB_STATE_DIR}/watched" ] && watched="$(cat "${STUB_STATE_DIR}/watched")"
-    if [ "${n}" -le "${STUB_CHECKS_LAG:-0}" ]; then
-      echo "0"
-    elif [ "${STUB_LATE_CHECKS:-0}" = "always" ]; then
-      # watch のたびに新しい check が登録され続ける状況を再現する
-      echo $((watched + 1))
-    elif [ "${STUB_LATE_CHECKS:-0}" = "1" ] && [ "${watched}" -ge 1 ]; then
-      # 最初の watch の間に 1 件だけ遅れて登録される
-      echo "2"
-    else
-      echo "1"
+    lag="${STUB_CHECKS_LAG:-0}"
+    if [ "${n}" -le "${lag}" ]; then
+      # 未登録は出力なし（gh は非 0 で終えるが，出力だけを見る仕様）
+      exit 8
     fi
-    exit 0
+    case "${STUB_CHECKS:-pass}" in
+      fail)
+        printf 'pass\nfail\n'
+        ;;
+      pending)
+        # 最初の 2 回だけ pending を含む
+        if [ "${n}" -le $((lag + 2)) ]; then
+          printf 'pending\npass\n'
+        else
+          printf 'pass\npass\n'
+        fi
+        ;;
+      late)
+        # 1 件だけ遅れて登録される
+        if [ "${n}" -le $((lag + 1)) ]; then
+          printf 'pass\n'
+        else
+          printf 'pass\npass\n'
+        fi
+        ;;
+      growing)
+        # 照会のたびに 1 件増え続け，件数が安定しない
+        i=0
+        while [ "${i}" -lt "${n}" ]; do
+          echo "pass"
+          i=$((i + 1))
+        done
+        ;;
+      *)
+        printf 'pass\npass\n'
+        ;;
+    esac
+    exit 8
     ;;
 esac
 exit 0
@@ -106,8 +127,8 @@ STUB
   export PATH="${STUB_DIR}:${PATH}"
 }
 
-watch_invoked() {
-  grep -q -- "--watch" "${CMD_LOG}"
+checks_queries() {
+  grep -c "gh pr checks" "${CMD_LOG}"
 }
 
 # --- 入力検証 ---
@@ -153,12 +174,12 @@ watch_invoked() {
 
   [ "${status}" -eq 1 ]
   [[ "${output}" == *"origin"* ]]
-  run watch_invoked
+  run grep -q "gh pr checks" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
 }
 
 @test "uses --expect-sha instead of consulting the remote" {
-  run bash "${SCRIPT}" 165 --interval 0 --timeout 5 --expect-sha "${REMOTE_SHA}"
+  run bash "${SCRIPT}" 165 --interval 0 --timeout 30 --expect-sha "${REMOTE_SHA}"
 
   [ "${status}" -eq 0 ]
   run grep -q "^git ls-remote" "${CMD_LOG}"
@@ -167,81 +188,80 @@ watch_invoked() {
 
 # --- gh がリモートへ追いつくまで待つ ---
 
-@test "waits for gh to report the remote commit before watching" {
+@test "waits for gh to report the remote commit before querying checks" {
   STUB_GH_LAG=2 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
 
   [ "${status}" -eq 0 ]
-  run watch_invoked
-  [ "${status}" -eq 0 ]
-  # 追いつくまでの分だけ headRefOid を引き直している
   count="$(grep -c -- "--json headRefOid" "${CMD_LOG}")"
   [ "${count}" -ge 3 ]
 }
 
-@test "times out without watching when gh never catches up" {
+@test "times out without querying checks when gh never catches up" {
   STUB_GH_LAG=99 run bash "${SCRIPT}" 165 --interval 0 --timeout 0
 
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
-  run watch_invoked
+  run grep -q "gh pr checks" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
 }
 
-# --- checks の登録を待つ ---
+# --- checks が出そろうまで待つ ---
 
-@test "waits for checks to be registered before watching" {
+@test "waits for checks to be registered" {
   STUB_CHECKS_LAG=2 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
 
   [ "${status}" -eq 0 ]
-  run watch_invoked
-  [ "${status}" -eq 0 ]
-  count="$(grep -c "gh pr checks 165 --json" "${CMD_LOG}")"
-  [ "${count}" -ge 3 ]
+  run checks_queries
+  [ "${output}" -ge 3 ]
 }
 
-@test "times out without watching when no check is ever registered" {
+@test "times out when no check is ever registered" {
   STUB_CHECKS_LAG=99 run bash "${SCRIPT}" 165 --interval 0 --timeout 0
 
   [ "${status}" -eq 2 ]
-  run watch_invoked
-  [ "${status}" -ne 0 ]
 }
 
-# --- 監視結果の扱い ---
+@test "keeps polling while a check is pending" {
+  STUB_CHECKS=pending run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+
+  [ "${status}" -eq 0 ]
+  run checks_queries
+  [ "${output}" -ge 3 ]
+}
+
+@test "keeps polling until the check set stops growing" {
+  # 別 workflow の登録が遅れる場合，先に見えた check だけで完了と読まない
+  STUB_CHECKS=late run bash "${SCRIPT}" 165 --interval 0 --timeout 30
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"all 2 checks passed"* ]]
+}
+
+@test "times out when checks keep appearing" {
+  STUB_CHECKS=growing run bash "${SCRIPT}" 165 --interval 0 --timeout 0
+
+  [ "${status}" -eq 2 ]
+  [[ "${output}" == *"${REMOTE_SHA}"* ]]
+}
+
+# --- 判定 ---
 
 @test "reports the inspected commit on success" {
-  run bash "${SCRIPT}" 165 --interval 0 --timeout 5
+  run bash "${SCRIPT}" 165 --interval 0 --timeout 30
 
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
 }
 
-@test "propagates a check failure as exit code 3" {
-  STUB_WATCH_EXIT=8 run bash "${SCRIPT}" 165 --interval 0 --timeout 5
+@test "exits 3 when a check failed" {
+  STUB_CHECKS=fail run bash "${SCRIPT}" 165 --interval 0 --timeout 30
 
   [ "${status}" -eq 3 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
 }
 
-@test "watches again when a check registers late" {
-  # 別 workflow の登録が遅れると，先に見えていた check だけで watch が
-  # 完了しうる．件数が増えていれば watch をやり直す
-  STUB_LATE_CHECKS=1 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
-
-  [ "${status}" -eq 0 ]
-  count="$(grep -c -- "--watch" "${CMD_LOG}")"
-  [ "${count}" -eq 2 ]
-}
-
-@test "times out when checks keep appearing" {
-  STUB_LATE_CHECKS=always run bash "${SCRIPT}" 165 --interval 0 --timeout 0
-
-  [ "${status}" -eq 2 ]
-  [[ "${output}" == *"${REMOTE_SHA}"* ]]
-}
-
 @test "fails when the head moved while watching" {
-  STUB_HEAD_MOVES=1 run bash "${SCRIPT}" 165 --interval 0 --timeout 5
+  STUB_HEAD_MOVES=1 run bash "${SCRIPT}" 165 --interval 0 --timeout 30
 
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"${STALE_SHA}"* ]]

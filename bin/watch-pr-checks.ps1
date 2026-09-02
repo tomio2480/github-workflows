@@ -1,4 +1,4 @@
-﻿# PR の checks が登録されるのを待ってから監視する（PowerShell 版．Issue #133）．
+﻿# PR の checks が出そろうまで監視する（PowerShell 版．Issue #133）．
 #
 # 実行列と終了コードは bin/watch-pr-checks.sh と同一
 # （同スクリプトのヘッダーコメントを参照）．
@@ -61,7 +61,7 @@ if ($ExpectSha -eq '') {
   Write-Output "watch-pr-checks: target commit ${ExpectSha}"
 }
 
-# --- 待機 ---
+# --- 問い合わせ ---
 
 # gh の失敗を「条件未成立」と区別できないまま待ち続けると，認証切れが
 # 単なるタイムアウトに見える．最後の stderr を残してタイムアウト時に示す
@@ -88,78 +88,81 @@ function Get-HeadOid {
   return Invoke-GhQuery @('pr', 'view', $Pr, '--json', 'headRefOid', '--jq', '.headRefOid')
 }
 
-function Test-HeadMatch {
-  return (Get-HeadOid) -eq $ExpectSha
-}
-
-function Get-ChecksCount {
-  $text = Invoke-GhQuery @('pr', 'checks', $Pr, '--json', 'name,state', '--jq', 'length')
-  if ($text -match '^[0-9]+$') {
-    return [int]$text
+function Get-CheckBucket {
+  $text = Invoke-GhQuery @('pr', 'checks', $Pr, '--json', 'name,state,bucket', '--jq', '.[].bucket')
+  if ($text -eq '') {
+    # 出力が無い状態は「未登録」と「照会失敗」の両方を含み，どちらも待機を続ける
+    return @()
   }
-  # 数値以外（照会失敗・空）は 0 件として扱い，未登録と同じ経路へ落とす
-  return 0
+  return @($text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
 }
 
-function Test-ChecksRegistered {
-  return (Get-ChecksCount) -gt 0
+function Write-TimeoutReport {
+  param([string]$Description)
+  Write-Output "error: timed out waiting for ${Description} (commit ${ExpectSha})"
+  if ($Script:LastError -ne '') {
+    Write-Output 'error: last gh error was:'
+    Write-Output $Script:LastError
+  }
 }
 
-function Wait-Until {
-  param(
-    [string]$Description,
-    [scriptblock]$Condition
-  )
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  while ($true) {
-    if (& $Condition) {
-      return
-    }
-    if ((Get-Date) -ge $deadline) {
-      Write-Output "error: timed out waiting for ${Description} (commit ${ExpectSha})"
-      if ($Script:LastError -ne '') {
-        Write-Output 'error: last gh error was:'
-        Write-Output $Script:LastError
-      }
+try {
+  # --- gh がリモートへ追いつくのを待つ ---
+
+  Write-Output 'watch-pr-checks: waiting for gh to catch up with origin'
+  $CatchupDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-HeadOid) -ne $ExpectSha) {
+    if ((Get-Date) -ge $CatchupDeadline) {
+      Write-TimeoutReport -Description 'gh to report the target commit'
       exit 2
     }
     if ($IntervalSeconds -gt 0) {
       Start-Sleep -Seconds $IntervalSeconds
     }
   }
-}
 
-try {
-  Write-Output 'watch-pr-checks: waiting for gh to catch up with origin'
-  Wait-Until -Description 'gh to report the target commit' -Condition { Test-HeadMatch }
+  # --- checks が出そろうのを待つ ---
 
-  Write-Output 'watch-pr-checks: waiting for checks to be registered'
-  Wait-Until -Description 'checks to be registered' -Condition { Test-ChecksRegistered }
-
-  # --- 監視 ---
-
-  # workflow ごとに登録の時刻が異なるため，先に見えていた check だけで watch が
-  # 完了しうる．件数が増えていれば，遅れて現れた check を含めて watch し直す．
+  # 完了の条件は 3 つである．1 件以上あること，pending が無いこと，件数が
+  # 前回の照会から増えていないこと．3 つ目は，登録の時刻が workflow ごとに
+  # 異なるためである．先に見えた check だけで「全 pass」と読む余地を消す．
   # 最後の照会より後に現れる check までは追えない．そこまで要るなら
   # GitHub 側の required checks 設定で担保する
-  $WatchDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  $WatchStatus = 0
+  Write-Output 'watch-pr-checks: waiting for checks to settle'
+  $ChecksDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $PrevTotal = -1
+  $PrevReport = ''
+  $Total = 0
+  $Failed = 0
   while ($true) {
-    $CountBefore = Get-ChecksCount
-    gh pr checks $Pr --watch
-    $WatchStatus = $LASTEXITCODE
-    $CountAfter = Get-ChecksCount
-    if ($CountAfter -le $CountBefore) {
+    $buckets = Get-CheckBucket
+    $Total = $buckets.Count
+    $pending = @($buckets | Where-Object { $_ -eq 'pending' }).Count
+    $Failed = @($buckets | Where-Object { $_ -eq 'fail' -or $_ -eq 'cancel' }).Count
+
+    if ($Total -gt 0 -and $pending -eq 0 -and $Total -eq $PrevTotal) {
       break
     }
-    Write-Output "watch-pr-checks: checks grew from ${CountBefore} to ${CountAfter}; watching again"
-    if ((Get-Date) -ge $WatchDeadline) {
-      Write-Output "error: checks kept appearing until the timeout (commit ${ExpectSha})"
+
+    $report = "${Total} registered, ${pending} pending"
+    if ($report -ne $PrevReport) {
+      Write-Output "watch-pr-checks: ${report}"
+      $PrevReport = $report
+    }
+    $PrevTotal = $Total
+
+    if ((Get-Date) -ge $ChecksDeadline) {
+      Write-TimeoutReport -Description 'checks to settle'
       exit 2
+    }
+    if ($IntervalSeconds -gt 0) {
+      Start-Sleep -Seconds $IntervalSeconds
     }
   }
 
-  # watch 中に新しい push があれば，結果は別 commit のものである
+  # --- 判定 ---
+
+  # 監視の間に新しい push があれば，見ていた結果は別 commit のものである
   $AfterOid = Get-HeadOid
   if ($AfterOid -ne $ExpectSha) {
     Write-Output "error: head moved to ${AfterOid} while watching ${ExpectSha}"
@@ -167,12 +170,12 @@ try {
     exit 2
   }
 
-  if ($WatchStatus -ne 0) {
-    Write-Output "error: checks did not pass on ${ExpectSha} (gh exit ${WatchStatus})"
+  if ($Failed -gt 0) {
+    Write-Output "error: ${Failed} of ${Total} checks did not pass on ${ExpectSha}"
     exit 3
   }
 
-  Write-Output "watch-pr-checks: all checks passed on ${ExpectSha}"
+  Write-Output "watch-pr-checks: all ${Total} checks passed on ${ExpectSha}"
 } finally {
   if (Test-Path $Script:ErrPath) {
     Remove-Item -Force -ErrorAction SilentlyContinue $Script:ErrPath
