@@ -9,7 +9,8 @@
 中央 workflow は toolchain の配置だけを担う（docs/shell-quality.md 参照）．
 
 Bats は `test-self-lint.yml` の unit-bash job が同じ suite を実行するため
-本 gate では動かさない．Pester は対象となる `*.Tests.ps1` が存在しない．
+本 gate では動かさない．Pester は `tests/powershell/*.Tests.ps1` を対象に
+本 gate から実行する．bats を持たない PowerShell 版の振る舞いを担保する．
 """
 
 from __future__ import annotations
@@ -24,9 +25,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ANALYZER_SCRIPT = REPO_ROOT / "bin" / "analyze-powershell.ps1"
+PESTER_SCRIPT = REPO_ROOT / "bin" / "run-pester.ps1"
 
 BASH_PATTERNS = ("bin/*.sh", "scripts/*.sh")
 POWERSHELL_PATTERNS = ("bin/*.ps1",)
+PESTER_PATTERNS = ("tests/powershell/*.Tests.ps1",)
 
 # 既存スクリプトの整形規則．-i 2 はインデント幅，-ci は case 分岐のインデント．
 SHFMT_OPTIONS = ("-i", "2", "-ci")
@@ -80,21 +83,30 @@ def run_powershell_analyzer(targets: Sequence[str], runner: Runner) -> int:
     )
 
 
+def run_pester(targets: Sequence[str], runner: Runner) -> int:
+    if not targets:
+        return 0
+    return runner(["pwsh", "-NoProfile", "-File", str(PESTER_SCRIPT), *targets])
+
+
 def run_checks(runner: Runner = default_runner) -> int:
     """全チェックを実行する．途中で打ち切らず，失敗を集約して返す．"""
     bash_targets = collect_targets(REPO_ROOT, BASH_PATTERNS)
     powershell_targets = collect_targets(REPO_ROOT, POWERSHELL_PATTERNS)
+    pester_targets = collect_targets(REPO_ROOT, PESTER_PATTERNS)
 
     # 「チェックが pass した」と「対象を検査した」を CI ログ上で区別するため，
     # ShellCheck と shfmt が無出力で成功する場合でも対象を残す．
     # 子プロセスの出力と混ざらないよう flush する．
     print(f"targets (shellcheck, shfmt): {', '.join(bash_targets)}", flush=True)
     print(f"targets (PSScriptAnalyzer): {', '.join(powershell_targets)}", flush=True)
+    print(f"targets (Pester): {', '.join(pester_targets)}", flush=True)
 
     exit_codes = [
         run_shellcheck(bash_targets, runner),
         run_shfmt(bash_targets, runner),
         run_powershell_analyzer(powershell_targets, runner),
+        run_pester(pester_targets, runner),
     ]
     return 0 if all(code == 0 for code in exit_codes) else 1
 

@@ -62,7 +62,12 @@ def test_collect_targets_excludes_fixture_assets() -> None:
         REPO_ROOT, verify_shell.POWERSHELL_PATTERNS
     )
 
-    assert targets == ["bin/analyze-powershell.ps1", "bin/release-patch.ps1"]
+    assert targets == [
+        "bin/analyze-powershell.ps1",
+        "bin/release-patch.ps1",
+        "bin/run-pester.ps1",
+        "bin/watch-pr-checks.ps1",
+    ]
 
 
 def test_missing_tools_reports_absent_executables() -> None:
@@ -116,13 +121,52 @@ def test_run_powershell_analyzer_invokes_pwsh_with_script_file() -> None:
     ]
 
 
+def test_run_pester_invokes_pwsh_with_runner_script() -> None:
+    runner = RecordingRunner()
+
+    returncode = verify_shell.run_pester(
+        ["tests/powershell/watch-pr-checks.Tests.ps1"], runner=runner
+    )
+
+    assert returncode == 0
+    assert runner.calls == [
+        [
+            "pwsh",
+            "-NoProfile",
+            "-File",
+            str(verify_shell.PESTER_SCRIPT),
+            "tests/powershell/watch-pr-checks.Tests.ps1",
+        ]
+    ]
+
+
+def test_run_pester_is_skipped_without_targets() -> None:
+    runner = RecordingRunner()
+
+    assert verify_shell.run_pester([], runner=runner) == 0
+    assert runner.calls == []
+
+
+def test_collect_targets_finds_the_pester_suite() -> None:
+    targets = verify_shell.collect_targets(REPO_ROOT, verify_shell.PESTER_PATTERNS)
+
+    assert "tests/powershell/watch-pr-checks.Tests.ps1" in targets
+    # スタブの補助スクリプトは Pester の対象ではない
+    assert "tests/powershell/stub-runner.ps1" not in targets
+
+
 def test_run_checks_reports_every_failure() -> None:
     runner = RecordingRunner(returncode=1)
 
     returncode = verify_shell.run_checks(runner=runner)
 
     assert returncode == 1
-    assert [call[0] for call in runner.calls] == ["shellcheck", "shfmt", "pwsh"]
+    assert [call[0] for call in runner.calls] == [
+        "shellcheck",
+        "shfmt",
+        "pwsh",
+        "pwsh",
+    ]
 
 
 def test_run_checks_prints_inspected_targets(capsys) -> None:

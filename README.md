@@ -159,10 +159,14 @@ github-workflows/
 │   ├── lint-md.sh                 # push 前ローカル Markdown lint（v2.15〜）
 │   ├── release-patch.sh           # 定例 patch リリース（タグ・Release・v2 追従）
 │   ├── release-patch.ps1          # 同上の PowerShell 版
+│   ├── run-pester.ps1             # Pester 実行部（verify-shell.py から呼ぶ）
+│   ├── watch-pr-checks.sh         # checks が出そろうまで CI を監視（v2.16〜）
+│   ├── watch-pr-checks.ps1        # 同上の PowerShell 版
 │   └── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
 │   ├── bash/                      # bats-core
+│   ├── powershell/                # Pester（.ps1 の振る舞い）
 │   └── fixtures/
 │       ├── markdown/              # Markdown lint 統合テスト fixture
 │       └── shell-quality/         # Shell quality toolchain probe
