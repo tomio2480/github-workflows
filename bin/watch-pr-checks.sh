@@ -20,8 +20,11 @@
 #   4. head が動いていないことを確認する
 #   5. fail・cancel の有無で終了コードを決める
 #
+# 報告では skipping を通過件数へ数えず，(N skipped) として別に示す．
+# すべて skip なら通過は 0 件のため，全 pass ではなく no checks ran と出す．
+#
 # 終了コード:
-#   0  監視対象 commit で全 checks が pass した
+#   0  監視対象 commit で全 checks が pass した（すべて skip の場合を含む）
 #   1  入力エラー・環境エラー
 #   2  タイムアウト，または監視対象 commit の不一致
 #   3  checks が pass しなかった
@@ -306,9 +309,14 @@ if [ "${FAILED}" -gt 0 ]; then
   exit 3
 fi
 
-# skip した check を pass と混ぜない．「検査した」と「検査を飛ばした」は別である
-if [ "${SKIPPED}" -gt 0 ]; then
-  echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA} (${SKIPPED} skipped)"
-else
+# skip した check を通過件数へ数えない．「検査した」と「検査を飛ばした」は別である．
+# すべて skip なら通過は 0 件である．これを「全 pass」と読ませると，
+# path filter の設定ミスが green として沈黙する
+PASSED=$((TOTAL - SKIPPED))
+if [ "${SKIPPED}" -eq 0 ]; then
   echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA}"
+elif [ "${PASSED}" -eq 0 ]; then
+  echo "watch-pr-checks: no checks ran on ${EXPECT_SHA} (${SKIPPED} skipped)"
+else
+  echo "watch-pr-checks: all ${PASSED} checks passed on ${EXPECT_SHA} (${SKIPPED} skipped)"
 fi

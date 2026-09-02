@@ -253,11 +253,16 @@ try {
     exit 3
   }
 
-  # skip した check を pass と混ぜない．「検査した」と「検査を飛ばした」は別である
-  if ($Skipped -gt 0) {
-    Write-Output "watch-pr-checks: all ${Total} checks passed on ${ExpectSha} (${Skipped} skipped)"
-  } else {
+  # skip した check を通過件数へ数えない．「検査した」と「検査を飛ばした」は別である．
+  # すべて skip なら通過は 0 件である．これを「全 pass」と読ませると，
+  # path filter の設定ミスが green として沈黙する
+  $Passed = $Total - $Skipped
+  if ($Skipped -eq 0) {
     Write-Output "watch-pr-checks: all ${Total} checks passed on ${ExpectSha}"
+  } elseif ($Passed -eq 0) {
+    Write-Output "watch-pr-checks: no checks ran on ${ExpectSha} (${Skipped} skipped)"
+  } else {
+    Write-Output "watch-pr-checks: all ${Passed} checks passed on ${ExpectSha} (${Skipped} skipped)"
   }
 } finally {
   if (Test-Path $Script:ErrPath) {
