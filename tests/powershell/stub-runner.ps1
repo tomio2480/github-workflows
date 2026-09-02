@@ -124,11 +124,21 @@ function gh {
         return @('pass', 'pass')
       }
       'late' {
-        # 1 件だけ遅れて登録される
+        # 2 回目の照会で 2 件目が現れる
         if ($n -le ($lag + 1)) {
           return @('pass')
         }
         return @('pass', 'pass')
+      }
+      'lateslow' {
+        # 3 回目の照会で 2 件目が現れる．件数の据え置き 1 回では拾えない
+        if ($n -le ($lag + 2)) {
+          return @('pass')
+        }
+        return @('pass', 'pass')
+      }
+      'skip' {
+        return @('pass', 'skipping')
       }
       'growing' {
         # 照会のたびに 1 件増え続け，件数が安定しない

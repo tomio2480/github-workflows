@@ -79,6 +79,16 @@ Describe '入力検証' {
     $result.Output | Should -Match 'SettleSeconds'
   }
 
+  It '-IntervalSeconds 0 と据え置きの併用を拒む' {
+    $result = Invoke-Watch -ScriptArgs @(
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '5',
+      '-TimeoutSeconds', '30'
+    )
+
+    $result.ExitCode | Should -Be 1
+    $result.Output | Should -Match 'IntervalSeconds'
+  }
+
   It '-ExpectSha が 40 桁でなければ 1 で終える' {
     $result = Invoke-Watch -ScriptArgs @('-Pr', '165', '-ExpectSha', 'abc1234')
 
@@ -178,8 +188,8 @@ Describe 'checks が出そろうまで待つ' {
   }
 
   It '静かな時間が続くのを見届けてから完了とする' {
-    # 1 間隔だけの据え置きでは，遅れて現れる check を取りこぼす
-    $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'late' } -ScriptArgs @(
+    # 3 回目の照会で現れる check は，件数の据え置き 1 回では拾えない
+    $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'lateslow' } -ScriptArgs @(
       '-Pr', '165', '-IntervalSeconds', '1', '-SettleSeconds', '2',
       '-TimeoutSeconds', '30'
     )
@@ -190,11 +200,12 @@ Describe 'checks が出そろうまで待つ' {
 
   It '件数が増え続ける場合は締切で 2 で終える' {
     $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'growing' } -ScriptArgs @(
-      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '0'
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '2'
     )
 
     $result.ExitCode | Should -Be 2
     $result.Output | Should -Match $script:RemoteSha
+    @($result.Commands -match 'pr checks').Count | Should -BeGreaterOrEqual 3
   }
 }
 
@@ -206,6 +217,16 @@ Describe '判定' {
 
     $result.ExitCode | Should -Be 0
     $result.Output | Should -Match $script:RemoteSha
+  }
+
+  It 'skip した check を pass と分けて報告する' {
+    $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'skip' } -ScriptArgs @(
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0',
+      '-TimeoutSeconds', '30'
+    )
+
+    $result.ExitCode | Should -Be 0
+    $result.Output | Should -Match '\(1 skipped\)'
   }
 
   It 'checks が失敗したら 3 で終える' {

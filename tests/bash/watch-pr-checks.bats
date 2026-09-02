@@ -6,8 +6,9 @@
 #   - 引数: <pr-number> と任意の --timeout / --interval / --expect-sha
 #   - 監視対象の commit は origin の実体（git ls-remote）を正とする
 #   - gh の headRefOid が実体へ追いつくまで待つ
-#   - checks は自前で polling する．1 件以上あり，pending が無く，
-#     件数が前回から増えていない状態になるまで待つ
+#   - checks は自前で polling する．完了は 4 条件（1 件以上・pending 無し・
+#     件数が前回の照会から不変・不変になってから --settle 秒の経過）
+#   - skip した check は pass と分けて報告する
 #   - 監視の後に head が動いていないことを確認する
 #   - 終了コード: 0 全 pass / 1 入力・環境エラー / 2 タイムアウト・commit 不一致 /
 #     3 checks の失敗
@@ -103,12 +104,23 @@ case "$1 $2" in
         fi
         ;;
       late)
-        # 1 件だけ遅れて登録される
+        # 2 回目の照会で 2 件目が現れる
         if [ "${n}" -le $((lag + 1)) ]; then
           printf 'pass\n'
         else
           printf 'pass\npass\n'
         fi
+        ;;
+      lateslow)
+        # 3 回目の照会で 2 件目が現れる．件数の据え置き 1 回では拾えない
+        if [ "${n}" -le $((lag + 2)) ]; then
+          printf 'pass\n'
+        else
+          printf 'pass\npass\n'
+        fi
+        ;;
+      skip)
+        printf 'pass\nskipping\n'
         ;;
       growing)
         # 照会のたびに 1 件増え続け，件数が安定しない
@@ -261,19 +273,39 @@ checks_queries() {
 }
 
 @test "keeps polling through the settle window" {
-  # 遅れて現れる check を拾うには，静かな時間が続くのを見届ける必要がある．
-  # 1 間隔だけの据え置きでは足りない（2026-09-02 の実害）
-  STUB_CHECKS=late run bash "${SCRIPT}" 165 --interval 1 --settle 2 --timeout 30
+  # 3 回目の照会で現れる check は，件数の据え置き 1 回では拾えない．
+  # 静かな時間が続くのを見届けて初めて 2 件を数える（2026-09-02 の実害）
+  STUB_CHECKS=lateslow run bash "${SCRIPT}" 165 --interval 1 --settle 2 --timeout 30
 
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"all 2 checks passed"* ]]
 }
 
+@test "rejects a settle window with no polling interval" {
+  # 間隔 0 のまま据え置きを待つと API を全速で叩き続ける
+  run bash "${SCRIPT}" 165 --interval 0 --settle 5 --timeout 30
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"--interval"* ]]
+}
+
 @test "times out when checks keep appearing" {
-  STUB_CHECKS=growing run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 0
+  # 締切に余裕を持たせ，増え続ける様子を実際に観測させる．
+  # date の分解能は 1 秒のため，1 では初回照会の直後に切れうる
+  STUB_CHECKS=growing run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 2
 
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"${REMOTE_SHA}"* ]]
+  run checks_queries
+  [ "${output}" -ge 3 ]
+}
+
+@test "reports skipped checks separately from passed ones" {
+  # 「検査した」と「検査を飛ばした」を報告で混ぜない
+  STUB_CHECKS=skip run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"(1 skipped)"* ]]
 }
 
 # --- 判定 ---
