@@ -12,7 +12,7 @@ param(
 
   [int]$IntervalSeconds = 10,
 
-  [int]$SettleSeconds = 60,
+  [int]$SettleSeconds = 120,
 
   [string]$ExpectSha = ''
 )
@@ -44,6 +44,12 @@ if ($SettleSeconds -lt 0) {
 # settle が timeout を超えると，どれだけ静かでも必ずタイムアウトする
 if ($SettleSeconds -gt $TimeoutSeconds) {
   Write-Error "-SettleSeconds (${SettleSeconds}) must not exceed -TimeoutSeconds (${TimeoutSeconds})"
+  exit 1
+}
+
+# 間隔 0 で据え置きを待つと，その間 API を全速で叩き続ける
+if ($IntervalSeconds -eq 0 -and $SettleSeconds -gt 0) {
+  Write-Error '-IntervalSeconds 0 requires -SettleSeconds 0 (it would busy-poll the API)'
   exit 1
 }
 
@@ -136,12 +142,18 @@ function Get-CheckBucket {
   return @($text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
 }
 
+# bash 版は error 行をすべて stderr へ出す．出力先もそろえる約束に含める
+function Write-Failure {
+  param([string]$Message)
+  [Console]::Error.WriteLine($Message)
+}
+
 function Write-TimeoutReport {
   param([string]$Description)
-  Write-Output "error: timed out waiting for ${Description} (commit ${ExpectSha})"
+  Write-Failure "error: timed out waiting for ${Description} (commit ${ExpectSha})"
   if ($Script:LastError -ne '') {
-    Write-Output 'error: last gh error was:'
-    Write-Output $Script:LastError
+    Write-Failure 'error: last gh error was:'
+    Write-Failure $Script:LastError
   }
 }
 
@@ -165,27 +177,32 @@ try {
 
   # --- checks が出そろうのを待つ ---
 
-  # 完了の条件は 3 つである．1 件以上あること，pending が無いこと，件数が
-  # -SettleSeconds のあいだ動いていないこと．3 つ目は，登録の時刻が workflow
-  # ごとに異なるためである．先に見えた check だけで「全 pass」と読む余地を消す．
+  # 完了の条件は 4 つである．1 件以上あること，pending が無いこと，件数が前回の
+  # 照会から変わっていないこと，変わらなくなってから -SettleSeconds が過ぎたこと．
+  # 後ろの 2 つは，登録の時刻が workflow ごとに異なるためである．
+  # 先に見えた check だけで「全 pass」と読む余地を消す．
   #
   # 待つ長さが要る．本リポジトリでは CodeRabbit の status が push 直後に付き，
   # workflow の登録は約 1 分後だった．1 間隔だけの据え置きでは，前者だけを見て
   # 「1 件が全 pass」と報告してしまう（2026-09-02 に本スクリプトで実際に発生）．
   #
+  # 既定の 120 秒は観測した遅延の 2 倍である．等倍では余裕が無い．
+  #
   # それでも settle より後に現れる check は追えない．そこまで要るなら
-  # GitHub 側の required checks 設定で担保する
+  # GitHub 側の required checks 設定で担保する（本リポジトリは未設定）
   Write-Output 'watch-pr-checks: waiting for checks to settle'
   $PrevTotal = -1
   $PrevReport = ''
   $Total = 0
   $Failed = 0
+  $Skipped = 0
   $StableSince = Get-Date
   while ($true) {
     $buckets = Get-CheckBucket
     $Total = $buckets.Count
     $pending = @($buckets | Where-Object { $_ -eq 'pending' }).Count
     $Failed = @($buckets | Where-Object { $_ -eq 'fail' -or $_ -eq 'cancel' }).Count
+    $Skipped = @($buckets | Where-Object { $_ -eq 'skipping' }).Count
 
     $now = Get-Date
     if ($Total -ne $PrevTotal) {
@@ -218,18 +235,30 @@ try {
 
   # 監視の間に新しい push があれば，見ていた結果は別 commit のものである
   $AfterOid = Get-HeadOid
+  if ($AfterOid -eq '') {
+    Write-Failure "error: could not re-read the head of PR #${Pr} after watching ${ExpectSha}"
+    if ($Script:LastError -ne '') {
+      Write-Failure $Script:LastError
+    }
+    exit 2
+  }
   if ($AfterOid -ne $ExpectSha) {
-    Write-Output "error: head moved to ${AfterOid} while watching ${ExpectSha}"
-    Write-Output 'error: rerun to watch the new commit'
+    Write-Failure "error: head moved to ${AfterOid} while watching ${ExpectSha}"
+    Write-Failure 'error: rerun to watch the new commit'
     exit 2
   }
 
   if ($Failed -gt 0) {
-    Write-Output "error: ${Failed} of ${Total} checks did not pass on ${ExpectSha}"
+    Write-Failure "error: ${Failed} of ${Total} checks did not pass on ${ExpectSha}"
     exit 3
   }
 
-  Write-Output "watch-pr-checks: all ${Total} checks passed on ${ExpectSha}"
+  # skip した check を pass と混ぜない．「検査した」と「検査を飛ばした」は別である
+  if ($Skipped -gt 0) {
+    Write-Output "watch-pr-checks: all ${Total} checks passed on ${ExpectSha} (${Skipped} skipped)"
+  } else {
+    Write-Output "watch-pr-checks: all ${Total} checks passed on ${ExpectSha}"
+  }
 } finally {
   if (Test-Path $Script:ErrPath) {
     Remove-Item -Force -ErrorAction SilentlyContinue $Script:ErrPath

@@ -14,8 +14,9 @@
 # 実行列:
 #   1. head リポジトリの実体（git ls-remote）を監視対象 commit の正とする
 #   2. gh pr view の headRefOid がその commit へ追いつくまで待つ
-#   3. checks の状態を polling し，1 件以上あり，pending が無く，
-#      件数が --settle 秒のあいだ動いていない状態になるまで待つ
+#   3. checks の状態を polling し，完了の 4 条件がそろうまで待つ．
+#      1 件以上あること，pending が無いこと，件数が前回の照会から変わって
+#      いないこと，件数が変わらなくなってから --settle 秒が過ぎたこと
 #   4. head が動いていないことを確認する
 #   5. fail・cancel の有無で終了コードを決める
 #
@@ -35,7 +36,7 @@ Usage: watch-pr-checks.sh <pr-number> [--timeout SECONDS] [--interval SECONDS]
   pr-number      監視する PR の番号
   --timeout      監視全体のタイムアウト秒（既定: 600）．段ごとに取り直さない
   --interval     ポーリング間隔秒（既定: 10）
-  --settle       件数が動かなくなってから完了と見なすまでの秒数（既定: 60）
+  --settle       件数が動かなくなってから完了と見なすまでの秒数（既定: 120）
   --expect-sha   監視対象 commit を明示する（40 桁）．origin への問い合わせを省く
 USAGE
   exit 1
@@ -47,7 +48,7 @@ shift
 
 TIMEOUT=600
 INTERVAL=10
-SETTLE=60
+SETTLE=120
 EXPECT_SHA=""
 
 # 値必須オプションが後続オプションを値として吸うと，指定の欠落が既定値へ
@@ -116,6 +117,12 @@ if [ "${SETTLE}" -gt "${TIMEOUT}" ]; then
   exit 1
 fi
 
+# 間隔 0 で据え置きを待つと，その間 API を全速で叩き続ける
+if [ "${INTERVAL}" -eq 0 ] && [ "${SETTLE}" -gt 0 ]; then
+  echo "error: --interval 0 requires --settle 0 (it would busy-poll the API)" >&2
+  exit 1
+fi
+
 if [ -n "${EXPECT_SHA}" ] && ! [[ "${EXPECT_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "error: --expect-sha must be a full 40-hex SHA: ${EXPECT_SHA}" >&2
   exit 1
@@ -132,7 +139,12 @@ if [ -z "${EXPECT_SHA}" ]; then
   PR_INFO="$(gh pr view "${PR}" \
     --json headRefName,isCrossRepository,headRepositoryOwner,headRepository \
     --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv')"
-  IFS=$'\t' read -r BRANCH CROSS_REPO HEAD_OWNER HEAD_REPO <<<"${PR_INFO}"
+  # IFS のタブは空白類のため read では連続を 1 つに詰め，空欄があると列がずれる．
+  # cut は詰めないため列の位置が保たれる
+  BRANCH="$(printf '%s' "${PR_INFO}" | cut -f1)"
+  CROSS_REPO="$(printf '%s' "${PR_INFO}" | cut -f2)"
+  HEAD_OWNER="$(printf '%s' "${PR_INFO}" | cut -f3)"
+  HEAD_REPO="$(printf '%s' "${PR_INFO}" | cut -f4)"
   if [ -z "${BRANCH}" ]; then
     echo "error: could not resolve the head branch of PR #${PR}" >&2
     exit 1
@@ -161,12 +173,22 @@ fi
 # --- 問い合わせ ---
 
 # gh の失敗を「条件未成立」と区別できないまま待ち続けると，認証切れが
-# 単なるタイムアウトに見える．最後の stderr を残してタイムアウト時に示す
+# 単なるタイムアウトに見える．最後の stderr を残してタイムアウト時に示す．
+# 保持するのは「最後に観測した失敗」とする．後続の成功で消さない．
+# 直後の 1 回が成功しただけで原因が消えると，追跡できないためである
 LAST_ERR="$(mktemp)"
-trap 'rm -f "${LAST_ERR}"' EXIT
+CALL_ERR="$(mktemp)"
+trap 'rm -f "${LAST_ERR}" "${CALL_ERR}"' EXIT
+
+keep_error() {
+  if [ -s "${CALL_ERR}" ]; then
+    cat "${CALL_ERR}" >"${LAST_ERR}"
+  fi
+}
 
 gh_head_oid() {
-  gh pr view "${PR}" --json headRefOid --jq .headRefOid 2>"${LAST_ERR}" || true
+  gh pr view "${PR}" --json headRefOid --jq .headRefOid 2>"${CALL_ERR}" || true
+  keep_error
 }
 
 gh_head_matches() {
@@ -177,7 +199,8 @@ gh_head_matches() {
 # 終了コードで判定すると検査中の PR を照会失敗と誤読するため，出力だけを見る．
 # 出力が無い状態は「未登録」と「照会失敗」の両方を含み，どちらも待機を続ける
 checks_buckets() {
-  gh pr checks "${PR}" --json name,state,bucket --jq '.[].bucket' 2>"${LAST_ERR}" || true
+  gh pr checks "${PR}" --json name,state,bucket --jq '.[].bucket' 2>"${CALL_ERR}" || true
+  keep_error
 }
 
 # --timeout は監視全体に掛かる．段ごとに取り直すと合計が 2 倍になりうるため，
@@ -207,16 +230,18 @@ done
 
 # --- checks が出そろうのを待つ ---
 
-# 完了の条件は 3 つである．1 件以上あること，pending が無いこと，件数が
-# --settle 秒のあいだ動いていないこと．3 つ目は，登録の時刻が workflow ごとに
-# 異なるためである．先に見えた check だけで「全 pass」と読む余地を消す．
+# 完了の条件は 4 つである．1 件以上あること，pending が無いこと，件数が前回の
+# 照会から変わっていないこと，件数が変わらなくなってから --settle 秒が過ぎたこと．
+# 後ろの 2 つは，登録の時刻が workflow ごとに異なるためである．
+# 先に見えた check だけで「全 pass」と読む余地を消す．
 #
 # 待つ長さが要る．本リポジトリでは CodeRabbit の status が push 直後に付き，
 # workflow の登録は約 1 分後だった．1 間隔だけの据え置きでは，前者だけを見て
 # 「1 件が全 pass」と報告してしまう（2026-09-02 に本スクリプトで実際に発生）．
+# 既定の 120 秒は観測した遅延の 2 倍である．等倍では余裕が無い．
 #
 # それでも --settle より後に現れる check は追えない．そこまで要るなら
-# GitHub 側の required checks 設定で担保する
+# GitHub 側の required checks 設定で担保する（本リポジトリは未設定）
 echo "watch-pr-checks: waiting for checks to settle"
 PREV_TOTAL=-1
 PREV_REPORT=""
@@ -226,10 +251,12 @@ while :; do
   TOTAL=0
   PENDING=0
   FAILED=0
+  SKIPPED=0
   if [ -n "${BUCKETS}" ]; then
     TOTAL="$(printf '%s\n' "${BUCKETS}" | grep -c . || true)"
     PENDING="$(printf '%s\n' "${BUCKETS}" | grep -c '^pending$' || true)"
     FAILED="$(printf '%s\n' "${BUCKETS}" | grep -cE '^(fail|cancel)$' || true)"
+    SKIPPED="$(printf '%s\n' "${BUCKETS}" | grep -c '^skipping$' || true)"
   fi
 
   NOW="$(date +%s)"
@@ -261,6 +288,13 @@ done
 
 # 監視の間に新しい push があれば，見ていた結果は別 commit のものである
 AFTER_OID="$(gh_head_oid)"
+if [ -z "${AFTER_OID}" ]; then
+  echo "error: could not re-read the head of PR #${PR} after watching ${EXPECT_SHA}" >&2
+  if [ -s "${LAST_ERR}" ]; then
+    cat "${LAST_ERR}" >&2
+  fi
+  exit 2
+fi
 if [ "${AFTER_OID}" != "${EXPECT_SHA}" ]; then
   echo "error: head moved to ${AFTER_OID} while watching ${EXPECT_SHA}" >&2
   echo "error: rerun to watch the new commit" >&2
@@ -272,4 +306,9 @@ if [ "${FAILED}" -gt 0 ]; then
   exit 3
 fi
 
-echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA}"
+# skip した check を pass と混ぜない．「検査した」と「検査を飛ばした」は別である
+if [ "${SKIPPED}" -gt 0 ]; then
+  echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA} (${SKIPPED} skipped)"
+else
+  echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA}"
+fi
