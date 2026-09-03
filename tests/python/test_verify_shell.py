@@ -64,6 +64,7 @@ def test_collect_targets_excludes_fixture_assets() -> None:
 
     assert targets == [
         "bin/analyze-powershell.ps1",
+        "bin/lib/native.ps1",
         "bin/release-patch.ps1",
         "bin/run-pester.ps1",
         "bin/watch-pr-checks.ps1",

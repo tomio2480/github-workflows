@@ -4,3 +4,7 @@
 # bin/verify-shell.py のローカル実行が成立しないため．
 *.sh text eol=lf
 *.ps1 text eol=lf
+
+# cmd スタブは行末に敏感なため CRLF で checkout する．
+# LF のみだと入れ子 if の解析が環境により崩れる．
+*.cmd text eol=crlf

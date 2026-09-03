@@ -24,6 +24,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# 終了コードで分岐する native command は Invoke-NativeCommand 経由で呼ぶ．
+# 直接呼ぶと Windows PowerShell 5.1 で stderr が終了エラーへ昇格する（Issue #179）
+. (Join-Path $PSScriptRoot 'lib/native.ps1')
+
 # --- 入力検証（意味的に具体的 → 汎用的の順） ---
 
 if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
@@ -63,7 +67,9 @@ $Major = $Version.Split('.')[0]
 # 既存タグが要求 SHA を指す場合は途中失敗からの再開とみなし，
 # タグ作成だけスキップして残りの手順を続行する（冪等な再実行）．
 $ResumeTag = $false
-$ExistingTagSha = git rev-parse -q --verify "refs/tags/${Version}^{commit}" 2> $null
+$ExistingTagSha = Invoke-NativeCommand {
+  git rev-parse -q --verify "refs/tags/${Version}^{commit}" 2> $null
+}
 if ($LASTEXITCODE -eq 0 -and $ExistingTagSha) {
   if ($ExistingTagSha -eq $MergeSha) {
     Write-Output "note: tag ${Version} already points at the requested commit; resuming"
@@ -74,7 +80,7 @@ if ($LASTEXITCODE -eq 0 -and $ExistingTagSha) {
   }
 }
 
-git cat-file -e "${MergeSha}^{commit}" 2> $null
+Invoke-NativeCommand { git cat-file -e "${MergeSha}^{commit}" 2> $null }
 if ($LASTEXITCODE -ne 0) {
   Write-Error "commit not found in local repository: ${MergeSha}"
   exit 1
@@ -89,7 +95,8 @@ function Invoke-Step {
     return
   }
   Write-Output "+ $($CommandLine -join ' ')"
-  & $CommandLine[0] @($CommandLine[1..($CommandLine.Count - 1)])
+  # 失敗は下の 1 箇所で報告する．昇格させると，この文言が出ないまま落ちる
+  Invoke-NativeCommand { & $CommandLine[0] @($CommandLine[1..($CommandLine.Count - 1)]) }
   if ($LASTEXITCODE -ne 0) {
     Write-Error "command failed: $($CommandLine -join ' ')"
     exit 1
@@ -101,8 +108,9 @@ if (-not $ResumeTag) {
 }
 Invoke-Step @('git', 'push', 'origin', $Version)
 
-# 再実行時に作成済み Release で失敗しないよう存在確認する（読み取り専用）
-gh release view $Version *> $null
+# 再実行時に作成済み Release で失敗しないよう存在確認する（読み取り専用）．
+# 未作成なら gh は stderr へ書いて非 0 で終える．想定内の分岐である
+Invoke-NativeCommand { gh release view $Version *> $null }
 if ($LASTEXITCODE -eq 0) {
   Write-Output "note: release ${Version} already exists; skipping create"
 } elseif ($PSCmdlet.ParameterSetName -eq 'NotesFile') {
@@ -115,14 +123,24 @@ if ($LASTEXITCODE -eq 0) {
 # 1) 単調性検査: remote の現在値が新 patch commit の祖先であることを確認する．
 #    lease は「観測値からの変化」しか検知せず，版の順序は保証しないため必要．
 # 2) lease: 検査済みの観測値を期待値に指定し，push までの間の移動を検知する．
-$RemoteMajorLine = git ls-remote origin "refs/tags/${Major}"
+# 出力なしには「タグが無い」と「照会が失敗した」の 2 つがある．
+# 区別しないと，認証切れが lease 無し push へ化ける
+$RemoteMajorLine = Invoke-NativeCommand { git ls-remote origin "refs/tags/${Major}" }
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "could not read refs/tags/${Major} from origin"
+  exit 1
+}
 $RemoteMajorSha = if ($RemoteMajorLine) { ($RemoteMajorLine -split "`t")[0] } else { '' }
 if ($RemoteMajorSha -ne '') {
   # dry-run では fetch しない（FETCH_HEAD・object db への書き込みを避ける）．
-  # commit がローカルに無く検査できない場合は，本実行時に検査される旨を示す
-  git cat-file -e "${RemoteMajorSha}^{commit}" 2> $null
-  $RemoteCommitIsLocal = ($LASTEXITCODE -eq 0)
-  if ($DryRun -and -not $RemoteCommitIsLocal) {
+  # commit がローカルに無く検査できない場合は，本実行時に検査される旨を示す．
+  # 本実行では fetch で必ず引くため，この確認自体を行わない（bash 版と同じ）
+  $DeferCheck = $false
+  if ($DryRun) {
+    Invoke-NativeCommand { git cat-file -e "${RemoteMajorSha}^{commit}" 2> $null }
+    $DeferCheck = ($LASTEXITCODE -ne 0)
+  }
+  if ($DeferCheck) {
     Write-Output "[dry-run] (monotonicity check for ${Major} deferred to a real run)"
   } else {
     if (-not $DryRun) {
@@ -135,7 +153,7 @@ if ($RemoteMajorSha -ne '') {
         git fetch --quiet origin "refs/tags/${Major}"
       }
     }
-    git merge-base --is-ancestor $RemoteMajorSha $MergeSha
+    Invoke-NativeCommand { git merge-base --is-ancestor $RemoteMajorSha $MergeSha }
     if ($LASTEXITCODE -ne 0) {
       Write-Error "remote ${Major} (${RemoteMajorSha}) is ahead of ${MergeSha}; refusing to rewind"
       exit 1

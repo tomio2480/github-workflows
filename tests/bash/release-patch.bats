@@ -44,6 +44,12 @@ case "$1" in
     exit 0
     ;;
   ls-remote)
+    # 照会そのものの失敗．出力なしの点は「タグが無い」と同じで，
+    # 終了コードだけが異なる．lease 無し push へ落とさない．
+    if [ "${STUB_LS_REMOTE_FAILS:-0}" = "1" ]; then
+      echo "fatal: could not read Username" >&2
+      exit 128
+    fi
     # remote major タグの現在値．既定は存在（lease 付き push の経路）．
     if [ -n "${STUB_REMOTE_MAJOR_SHA-1111111111111111111111111111111111111111}" ]; then
       printf '%s\trefs/tags/%s\n' \
@@ -237,6 +243,18 @@ STUB
   run grep -q "git tag -f v2" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
   run grep -q "origin v2$" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+}
+
+@test "fails when the remote tag lookup itself fails" {
+  # 出力なしを「タグが無い」と読むと，認証切れが lease 無し push に化ける
+  export STUB_LS_REMOTE_FAILS=1
+
+  run bash "${SCRIPT}" v2.12.5 "${SHA}" --notes-file "${NOTES_FILE}"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"refs/tags/v2"* ]]
+  run grep -q "git push origin v2$" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
 }
 

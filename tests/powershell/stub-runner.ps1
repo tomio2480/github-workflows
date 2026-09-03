@@ -10,6 +10,7 @@
 #   STUB_LOG            発行コマンドの記録先（必須）
 #   STUB_STATE_DIR      呼び出し回数の記録先（必須）
 #   STUB_REMOTE_EMPTY   1 で「ブランチが remote に無い」
+#   STUB_REMOTE_FAILS   1 で ls-remote 自体が失敗する
 #   STUB_GH_LAG         gh が古い SHA を返し続ける回数
 #   STUB_CHECKS_LAG     checks が未登録（出力なし）の回数
 #   STUB_CHECKS         pass / fail / pending / late / growing
@@ -56,6 +57,13 @@ function git {
 
   Write-StubLog ('git ' + ($GitArgs -join ' '))
   if ($GitArgs[0] -eq 'ls-remote') {
+    # 照会そのものの失敗．出力なしの点は「ブランチが無い」と同じで，
+    # 終了コードだけが異なる
+    if ($env:STUB_REMOTE_FAILS -eq '1') {
+      [Console]::Error.WriteLine('fatal: could not read Username')
+      $global:LASTEXITCODE = 128
+      return
+    }
     if ($env:STUB_REMOTE_EMPTY -eq '1') {
       return
     }

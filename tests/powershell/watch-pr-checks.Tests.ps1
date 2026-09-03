@@ -25,8 +25,9 @@ BeforeAll {
     New-Item -ItemType File -Path $log | Out-Null
 
     $names = @(
-      'STUB_LOG', 'STUB_STATE_DIR', 'STUB_REMOTE_EMPTY', 'STUB_GH_LAG',
-      'STUB_CHECKS_LAG', 'STUB_CHECKS', 'STUB_HEAD_MOVES', 'STUB_CROSS_REPO'
+      'STUB_LOG', 'STUB_STATE_DIR', 'STUB_REMOTE_EMPTY', 'STUB_REMOTE_FAILS',
+      'STUB_GH_LAG', 'STUB_CHECKS_LAG', 'STUB_CHECKS', 'STUB_HEAD_MOVES',
+      'STUB_CROSS_REPO'
     )
     $saved = @{}
     foreach ($name in $names) {
@@ -105,6 +106,17 @@ Describe 'remote の実体を正とする' {
 
     $result.ExitCode | Should -Be 1
     $result.Output | Should -Match 'origin'
+    ($result.Commands -match 'gh pr checks') | Should -BeNullOrEmpty
+  }
+
+  It 'ls-remote 自体が失敗したら checks を照会せず 1 で終える' {
+    # 出力なしを「ブランチが無い」と読むと，認証切れが push 忘れに化ける
+    $result = Invoke-Watch -Stub @{ STUB_REMOTE_FAILS = '1' } -ScriptArgs @(
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0', '-TimeoutSeconds', '0'
+    )
+
+    $result.ExitCode | Should -Be 1
+    $result.Output | Should -Match 'ls-remote'
     ($result.Commands -match 'gh pr checks') | Should -BeNullOrEmpty
   }
 
