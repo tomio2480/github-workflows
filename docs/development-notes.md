@@ -439,8 +439,10 @@ workflow の登録は約 1 分後であった．
 観測の間隔が短いと，前者を後者と読み違える．
 
 `skipping` の扱いも同じ筋で決めた．
-path filter で飛ばした check を pass に混ぜず，件数を分けて報告する．
+path filter で飛ばした check を通過件数へ数えず，`(N skipped)` として別に示す．
 「検査した」と「検査を飛ばした」を報告で同じにしない．
+すべて skip なら通過は 0 件のため，`no checks ran` と出す．
+「all 0 checks passed」と書くと，path filter の設定ミスが green として沈黙する．
 
 判定の材料は出力だけとし，`gh` の終了コードは見ない．
 `gh pr checks` は pending で exit 8，failure でも非 0 を返しつつ結果を出す．
@@ -462,7 +464,7 @@ powershell -ExecutionPolicy Bypass -File bin\watch-pr-checks.ps1 -Pr 165
 
 終了コードは 4 種類である．
 
-- `0`: 監視対象 commit で全 checks が pass した
+- `0`: 監視対象 commit で全 checks が pass した（すべて skip の場合を含む）
 - `1`: 入力エラー・環境エラー
 - `2`: タイムアウト，または監視対象 commit の不一致
 - `3`: checks が pass しなかった

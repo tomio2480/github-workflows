@@ -225,8 +225,23 @@ Describe '判定' {
       '-TimeoutSeconds', '30'
     )
 
+    # スタブは pass 1 件と skipping 1 件を返す．通過件数へ skip を数えない
     $result.ExitCode | Should -Be 0
+    $result.Output | Should -Match 'all 1 checks passed'
     $result.Output | Should -Match '\(1 skipped\)'
+  }
+
+  It 'すべて skip なら全 pass と報告しない' {
+    # 通過 0 件を「全 pass」と読ませない．path filter の設定ミスが沈黙する
+    $result = Invoke-Watch -Stub @{ STUB_CHECKS = 'allskip' } -ScriptArgs @(
+      '-Pr', '165', '-IntervalSeconds', '0', '-SettleSeconds', '0',
+      '-TimeoutSeconds', '30'
+    )
+
+    $result.ExitCode | Should -Be 0
+    $result.Output | Should -Match 'no checks ran'
+    $result.Output | Should -Match '\(2 skipped\)'
+    $result.Output | Should -Not -Match 'checks passed'
   }
 
   It 'checks が失敗したら 3 で終える' {

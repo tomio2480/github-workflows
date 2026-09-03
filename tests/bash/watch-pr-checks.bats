@@ -8,7 +8,8 @@
 #   - gh の headRefOid が実体へ追いつくまで待つ
 #   - checks は自前で polling する．完了は 4 条件（1 件以上・pending 無し・
 #     件数が前回の照会から不変・不変になってから --settle 秒の経過）
-#   - skip した check は pass と分けて報告する
+#   - skip した check は通過件数へ数えず，(N skipped) として別に示す
+#   - すべて skip なら全 pass ではなく no checks ran と報告する
 #   - 監視の後に head が動いていないことを確認する
 #   - 終了コード: 0 全 pass / 1 入力・環境エラー / 2 タイムアウト・commit 不一致 /
 #     3 checks の失敗
@@ -121,6 +122,9 @@ case "$1 $2" in
         ;;
       skip)
         printf 'pass\nskipping\n'
+        ;;
+      allskip)
+        printf 'skipping\nskipping\n'
         ;;
       growing)
         # 照会のたびに 1 件増え続け，件数が安定しない
@@ -302,10 +306,22 @@ checks_queries() {
 
 @test "reports skipped checks separately from passed ones" {
   # 「検査した」と「検査を飛ばした」を報告で混ぜない
+  # スタブは pass 1 件と skipping 1 件を返す．通過件数へ skip を数えない
   STUB_CHECKS=skip run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
 
   [ "${status}" -eq 0 ]
+  [[ "${output}" == *"all 1 checks passed"* ]]
   [[ "${output}" == *"(1 skipped)"* ]]
+}
+
+@test "does not report a green result when every check was skipped" {
+  # 通過 0 件を「全 pass」と読ませない．path filter の設定ミスが沈黙する
+  STUB_CHECKS=allskip run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 30
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"no checks ran"* ]]
+  [[ "${output}" == *"(2 skipped)"* ]]
+  [[ "${output}" != *"checks passed"* ]]
 }
 
 # --- 判定 ---
