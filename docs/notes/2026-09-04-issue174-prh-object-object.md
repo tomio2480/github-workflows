@@ -103,7 +103,7 @@ Windows PowerShell 5.1 で実行すると，`--dry-run` が途中で落ちる．
 
 **これは初出ではない．** `v2.16.1` の発行時にも同じ箇所で踏んでいる．
 そのときは作業メモへ「`pwsh -NoProfile -File` なら通る」と記録して先へ進んだ．
-repo 側には Issue も修正も残さず，結果として同じ手戻りを繰り返した．
+repo 側へは Issue と修正のいずれも残さず，同じ手戻りを繰り返した．
 
 ```text
 [dry-run] git tag v2.17.2 bdcbc78...
