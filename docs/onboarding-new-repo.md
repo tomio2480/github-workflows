@@ -186,7 +186,7 @@ caller の `verify-script` と `paths` は，同じ検査スクリプトを指�
 
 Claude Code で commit や PR を作るリポジトリが対象である．
 PR のタイトル・本文・コミットメッセージにセッション URL が残っていれば job を落とす．
-caller の checkout は不要で，必要な権限は `pull-requests: read` にとどまる．
+caller の checkout は不要で，必要な権限は `contents: read` と `pull-requests: read` である．
 詳細は [Claude セッション URL 検査 composite action](session-url-check.md) を参照する．
 
 ```bash

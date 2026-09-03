@@ -44,7 +44,14 @@ commit_lines="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
   exit 2
 }
 
-findings="$(printf '%s\n%s\n' "${pr_lines}" "${commit_lines}" | grep -iE "${PATTERN}" || true)"
+# grep は非一致で exit 1，異常で exit 2 以上を返す．非一致だけを「検出なし」とし，
+# 異常は API 失敗と同じく fail-closed で扱う．
+grep_rc=0
+findings="$(printf '%s\n%s\n' "${pr_lines}" "${commit_lines}" | grep -iE "${PATTERN}")" || grep_rc=$?
+if [ "${grep_rc}" -gt 1 ]; then
+  echo "::error::grep failed with exit ${grep_rc} while scanning PR #${PR_NUMBER}"
+  exit 2
+fi
 
 if [ -z "${findings}" ]; then
   echo "No Claude session URL found in PR #${PR_NUMBER} (title, body, and commit messages)"

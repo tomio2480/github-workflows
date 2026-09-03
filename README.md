@@ -90,7 +90,7 @@ Claude Code は cloud と Remote Control のセッションで既定の `Claude-
 
 導入時は caller template を caller repo へコピーする．
 対象は `templates/.github/workflows/session-url-check.yml` である．
-caller の checkout は不要で，必要な権限は `pull-requests: read` にとどまる．
+caller の checkout は不要で，必要な権限は `contents: read` と `pull-requests: read` である．
 詳しい検出条件と限界は
 [Claude セッション URL 検査 composite action](docs/session-url-check.md) を参照する．
 
