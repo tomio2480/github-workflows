@@ -297,6 +297,29 @@ Describe 'major mutable タグの保護' {
   }
 }
 
+Describe 'Windows PowerShell 5.1 での実行' {
+  It 'Release 未作成でも dry-run が完走する' -Skip:(
+    $null -eq (Get-Command powershell.exe -ErrorAction SilentlyContinue)
+  ) {
+    # Issue #179 の受け入れ条件である．関数スタブは native command に
+    # ならず昇格を再現できないため，PATH へ .cmd スタブを置いて実体を呼ぶ
+    $script = Join-Path $script:RepoRoot 'bin/release-patch.ps1'
+    $stubs = Join-Path $script:RepoRoot 'tests/fixtures/release-patch-stubs'
+    $savedPath = $env:PATH
+    try {
+      $env:PATH = $stubs + [System.IO.Path]::PathSeparator + $savedPath
+      $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script `
+        'v2.12.5' $script:Sha '-Notes' 'probe' '-DryRun' 2>&1
+      $code = $LASTEXITCODE
+    } finally {
+      $env:PATH = $savedPath
+    }
+
+    $code | Should -Be 0
+    ($output | Out-String) | Should -Match 'dry-run: no changes were made'
+  }
+}
+
 Describe 'dry-run' {
   It 'コマンドを示すだけで変更を加えない' {
     $result = Invoke-Release -ScriptArgs @(
