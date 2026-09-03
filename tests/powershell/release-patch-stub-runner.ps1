@@ -10,6 +10,7 @@
 #   STUB_COMMIT_MISSING         1 で merge-sha がローカルに無い
 #   STUB_SHALLOW                1 で shallow クローン
 #   STUB_REMOTE_MAJOR_ABSENT    1 で remote に major mutable タグが無い
+#   STUB_LS_REMOTE_FAILS        1 で ls-remote 自体が失敗する
 #   STUB_MAJOR_NOT_ANCESTOR     1 で remote major が新 patch の祖先でない
 #   STUB_RELEASE_EXISTS         1 で Release が既に在る
 
@@ -65,6 +66,13 @@ function git {
       return
     }
     'ls-remote' {
+      # 照会そのものの失敗．出力なしの点は「タグが無い」と同じで，
+      # 終了コードだけが異なる．lease 無し push へ落とさない
+      if ($env:STUB_LS_REMOTE_FAILS -eq '1') {
+        [Console]::Error.WriteLine('fatal: could not read Username')
+        $global:LASTEXITCODE = 128
+        return
+      }
       if ($env:STUB_REMOTE_MAJOR_ABSENT -eq '1') { return }
       return "${RemoteMajorSha}`t$($GitArgs[2])"
     }

@@ -178,7 +178,13 @@ fi
 #    祖先でない（= remote が先へ進んでいる）場合は巻き戻りになるため中止する．
 #    lease は「観測値からの変化」しか検知せず，版の順序は保証しないため必要．
 # 2) lease: 検査済みの観測値を期待値に指定し，push までの間の移動を検知する．
-REMOTE_MAJOR_SHA="$(git ls-remote origin "refs/tags/${MAJOR}" | cut -f1)"
+# 出力なしには「タグが無い」と「照会が失敗した」の 2 つがある．
+# パイプで受けると cut の終了コードに隠れ，認証切れが lease 無し push へ化ける
+REMOTE_MAJOR_LINE="$(git ls-remote origin "refs/tags/${MAJOR}")" || {
+  echo "error: could not read refs/tags/${MAJOR} from origin" >&2
+  exit 1
+}
+REMOTE_MAJOR_SHA="$(printf '%s\n' "${REMOTE_MAJOR_LINE}" | cut -f1)"
 if [ -n "${REMOTE_MAJOR_SHA}" ]; then
   # dry-run では fetch しない（FETCH_HEAD・object db への書き込みを避ける）．
   # commit がローカルに無く検査できない場合は，本実行時に検査される旨を示す

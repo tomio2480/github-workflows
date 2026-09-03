@@ -101,7 +101,13 @@ if ($ExpectSha -eq '') {
     $Remote = 'origin'
   }
 
-  $RemoteLine = git ls-remote $Remote "refs/heads/${Branch}"
+  # 出力なしには「ブランチが無い」と「照会が失敗した」の 2 つがある．
+  # 区別しないと，認証切れが push 忘れへ化ける
+  $RemoteLine = Invoke-NativeCommand { git ls-remote $Remote "refs/heads/${Branch}" }
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "git ls-remote ${Remote} failed while resolving ${Branch}"
+    exit 1
+  }
   $ExpectSha = if ($RemoteLine) { ($RemoteLine -split "`t")[0] } else { '' }
   if ($ExpectSha -eq '') {
     Write-Error "branch ${Branch} not found on ${Remote} (push it first)"

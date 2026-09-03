@@ -29,8 +29,8 @@ BeforeAll {
 
     $names = @(
       'STUB_LOG', 'STUB_TAG_EXISTS', 'STUB_TAG_SHA', 'STUB_COMMIT_MISSING',
-      'STUB_SHALLOW', 'STUB_REMOTE_MAJOR_ABSENT', 'STUB_MAJOR_NOT_ANCESTOR',
-      'STUB_RELEASE_EXISTS'
+      'STUB_SHALLOW', 'STUB_REMOTE_MAJOR_ABSENT', 'STUB_LS_REMOTE_FAILS',
+      'STUB_MAJOR_NOT_ANCESTOR', 'STUB_RELEASE_EXISTS'
     )
     $saved = @{}
     foreach ($name in $names) {
@@ -271,6 +271,17 @@ Describe 'major mutable タグの保護' {
     $result.ExitCode | Should -Be 1
     $result.Output | Should -Match 'rewind'
     ($result.Commands -match '^git tag -f v2') | Should -BeNullOrEmpty
+    ($result.Commands -match 'origin v2$') | Should -BeNullOrEmpty
+  }
+
+  It 'ls-remote 自体が失敗したら 1 で終える' {
+    # 出力なしを「タグが無い」と読むと，認証切れが lease 無し push に化ける
+    $result = Invoke-Release -Stub @{ STUB_LS_REMOTE_FAILS = '1' } -ScriptArgs @(
+      'v2.12.5', $script:Sha, '-NotesFile', $script:NotesFile
+    )
+
+    $result.ExitCode | Should -Be 1
+    $result.Output | Should -Match 'refs/tags/v2'
     ($result.Commands -match 'origin v2$') | Should -BeNullOrEmpty
   }
 

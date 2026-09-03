@@ -163,7 +163,13 @@ if [ -z "${EXPECT_SHA}" ]; then
     REMOTE="origin"
   fi
 
-  EXPECT_SHA="$(git ls-remote "${REMOTE}" "refs/heads/${BRANCH}" | cut -f1)"
+  # 出力なしには「ブランチが無い」と「照会が失敗した」の 2 つがある．
+  # パイプで受けると cut の終了コードに隠れ，認証切れが push 忘れへ化ける
+  REMOTE_LINE="$(git ls-remote "${REMOTE}" "refs/heads/${BRANCH}")" || {
+    echo "error: git ls-remote ${REMOTE} failed while resolving ${BRANCH}" >&2
+    exit 1
+  }
+  EXPECT_SHA="$(printf '%s\n' "${REMOTE_LINE}" | cut -f1)"
   if [ -z "${EXPECT_SHA}" ]; then
     echo "error: branch ${BRANCH} not found on ${REMOTE} (push it first)" >&2
     exit 1

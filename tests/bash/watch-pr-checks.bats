@@ -33,6 +33,12 @@ setup() {
 #!/usr/bin/env bash
 echo "git $*" >> "${CMD_LOG}"
 if [ "$1" = "ls-remote" ]; then
+  # STUB_REMOTE_FAILS=1 で「照会そのものの失敗」を再現する．
+  # 出力なしの点は STUB_REMOTE_EMPTY と同じで，終了コードだけが異なる．
+  if [ "${STUB_REMOTE_FAILS:-0}" = "1" ]; then
+    echo "fatal: could not read Username" >&2
+    exit 128
+  fi
   # STUB_REMOTE_EMPTY=1 で「ブランチが remote に無い」を再現する．
   [ "${STUB_REMOTE_EMPTY:-0}" = "1" ] && exit 0
   printf '%s\t%s\n' "${REMOTE_SHA}" "$3"
@@ -203,6 +209,16 @@ checks_queries() {
 
   [ "${status}" -eq 1 ]
   [[ "${output}" == *"origin"* ]]
+  run grep -q "gh pr checks" "${CMD_LOG}"
+  [ "${status}" -ne 0 ]
+}
+
+@test "fails when the remote lookup itself fails" {
+  # 出力なしを「ブランチが無い」と読むと，認証切れが push 忘れに化ける
+  STUB_REMOTE_FAILS=1 run bash "${SCRIPT}" 165 --interval 0 --settle 0 --timeout 0
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"ls-remote"* ]]
   run grep -q "gh pr checks" "${CMD_LOG}"
   [ "${status}" -ne 0 ]
 }

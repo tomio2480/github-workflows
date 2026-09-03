@@ -123,7 +123,13 @@ if ($LASTEXITCODE -eq 0) {
 # 1) 単調性検査: remote の現在値が新 patch commit の祖先であることを確認する．
 #    lease は「観測値からの変化」しか検知せず，版の順序は保証しないため必要．
 # 2) lease: 検査済みの観測値を期待値に指定し，push までの間の移動を検知する．
-$RemoteMajorLine = git ls-remote origin "refs/tags/${Major}"
+# 出力なしには「タグが無い」と「照会が失敗した」の 2 つがある．
+# 区別しないと，認証切れが lease 無し push へ化ける
+$RemoteMajorLine = Invoke-NativeCommand { git ls-remote origin "refs/tags/${Major}" }
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "could not read refs/tags/${Major} from origin"
+  exit 1
+}
 $RemoteMajorSha = if ($RemoteMajorLine) { ($RemoteMajorLine -split "`t")[0] } else { '' }
 if ($RemoteMajorSha -ne '') {
   # dry-run では fetch しない（FETCH_HEAD・object db への書き込みを避ける）．
