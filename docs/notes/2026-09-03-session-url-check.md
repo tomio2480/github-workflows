@@ -34,6 +34,8 @@ reusable workflow で中央 script を使うには，中央リポジトリの ch
 必要な権限は `pull-requests: read` にとどまる．
 API 失敗は exit 2 で job を落とす（fail-closed）．
 検査できなかった PR を通すと，gate の意味がなくなるためである．
+PR コミット一覧 API の上限（250 件）を超える PR も同じ理由で exit 2 とする．
+Codex のレビュー指摘で，上限超過が全コミット検査の保証を破ることに気づいた．
 
 caller テンプレの `pull_request.types` に `edited` を含めた．
 PR 本文は作成後に編集されることが多く，そこで URL が入るケースを拾うためである．

@@ -14,12 +14,14 @@
 #     - 検出なしは exit 0 と成功メッセージ．
 #     - 検出ありは行ごとの ::error:: と件数の ::error:: を出し exit 1．
 #     - gh api の失敗は ::error:: を出し exit 2（fail-closed）．
+#     - PR のコミット数が 250 を超える場合も ::error:: を出し exit 2（API 上限）．
 #     - 必須 env が欠けている場合は非 0 終了．
 #
 # テスト戦略:
 #   - 実 API を叩かないため，PATH の前段に fake gh を仕込む．
-#     script が使う 2 種の呼び出しを endpoint（/commits の有無）で見分け，
-#     jq 適用後の行を FAKE_GH_PR_LINES / FAKE_GH_COMMIT_LINES から返す．
+#     script が使う 3 種の呼び出しを引数で見分ける．--jq .commits はコミット数，
+#     endpoint に /commits を含めばコミット行，それ以外は PR 行を返す．
+#     値は FAKE_GH_COMMIT_COUNT / FAKE_GH_COMMIT_LINES / FAKE_GH_PR_LINES，
 #     終了コードは FAKE_GH_PR_EXIT / FAKE_GH_COMMITS_EXIT で切り替える．
 
 setup() {
@@ -29,13 +31,20 @@ setup() {
   mkdir -p "${FAKE_BIN}"
   cat >"${FAKE_BIN}/gh" <<'FAKE'
 #!/usr/bin/env bash
-# テスト用 fake gh．/commits を含む endpoint ならコミット行，それ以外は PR 行を返す．
+# テスト用 fake gh．--jq .commits ならコミット数，/commits を含む endpoint なら
+# コミット行，それ以外は PR 行を返す．
 is_commits=0
+is_count=0
 for arg in "$@"; do
   case "${arg}" in
     */commits) is_commits=1 ;;
+    .commits) is_count=1 ;;
   esac
 done
+if [ "${is_count}" -eq 1 ]; then
+  printf '%s' "${FAKE_GH_COMMIT_COUNT:-1}"
+  exit "${FAKE_GH_PR_EXIT:-0}"
+fi
 if [ "${is_commits}" -eq 1 ]; then
   printf '%s' "${FAKE_GH_COMMIT_LINES:-}"
   exit "${FAKE_GH_COMMITS_EXIT:-0}"
@@ -58,6 +67,7 @@ FAKE
 
 teardown() {
   unset FAKE_GH_PR_LINES FAKE_GH_COMMIT_LINES FAKE_GH_PR_EXIT FAKE_GH_COMMITS_EXIT
+  unset FAKE_GH_COMMIT_COUNT
   unset GH_TOKEN REPO PR_NUMBER
 }
 
@@ -146,7 +156,8 @@ teardown() {
   run bash "${SCRIPT}"
 
   [ "${status}" -eq 2 ]
-  [[ "${output}" == *"::error::Failed to fetch pull request #42"* ]]
+  # 最初の呼び出し（コミット数の取得）で失敗するため，メッセージはそちらになる．
+  [[ "${output}" == *"::error::Failed to fetch commit count of pull request #42"* ]]
 }
 
 @test "コミットの取得失敗は exit 2（fail-closed）" {
@@ -156,6 +167,25 @@ teardown() {
 
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"::error::Failed to fetch commits of pull request #42"* ]]
+}
+
+@test "コミット数が API 上限の 250 を超える PR は exit 2（fail-closed）" {
+  export FAKE_GH_COMMIT_COUNT=251
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 2 ]
+  [[ "${output}" == *"::error::PR #42 has 251 commits"* ]]
+  [[ "${output}" == *"at most 250"* ]]
+}
+
+@test "コミット数がちょうど 250 の PR は検査を続行する" {
+  export FAKE_GH_COMMIT_COUNT=250
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"No Claude session URL found"* ]]
 }
 
 @test "GH_TOKEN 未設定で非 0 終了" {

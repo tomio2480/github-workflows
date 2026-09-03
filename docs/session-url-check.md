@@ -69,11 +69,13 @@ fork からの PR でも読み取りは可能なため，同一 repo 限定の g
 | 入力 | 環境変数 `GH_TOKEN`・`REPO`・`PR_NUMBER`（すべて必須） |
 | exit 0 | 検出なし |
 | exit 1 | 検出あり．行ごとの `::error::` と件数の `::error::` を出す |
-| exit 2 | API 取得失敗などの実行エラー．検査できない PR は通さない（fail-closed） |
+| exit 2 | API 取得失敗や 250 commit 超などの実行エラー．検査できない PR は通さない（fail-closed） |
 
 ## 🧱 限界
 
 - PR に含まれるコミットだけを見る．マージ済みの履歴は見ない．
+- GitHub の PR コミット一覧 API は最大 250 件しか返さない．
+  それを超える PR は検査を保証できないため，exit 2 で止める．分割か squash で対応する．
   既存の履歴は commit 検索（`gh api /search/commits`）で別途確認する．
 - commit 検索は default ブランチだけを対象とする．
   他ブランチの確認は `git log --all --grep` で補う．

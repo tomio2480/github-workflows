@@ -11,6 +11,8 @@
 #   0 - 検出なし
 #   1 - 検出あり（blocking）
 #   2 - API 取得失敗などの実行エラー（fail-closed．検査できない PR は通さない）
+#       PR のコミット数が 250 を超える場合も含む．pulls/{n}/commits API は
+#       最大 250 件しか返さないため，全コミットの検査を保証できない（Codex 指摘）．
 #
 # 検出パターン（大文字小文字を区別しない）:
 #   - claude.ai/code/session_… または claude.ai/code/cse_…（素の URL 形式）
@@ -28,6 +30,18 @@ set -uo pipefail
 : "${PR_NUMBER:?PR_NUMBER is required}"
 
 readonly PATTERN='claude\.ai/code/(session_|cse_)|Claude-Session:'
+# GitHub REST の「List commits on a pull request」が返す上限．
+readonly PR_COMMITS_API_CAP=250
+
+# コミット数が API の上限を超える PR は，欠けたコミットに URL が残りうるため通さない．
+commit_count="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.commits')" || {
+  echo "::error::Failed to fetch commit count of pull request #${PR_NUMBER} of ${REPO}"
+  exit 2
+}
+if [ "${commit_count}" -gt "${PR_COMMITS_API_CAP}" ] 2>/dev/null; then
+  echo "::error::PR #${PR_NUMBER} has ${commit_count} commits, but the pull request commits API lists at most ${PR_COMMITS_API_CAP}. The scan would be incomplete; split or squash the PR and re-run."
+  exit 2
+fi
 
 # 1 行 1 レコードへ平坦化する．先頭列は出所（pull-request か commit SHA）．
 # 複数行の本文は行ごとに分け，検出行だけを報告できるようにする．
