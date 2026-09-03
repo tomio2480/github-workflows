@@ -72,11 +72,18 @@ if [ -z "${findings}" ]; then
   exit 0
 fi
 
+# 注釈へはセッション ID をマスクして出す．そのまま出すと，PR を直した後も
+# 公開 repo の Actions ログに URL の複製が残る（Codex 指摘）．
+mask_session_id() {
+  sed -E 's#(claude\.ai/code/(session|cse)_)[A-Za-z0-9]+#\1****#Ig'
+}
+
 count=0
 while IFS=$'\t' read -r source text; do
   [ -n "${source}" ] || continue
   count=$((count + 1))
-  echo "::error::Claude session URL found in ${source}: ${text}"
+  masked="$(printf '%s' "${text}" | mask_session_id)"
+  echo "::error::Claude session URL found in ${source}: ${masked}"
 done <<<"${findings}"
 
 echo "::error::${count} line(s) contain a Claude session URL. Remove them (amend or rebase the commits, edit the PR body) and set attribution.sessionUrl=false in Claude Code settings."

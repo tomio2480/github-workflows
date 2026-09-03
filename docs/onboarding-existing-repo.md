@@ -227,6 +227,6 @@ blocking gate とし，ツール不足を成功扱いにはしない．
 Claude Code で commit や PR を作るリポジトリでは，同じ gate を利用できる．
 導入方法は
 [新規リポジトリ向けのセッション URL 検査手順](onboarding-new-repo.md#7️⃣-セッション-url-検査-workflow任意)
-と共通である．検査対象は PR に含まれるコミットと本文だけで，既存の履歴は見ない．
+と共通である．検査対象は PR のタイトル・本文と PR に含まれるコミットだけで，既存の履歴は見ない．
 既存リポジトリでは，導入前に commit 検索で過去の混入を別途確認する．
 詳細は [Claude セッション URL 検査 composite action](session-url-check.md) を参照する．
