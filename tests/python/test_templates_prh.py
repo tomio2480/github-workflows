@@ -11,6 +11,11 @@ Issue #15 stage 2 で追加した「全角記号前後の半角スペース禁�
 Issue #33 で追加した「`ユーザ` rule の否定先読み」 の回帰も検証する．
 plain string `ユーザ` のままだと `ユーザー` 内の `ユーザ` 部分にも substring
 match して誤検出する．`/ユーザ(?!ー)/` 形式の正規表現に置き換える必要がある．
+
+Issue #174 で観測した `prh:` キーの誤用も検証する．`prh:` は prh 本体の
+スキーマ外のキーで，textlint-rule-prh が指摘メッセージの末尾へ
+そのまま文字列連結する自由記述である（`textlint-rule-prh.js` の
+`diff.rule.raw.prh`）．文字列以外を書くと `[object Object]` が表示へ漏れる．
 """
 
 from __future__ import annotations
@@ -209,4 +214,56 @@ def test_user_rule_specs_cover_negative_lookahead(prh_rules: list[dict]) -> None
     ), (
         f"expected:ユーザー rule の specs に「`ユーザー` → `ユーザー`」 の境界例が欠けている．"
         f"否定先読みの効きを YAML 内自己テストで担保するため必須．specs={pairs!r}"
+    )
+
+
+def test_javascript_rule_specs_cover_js_and_json_boundary(
+    prh_rules: list[dict],
+) -> None:
+    """expected:JavaScript rule の specs が正例と境界例の双方を持つこと．
+
+    - 正例：`JS` 単独 → `JavaScript` に変換される
+    - 境界例：`JSON` → `JSON`（変換されない＝誤検出されない）
+
+    prh は from === to の spec を「変換されないことの assert」 として扱う．
+    `/\\bJS\\b/` の word boundary が効いていることを YAML 内で自己テストする．
+    """
+    rule = _find_rule_by_expected(prh_rules, "JavaScript")
+    assert rule is not None, "templates/prh.yml に expected:JavaScript rule が見当たらない"
+    specs = rule.get("specs") or []
+    assert specs, (
+        "templates/prh.yml の expected:JavaScript rule に specs が定義されていない．"
+        "Issue #174 では specs が誤って `prh:` キーの下へ置かれていた．"
+    )
+
+    pairs = [(s.get("from"), s.get("to")) for s in specs if isinstance(s, dict)]
+    assert ("JS", "JavaScript") in pairs, (
+        f"expected:JavaScript rule の specs に「`JS` → `JavaScript`」 の正例が欠けている．"
+        f"specs={pairs!r}"
+    )
+    assert ("JSON", "JSON") in pairs, (
+        f"expected:JavaScript rule の specs に「`JSON` → `JSON`」 の境界例が欠けている．"
+        f"word boundary の効きを YAML 内自己テストで担保するため必須．specs={pairs!r}"
+    )
+
+
+def test_prh_note_key_is_always_a_string(prh_rules: list[dict]) -> None:
+    """全 rule の `prh:` キーが文字列であること．
+
+    `prh:` は prh 本体のスキーマに無く，textlint-rule-prh が
+    `actual + " => " + expected + "\\n" + rule.raw.prh` として
+    指摘メッセージへ連結する自由記述である．
+    文字列以外を書くと `[object Object]` が利用者の目に触れる（Issue #174）．
+    specs を書くつもりで `prh:` の下へ入れる誤りが発生源であった．
+    """
+    offenders = [
+        (rule.get("expected"), rule["prh"])
+        for rule in prh_rules
+        if isinstance(rule, dict) and "prh" in rule and not isinstance(rule["prh"], str)
+    ]
+    assert not offenders, (
+        "templates/prh.yml の `prh:` キーに文字列以外の値が入っている．"
+        "textlint-rule-prh が文字列連結するため指摘へ `[object Object]` が漏れる．"
+        "specs を書きたい場合は rule 直下の `specs:` を使うこと．"
+        f"該当={offenders!r}"
     )

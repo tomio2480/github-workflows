@@ -133,6 +133,11 @@ rules:
 | `prh` | 指摘メッセージ |
 | `specs` | 期待する変換結果の例（テスト用） |
 
+`prh` は文字列で書く．prh 本体のスキーマに無いキーであり，
+textlint-rule-prh が指摘メッセージ末尾へそのまま連結する．
+文字列以外を渡すと `[object Object]` が表示へ漏れる（Issue #174）．
+変換例は rule 直下の `specs` へ書く．`prh` キーの下へ入れない．
+
 詳細仕様は [prh 公式](https://github.com/prh/prh) を参照．
 
 ### 正規表現で前後スペースを拾うパターン
