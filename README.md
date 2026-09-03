@@ -20,6 +20,7 @@ v2.6 以降は，`@claude` で起動するレビュー用 workflow も配布す�
 - 🎯 このリポジトリでできること
 - 🖥 push 前ローカル lint（任意）
 - 🐚 Shell quality workflow（任意）
+- 🔗 セッション URL 検査 workflow（任意）
 - 🤖 Claude レビュー workflow（任意）
 - 🗂 ディレクトリ構成
 - 🚀 人間向け Quick Start
@@ -77,6 +78,22 @@ Markdown lint の非ブロッキング動作とは異なる．
 詳しい caller contract と固定 version は
 [Shell / CLI quality reusable workflow](docs/shell-quality.md) を参照する．
 
+## 🔗 セッション URL 検査 workflow（任意）
+
+`.github/actions/session-url-check` は，PR に Claude Code のセッション URL が
+残っていないかを検査する．対象は PR のタイトル・本文・コミットメッセージである．
+URL は `claude.ai/code/session_…` の形をとる．
+見つかれば job を失敗させる blocking gate である．
+Claude Code は cloud と Remote Control のセッションで既定の `Claude-Session` trailer を付ける．
+公開 repo の履歴へ残ると commit 検索で横断的に集められるため，PR の段階で止める．
+発生源の抑止は Claude Code 側の設定 `attribution.sessionUrl=false` が担う．
+
+導入時は caller template を caller repo へコピーする．
+対象は `templates/.github/workflows/session-url-check.yml` である．
+caller の checkout は不要で，必要な権限は `pull-requests: read` にとどまる．
+詳しい検出条件と限界は
+[Claude セッション URL 検査 composite action](docs/session-url-check.md) を参照する．
+
 ## 🤖 Claude レビュー workflow（任意）
 
 Markdown lint とは独立した任意機能である．caller を置いたリポジトリの
@@ -133,10 +150,12 @@ v1 md-lint の self-detection bug は該当しない．
 github-workflows/
 ├── .github/
 │   ├── actions/
-│   │   └── markdown-lint/
-│   │       ├── action.yml         # composite action 本体（v2）
-│   │       ├── package.json       # lint 依存の宣言
-│   │       └── package-lock.json  # lint 依存の固定（install-lint-deps.sh が使う）
+│   │   ├── markdown-lint/
+│   │   │   ├── action.yml         # composite action 本体（v2）
+│   │   │   ├── package.json       # lint 依存の宣言
+│   │   │   └── package-lock.json  # lint 依存の固定（install-lint-deps.sh が使う）
+│   │   └── session-url-check/
+│   │       └── action.yml         # Claude セッション URL 検査（v2.17〜）
 │   ├── workflows/
 │   │   ├── claude-review.yml      # Claude レビュー用 reusable workflow（v2.6〜）
 │   │   ├── md-lint.yml            # 自リポジトリ向けの Markdown lint caller
@@ -145,6 +164,7 @@ github-workflows/
 │   └── dependabot.yml             # third-party action の自動更新
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
 │   ├── add-pr-reaction.sh         # 👀 reaction 付与（fail-open）
+│   ├── check-session-url.sh       # PR の commit・本文からセッション URL を検出（fail-closed）
 │   ├── count-lint-findings.py     # textlint XML / markdownlint テキストから件数集計
 │   ├── generate-mdlint-runtime.py # outputFormatters を除去した runtime config 生成
 │   ├── generate-textlint-runtime.py
@@ -175,6 +195,7 @@ github-workflows/
 │   │   └── workflows/
 │   │       ├── claude-review.yml  # Claude レビュー用 caller（任意）
 │   │       ├── md-lint.yml        # 呼び出し側ワークフロー（lint 導入の必須ファイル）
+│   │       ├── session-url-check.yml # セッション URL 検査 caller（任意）
 │   │       └── shell-quality.yml  # Shell quality caller（任意）
 │   ├── .markdownlint-cli2.yaml    # 中央デフォルト＋override 用
 │   ├── .textlintrc.json           # 中央デフォルト＋override 用
@@ -194,6 +215,7 @@ github-workflows/
 │   ├── fork-usage.md
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
 │   ├── shell-quality.md           # Shell quality workflow の caller contract
+│   ├── session-url-check.md       # セッション URL 検査 action の導入と限界
 │   ├── local-lint.md              # push 前ローカル Markdown lint の使い方
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
 ├── .markdownlint-cli2.yaml        # 自リポジトリ用 override（fixture を lint 対象に含める）
@@ -418,6 +440,7 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/fork-usage.md](docs/fork-usage.md) | フォーク運用 | 他利用者 |
 | [docs/development-notes.md](docs/development-notes.md) | 設計判断とレビュー対応の知見 | メンテナー・AI |
 | [docs/shell-quality.md](docs/shell-quality.md) | Shell quality workflow の導入と契約 | 利用者・AI |
+| [docs/session-url-check.md](docs/session-url-check.md) | セッション URL 検査 action の導入と限界 | 利用者・AI |
 | [docs/local-lint.md](docs/local-lint.md) | push 前ローカル Markdown lint の使い方 | 利用者・AI |
 
 ## 📝 ライセンス
