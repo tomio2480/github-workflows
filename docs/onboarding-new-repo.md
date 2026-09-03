@@ -14,6 +14,7 @@
 - 4️⃣ コミットと PR
 - 5️⃣ Claude レビュー workflow（任意）
 - 6️⃣ Shell quality workflow（任意）
+- 7️⃣ セッション URL 検査 workflow（任意）
 
 ## 🔧 前提条件
 
@@ -180,3 +181,22 @@ python bin/verify-shell.py --require-all
 caller の `verify-script` と `paths` は，同じ検査スクリプトを指すように
 更新する．導入 PR ではローカルの `--require-all` と GitHub Actions の
 両方が成功することを確認する．
+
+## 7️⃣ セッション URL 検査 workflow（任意）
+
+Claude Code で commit や PR を作るリポジトリが対象である．
+PR のタイトル・本文・コミットメッセージにセッション URL が残っていれば job を落とす．
+caller の checkout は不要で，必要な権限は `contents: read` と `pull-requests: read` である．
+詳細は [Claude セッション URL 検査 composite action](session-url-check.md) を参照する．
+
+```bash
+# 1️⃣ で解決した ${OWNER} / ${SHA} を再利用する
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/session-url-check.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
+  > .github/workflows/session-url-check.yml
+```
+
+発生源を止める設定は Claude Code 側にある．`settings.json` へ
+`attribution.sessionUrl: false` を置き，セッションを再起動する．

@@ -2,12 +2,13 @@ name: Self test (composite action)
 
 # composite action の TDD 検証用 CI workflow．
 #
-# 5 jobs:
+# 6 jobs:
 #   - unit-python: scripts/*.py の pytest
 #   - unit-bash: scripts/*.sh の bats
 #   - shell-quality-reusable: reusable workflow の tool setup と caller contract
 #   - shell-quality-self: 本リポジトリのシェル資産に対する repo-local gate
 #   - integration-action: ./.github/actions/markdown-lint を fixture に対して走らせる
+#   - integration-session-url-check: ./.github/actions/session-url-check を本 PR に対して走らせる
 #
 # shell-quality-reusable と shell-quality-self は役割が異なるため統合しない．
 # 前者は fixture で caller contract を検証し，後者は本リポジトリ自身の
@@ -118,3 +119,24 @@ jobs:
           test -s downloaded-reports/textlint-report.xml
           grep -qE ':[0-9]+ MD[0-9]{3}' downloaded-reports/markdownlint-report.txt
           grep -q '<checkstyle' downloaded-reports/textlint-report.xml
+
+  integration-session-url-check:
+    name: Session URL check on this PR
+    runs-on: ubuntu-latest
+    needs:
+      - unit-bash
+    if: github.event_name == 'pull_request'
+    # 読み取りしか行わないため，workflow レベルの pull-requests: write を job で絞る．
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run composite action against this PR
+        # 本リポジトリの PR 自身を対象にする．期待値は検出なし（exit 0）である．
+        # 検出ありのケースは tests/bash/check-session-url.bats が fake gh で網羅する．
+        uses: ./.github/actions/session-url-check
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

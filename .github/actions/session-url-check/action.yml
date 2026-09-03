@@ -1,0 +1,33 @@
+name: "Claude session URL check (composite action)"
+description: "PR のタイトル・本文・コミットメッセージに Claude Code のセッション URL が残っていないか検査し，見つかれば job を失敗させる composite action"
+
+# 設計のポイント:
+#   - $GITHUB_ACTION_PATH 経由で中央 scripts/ を参照する．caller 側の checkout は不要．
+#   - 検査は GitHub API の読み取りだけで完結する．pull-requests: read で足りる．
+#   - fork からの PR でも読み取りは可能なため，同一 repo 限定の guard は置かない．
+#   - third-party action を使わない．Dependabot の追随対象は生じない．
+#   - 検査不能（API 失敗）は script 側が exit 2 で fail-closed にする．
+
+inputs:
+  github-token:
+    description: "GitHub API の読み取りに使う token．caller 側で secrets.GITHUB_TOKEN を with で渡す"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check PR for Claude session URLs
+      # pull_request 以外のイベントでは対象 PR が無いため次ステップで案内だけ出す．
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: bash "${ACTION_PATH}/../../../scripts/check-session-url.sh"
+
+    - name: Skip outside pull_request events
+      if: github.event_name != 'pull_request'
+      shell: bash
+      run: echo "::notice::session-url-check runs only on pull_request events; skipped for ${GITHUB_EVENT_NAME}"
