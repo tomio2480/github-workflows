@@ -15,6 +15,7 @@
 - 📌 Tool version
 - 🔄 更新手順
 - 🏠 中央リポジトリ自身の gate
+- 🧩 native command の呼び出し規律
 - 🧪 自己テスト
 
 ## 🧭 責務
@@ -94,7 +95,7 @@ repo-local gate は `bin/verify-shell.py` に置く．
 | 検査対象 | 実行するツール |
 |---|---|
 | `bin/*.sh`・`scripts/*.sh` | ShellCheck，shfmt（`-d -i 2 -ci`） |
-| `bin/*.ps1` | PSScriptAnalyzer（Error と Warning） |
+| `bin/*.ps1`・`bin/lib/*.ps1` | PSScriptAnalyzer（Error と Warning） |
 | `tests/powershell/*.Tests.ps1` | Pester（`bin/run-pester.ps1` 経由） |
 
 Bats は `unit-bash` job が同じ suite を実行するため gate へ含めない．
@@ -115,6 +116,23 @@ Windows PowerShell 5.1 で読ませたときの文字化けも同時に防げる
 シェル資産は `.gitattributes` により LF で checkout する．
 CRLF の worktree では ShellCheck が SC1017 を全行へ出すためである．
 これがないと Windows 上でローカル実行が成立しない．
+テスト用の `.cmd` スタブだけは CRLF とする．`cmd` の解析が行末に敏感なためである．
+
+## 🧩 native command の呼び出し規律
+
+終了コードで分岐する native command は `Invoke-NativeCommand` 経由で呼ぶ．
+実体は `bin/lib/native.ps1` にあり，各スクリプトから dot-source して使う．
+
+Windows PowerShell 5.1 には昇格の癖がある．
+`$ErrorActionPreference = 'Stop'` のもとで，
+native command の stderr を終了エラーへ変える．
+昇格はリダイレクトより先に起きるため，呼び出し側では抑止できない．
+`gh release view` のように「stderr を出しつつ非 0 で終える」正常な分岐が，
+これで潰れる（Issue #179）．
+
+直接呼んでよいのは，失敗をそのまま中断としたい呼び出しに限る．
+`git fetch` や `git ls-remote` が当たる．
+これらは成功時に stderr へ書かないため，昇格しても中断の意図と食い違わない．
 
 ## 🧪 自己テスト
 

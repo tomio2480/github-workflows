@@ -82,6 +82,7 @@
 - Markdown を書き換えたら push 前に `bash bin/lint-md.sh` を通す．CI と同じ設定で変更ファイルだけを検査する（[docs/local-lint.md](docs/local-lint.md)）
 - `scripts/` 配下に新規ロジックを追加する場合は `tests/` で test-first で書く．Red → Green → Refactor の順を守る
 - `bin/*.ps1` に振る舞いのロジックを足したら `tests/powershell/*.Tests.ps1` を書く．`bin/verify-shell.py` が Pester を実行する（[docs/shell-quality.md](docs/shell-quality.md)）
+- `.ps1` で終了コードにより分岐する native command は `Invoke-NativeCommand` 経由で呼ぶ．直接呼ぶと Windows PowerShell 5.1 で stderr が終了エラーへ昇格する（[docs/shell-quality.md](docs/shell-quality.md)）
 - push 後の CI 監視は `bin/watch-pr-checks.{sh,ps1}` を使う．`gh pr checks --watch` を直接使わない．未登録・登録の遅れ・gh 側の追随遅れにより「CI green」を誤認するためである（[docs/development-notes.md](docs/development-notes.md)）
 - コミットは論理単位で分ける（テスト追加／実装／テンプレ変更／ドキュメント更新など）
 
