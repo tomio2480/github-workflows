@@ -167,4 +167,6 @@ Codex は追加を求め，Fable は削除を求めた．
   節の見出しは「CI checks の監視は `bin/watch-pr-checks.{sh,ps1}` に任せる」．
 - Pester の実行対象は [docs/shell-quality.md](../shell-quality.md) の表にある．
 - 先行する知見は [2026-09-02-issue134-local-md-lint.md](2026-09-02-issue134-local-md-lint.md)．
-- 残作業は Issue #167．`release-patch.ps1` の Pester テストである．
+- 残作業だった Issue #167（`release-patch.ps1` の Pester テスト）は
+  PR #182 で対応した．経緯は
+  [2026-09-04-issue179-native-stderr.md](2026-09-04-issue179-native-stderr.md) にある．

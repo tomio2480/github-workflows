@@ -182,13 +182,16 @@ github-workflows/
 │   ├── run-pester.ps1             # Pester 実行部（verify-shell.py から呼ぶ）
 │   ├── watch-pr-checks.sh         # checks が出そろうまで CI を監視（v2.16〜）
 │   ├── watch-pr-checks.ps1        # 同上の PowerShell 版
-│   └── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
+│   ├── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
+│   └── lib/
+│       └── native.ps1             # native command 呼び出しの共通ヘルパー（v2.18〜）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
 │   ├── bash/                      # bats-core
 │   ├── powershell/                # Pester（.ps1 の振る舞い）
 │   └── fixtures/
 │       ├── markdown/              # Markdown lint 統合テスト fixture
+│       ├── release-patch-stubs/   # 5.1 回帰テスト用の git・gh スタブ
 │       └── shell-quality/         # Shell quality toolchain probe
 ├── templates/                     # 各リポジトリにコピーするテンプレート
 │   ├── .github/
