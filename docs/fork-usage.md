@@ -87,6 +87,16 @@ curl -fsSL \
   > .github/workflows/shell-quality.yml
 ```
 
+セッション URL 検査も使う場合は，同じ `${OWNER}` / `${SHA}` から caller を取得する．
+
+```bash
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/session-url-check.yml" \
+  | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
+  | sed "s|@<SHA>|@${SHA}|" \
+  > .github/workflows/session-url-check.yml
+```
+
 ## 4️⃣ 上流（tomio2480）との同期
 
 上流の更新（composite action 改修・辞書追加など）を取り込むときの手順．
@@ -138,6 +148,7 @@ bash bin/release-patch.sh v2.2.1 <merge-sha-full> --notes-file notes.md
 |---|---|
 | `templates/prh.yml` | 組織固有の用語・プロダクト名の表記ゆれ |
 | `templates/.textlintrc.json` | `sentence-length.max`，`preferInBody` など組織の文体方針 |
+| `.github/actions/session-url-check/action.yml`・`scripts/check-session-url.sh` | 検出パターンの追加や，組織で使う別 URL 形式の除外 |
 | `templates/.markdownlint-cli2.yaml` | 組織として許容したい記法 |
 | `.github/actions/markdown-lint/action.yml` | reviewdog の reporter / filter mode のデフォルト変更や step 追加 |
 

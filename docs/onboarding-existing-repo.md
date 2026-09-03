@@ -13,6 +13,7 @@
 - 4️⃣ ルールを段階的に厳しくする戦略
 - 5️⃣ コミットと PR
 - 6️⃣ Shell quality workflow（任意）
+- 7️⃣ セッション URL 検査 workflow（任意）
 
 ## 🔧 前提条件
 
@@ -220,3 +221,12 @@ PowerShell または bash がある場合も同じ gate を利用できる．
 既存の不具合を導入 PR に混ぜると差分が大きくなる場合は，先に修正 PR を
 分けるか，対象 `paths` を段階的に広げる．ただし有効化した検査は
 blocking gate とし，ツール不足を成功扱いにはしない．
+
+## 7️⃣ セッション URL 検査 workflow（任意）
+
+Claude Code で commit や PR を作るリポジトリでは，同じ gate を利用できる．
+導入方法は
+[新規リポジトリ向けのセッション URL 検査手順](onboarding-new-repo.md#7️⃣-セッション-url-検査-workflow任意)
+と共通である．検査対象は PR のタイトル・本文と PR に含まれるコミットだけで，既存の履歴は見ない．
+既存リポジトリでは，導入前に commit 検索で過去の混入を別途確認する．
+詳細は [Claude セッション URL 検査 composite action](session-url-check.md) を参照する．

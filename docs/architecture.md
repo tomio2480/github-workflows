@@ -295,7 +295,7 @@ caller が自身の `.github/workflows/md-lint.yml` に書き写した内容ま�
 
 ### composite action と reusable workflow の吸収範囲の違い
 
-この限界は composite action（`markdown-lint`）固有のものである．
+この限界は composite action（`markdown-lint`・`session-url-check`）に共通する．
 composite action は，caller の job 内の 1 ステップとして実行される．
 そのため，自分を呼んだ job や workflow のキーを宣言できない．
 対象は `concurrency`/`timeout-minutes`/`permissions` などである．
@@ -362,6 +362,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 | 静的解析 | 本リポジトリ自身のシェル資産 | ShellCheck / shfmt / PSScriptAnalyzer | `bin/verify-shell.py` | CI の `shell-quality-self` job |
 | workflow 統合 | Shell quality toolchain と caller contract | local reusable workflow 呼び出し | `tests/fixtures/shell-quality/` + `.github/workflows/test-self-lint.yml` | CI の `shell-quality-reusable` job |
 | 統合 | composite action の step 連携 | `./.github/actions/markdown-lint` の local 参照 | `tests/fixtures/markdown/` + `.github/workflows/test-self-lint.yml` の `integration-action` job | CI で PR 起動時 |
+| 統合 | `session-url-check` の自己検査 | `./.github/actions/session-url-check` の local 参照（本 PR 自身が対象） | `.github/workflows/test-self-lint.yml` の `integration-session-url-check` job | CI で PR 起動時 |
 | E2E | composite action から reviewdog 投稿まで | canary repo（picoruby-tea5767 等）からの実 PR | caller 側 | リリース前の手動確認 |
 
 静的解析層と workflow 統合層は対象が異なる．前者は本リポジトリの実資産を検査する．後者は fixture を使って toolchain と caller contract を検証する．詳細は [docs/shell-quality.md](shell-quality.md) を参照．

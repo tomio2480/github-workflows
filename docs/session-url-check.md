@@ -18,8 +18,8 @@ PR のタイトル・本文・コミットメッセージに Claude Code のセ�
 
 ## 🧭 背景
 
-Claude Code は cloud と Remote Control のセッションで作る commit と PR に，
-既定でセッション URL を付ける．commit では `Claude-Session` trailer になる．
+Claude Code は cloud と Remote Control のセッションで，commit と PR にセッション URL を付ける．
+これは既定の挙動で，commit では `Claude-Session` trailer になる．
 設定リファレンスの `attribution.sessionUrl` は既定 `true` である．
 公開リポジトリの履歴へ残った URL は，GitHub の commit 検索で横断的に集められる．
 履歴の書き換えは fork・cache・PR 参照に残り，完全な除去には GitHub Support が要る．
@@ -68,7 +68,7 @@ fork からの PR でも読み取りは可能なため，同一 repo 限定の g
 |---|---|
 | 入力 | 環境変数 `GH_TOKEN`・`REPO`・`PR_NUMBER`（すべて必須） |
 | exit 0 | 検出なし |
-| exit 1 | 検出あり．行ごとの `::error::` と件数の `::error::` を出す |
+| exit 1 | 検出あり．行ごとの `::error::` と件数の `::error::` を出す．セッション ID は `****` にマスクする |
 | exit 2 | API 取得失敗や 250 commit 超などの実行エラー．検査できない PR は通さない（fail-closed） |
 
 ## 🧱 限界
