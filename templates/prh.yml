@@ -24,10 +24,15 @@ rules:
       # `JS` は word boundary 付きの regex で書く．
       # plain string で書くと substring match が効き，`JSON` 等にも誤マッチする．
       - /\bJS\b/
-    prh:
-      - specs:
-          - from: JS
-            to: JavaScript
+    # specs は rule 直下へ置く．`prh:` の下へ入れると prh からは未知のキーとなり，
+    # textlint-rule-prh がメッセージ末尾へそのまま連結して
+    # `[object Object]` を表示する（Issue #174）．
+    specs:
+      - from: JS
+        to: JavaScript
+      # word boundary が効いていることの自己テスト．変換されなければ通る．
+      - from: JSON
+        to: JSON
 
   - expected: TypeScript
     patterns:
