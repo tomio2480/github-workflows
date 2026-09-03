@@ -19,6 +19,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# 終了コードで分岐する native command は Invoke-NativeCommand 経由で呼ぶ．
+# 直接呼ぶと Windows PowerShell 5.1 で stderr が終了エラーへ昇格する（Issue #179）
+. (Join-Path $PSScriptRoot 'lib/native.ps1')
+
 # --- 入力検証 ---
 
 if ($Pr -notmatch '^[0-9]+$') {
@@ -68,9 +72,11 @@ if ($ExpectSha -ne '' -and $ExpectSha -notmatch '^[0-9a-f]{40}$') {
 if ($ExpectSha -eq '') {
   # --json の値はカンマ区切りの 1 引数である．引用符で括らないと PowerShell が
   # カンマで配列へ分割し，gh が「引数が多い」と拒否する
-  $Fields = gh pr view $Pr `
-    --json 'headRefName,isCrossRepository,headRepositoryOwner,headRepository' `
-    --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv'
+  $Fields = Invoke-NativeCommand {
+    gh pr view $Pr `
+      --json 'headRefName,isCrossRepository,headRepositoryOwner,headRepository' `
+      --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv'
+  }
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Fields)) {
     Write-Error "could not resolve the head branch of PR #${Pr}"
     exit 1
@@ -118,7 +124,7 @@ function Invoke-GhQuery {
 
   # pending・failure でも gh は結果を出しつつ非 0 で終える（pending は exit 8）．
   # 終了コードで判定すると検査中の PR を照会失敗と誤読するため，出力だけを見る
-  $out = & gh @GhArgs 2> $Script:ErrPath
+  $out = Invoke-NativeCommand { & gh @args 2> $Script:ErrPath } -ArgumentList $GhArgs
   $text = ($out | Out-String).Trim()
   if ($text -eq '' -and (Test-Path $Script:ErrPath)) {
     $err = Get-Content -Raw $Script:ErrPath
