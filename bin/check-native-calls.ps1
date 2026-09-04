@@ -36,6 +36,11 @@ $ErrorActionPreference = 'Stop'
 $WrapperName = 'Invoke-NativeCommand'
 $ExceptionMarker = 'native-direct:'
 
+# 文字列評価は中身が AST に現れず，native command かどうかを判定できない．
+# 検査を迂回できてしまうため，呼び出しそのものを違反とする．
+# CLAUDE.md の Shell / CLI 品質規律でも禁じている
+$ForbiddenNames = @('Invoke-Expression', 'iex')
+
 function Test-WrappedInInvokeNativeCommand {
   <#
     .SYNOPSIS
@@ -150,29 +155,37 @@ foreach ($target in $parsed.Keys) {
 
     $name = $command.GetCommandName()
 
-    # 名前を静的に決められない呼び出し（& $variable など）も native とみなす
-    if ($null -ne $name -and -not (Test-NativeCommandName -Name $name)) {
-      continue
-    }
+    # 文字列評価は包んでも中身を検査できない．包まれていても違反とする
+    $isForbidden = $null -ne $name -and $ForbiddenNames -contains $name
 
-    if (Test-WrappedInInvokeNativeCommand -Node $command) {
-      continue
+    if (-not $isForbidden) {
+      # 名前を静的に決められない呼び出し（& $variable など）も native とみなす
+      if ($null -ne $name -and -not (Test-NativeCommandName -Name $name)) {
+        continue
+      }
+
+      if (Test-WrappedInInvokeNativeCommand -Node $command) {
+        continue
+      }
     }
 
     $line = $command.Extent.StartLineNumber
     # 行末の注記と，直上の連続したコメント塊の中の注記を許す．
     # 理由が 1 行へ収まらないことがあるためである．
     # 空行やコードで切れた時点で遡るのをやめる
-    $exempt = $markerLines.Contains($line)
-    $cursor = $line - 1
-    while (-not $exempt -and $commentLines.Contains($cursor)) {
-      if ($markerLines.Contains($cursor)) {
-        $exempt = $true
+    # 文字列評価は注記でも通さない．中身を検査できないことに変わりはない
+    if (-not $isForbidden) {
+      $exempt = $markerLines.Contains($line)
+      $cursor = $line - 1
+      while (-not $exempt -and $commentLines.Contains($cursor)) {
+        if ($markerLines.Contains($cursor)) {
+          $exempt = $true
+        }
+        $cursor--
       }
-      $cursor--
-    }
-    if ($exempt) {
-      continue
+      if ($exempt) {
+        continue
+      }
     }
 
     $display = if ($null -eq $name) { $command.Extent.Text } else { $name }
@@ -180,17 +193,19 @@ foreach ($target in $parsed.Keys) {
       File    = $target
       Line    = $line
       Command = $display
+      Reason  = if ($isForbidden) { 'string evaluation' } else { 'unwrapped native call' }
     }
   }
 }
 
 if ($findings.Count -gt 0) {
-  Write-Output "direct native command call(s) not wrapped in ${WrapperName}:"
+  Write-Output "native command call(s) violating the calling rule:"
   foreach ($finding in $findings) {
-    Write-Output "  $($finding.File):$($finding.Line): $($finding.Command)"
+    Write-Output "  $($finding.File):$($finding.Line): $($finding.Command) [$($finding.Reason)]"
   }
   Write-Output ''
-  Write-Output "wrap them in ${WrapperName}, or annotate with '# ${ExceptionMarker} <reason>'"
+  Write-Output "unwrapped native call: wrap in ${WrapperName}, or annotate with '# ${ExceptionMarker} <reason>'"
+  Write-Output 'string evaluation: pass arguments as an array instead'
   exit 1
 }
 

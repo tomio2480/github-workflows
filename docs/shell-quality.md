@@ -219,6 +219,10 @@ dot-source（`. path`）と，ヘルパー自身の本体は対象から除く�
 git fetch --quiet origin "refs/tags/${Major}"
 ```
 
+`Invoke-Expression` と別名の `iex` は，注記の有無にかかわらず違反とする．
+文字列の中身は AST に現れず，native command かどうかを判定できない．
+通すと検査そのものを迂回できる．引数は配列で渡す．
+
 免除は行単位である．1 行へ native command を 2 つ並べない．
 scriptblock は呼び出しの引数位置へ直接書く．
 変数へ入れてから渡すと，包まれていると判定できない．

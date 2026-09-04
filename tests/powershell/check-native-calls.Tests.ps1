@@ -65,6 +65,17 @@ Describe 'bin/check-native-calls.ps1' {
     $result.Output | Should -Match 'multiline-note\.ps1:13'
   }
 
+  It 'Invoke-Expression による迂回を許さない' {
+    # 文字列の中身は AST に現れない．native command か判定できないため，
+    # 文字列評価そのものを違反とする
+    $result = Invoke-Checker -Fixture 'invoke-expression.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'invoke-expression\.ps1:6'
+    # 別名でも同じ
+    $result.Output | Should -Match 'invoke-expression\.ps1:8'
+  }
+
   It '解決できない名前も native として扱う' {
     # ツール未導入で解決に失敗したとき，黙って見逃すと
     # 「指摘 0 件で成功」に化ける
