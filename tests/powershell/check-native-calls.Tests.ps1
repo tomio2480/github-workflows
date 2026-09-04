@@ -113,6 +113,12 @@ Describe 'bin/check-native-calls.ps1' {
     $result.Output | Should -Match 'dynamic-eval\.ps1:7'
   }
 
+  It 'Create という名前だけでは違反にしない' {
+    # 型を見ないと HashSet[string]::Create() まで巻き込む
+    (Invoke-Checker -Fixture 'dynamic-eval.ps1').Output |
+      Should -Not -Match 'dynamic-eval\.ps1:10'
+  }
+
   It '複数ファイルのうち 1 つでも違反があれば落ちる' {
     (Invoke-Checker -Fixture @('compliant.ps1', 'violation.ps1')).ExitCode |
       Should -Not -Be 0

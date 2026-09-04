@@ -42,9 +42,16 @@ $ExceptionMarker = 'native-direct:'
 $ForbiddenNames = @('Invoke-Expression', 'iex')
 
 # メンバー呼び出しでも文字列は評価できる．CommandAst に現れないため別に見る．
-# 例は $ExecutionContext.InvokeCommand.InvokeScript('git status') と
-# [scriptblock]::Create('git status').Invoke() である
-$ForbiddenMembers = @('InvokeScript', 'Create', 'ExpandString', 'NewScriptBlock')
+# 例は $ExecutionContext.InvokeCommand.InvokeScript('git status') である
+$ForbiddenMembers = @('InvokeScript', 'ExpandString', 'NewScriptBlock')
+
+# 型と組で見るもの．メンバー名だけでは広すぎる．
+# Create は [scriptblock]::Create(...) だけを違反とする．
+# 名前だけで倒すと [HashSet[string]]::Create() まで巻き込む
+$ForbiddenStaticMembers = @{
+  'scriptblock'                              = @('Create')
+  'System.Management.Automation.ScriptBlock' = @('Create')
+}
 
 function Test-WrappedInInvokeNativeCommand {
   <#
@@ -197,7 +204,17 @@ foreach ($target in $parsed.Keys) {
   )
   foreach ($member in $members) {
     $memberName = $member.Member.Extent.Text.Trim('"', "'")
-    if ($ForbiddenMembers -notcontains $memberName) {
+    $isForbiddenMember = $ForbiddenMembers -contains $memberName
+
+    if (-not $isForbiddenMember -and
+      $member.Expression -is [System.Management.Automation.Language.TypeExpressionAst]) {
+      $typeName = $member.Expression.TypeName.FullName
+      if ($ForbiddenStaticMembers.ContainsKey($typeName)) {
+        $isForbiddenMember = $ForbiddenStaticMembers[$typeName] -contains $memberName
+      }
+    }
+
+    if (-not $isForbiddenMember) {
       continue
     }
     $findings += [pscustomobject]@{
