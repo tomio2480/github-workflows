@@ -41,6 +41,11 @@ $ExceptionMarker = 'native-direct:'
 # CLAUDE.md の Shell / CLI 品質規律でも禁じている
 $ForbiddenNames = @('Invoke-Expression', 'iex')
 
+# メンバー呼び出しでも文字列は評価できる．CommandAst に現れないため別に見る．
+# 例は $ExecutionContext.InvokeCommand.InvokeScript('git status') と
+# [scriptblock]::Create('git status').Invoke() である
+$ForbiddenMembers = @('InvokeScript', 'Create', 'ExpandString', 'NewScriptBlock')
+
 function Test-WrappedInInvokeNativeCommand {
   <#
     .SYNOPSIS
@@ -69,12 +74,12 @@ function Test-WrappedInInvokeNativeCommand {
 }
 
 # 対象すべてを先に parse する．ファイル内で定義した関数は native ではないため，
-# 名前を集めてから判定する．dot-source した helper も対象に含まれていれば拾える
+# 名前を集めてから判定する．
+#
+# 定義名はファイルごとに持つ．関数はファイルを跨いで見えないためである．
+# 全ファイル共通で集めると，あるファイルの `function gh { }` が
+# 別ファイルの gh 呼び出しを素通りさせる．
 $parsed = [ordered]@{}
-$definedNames = New-Object 'System.Collections.Generic.HashSet[string]' (
-  [System.StringComparer]::OrdinalIgnoreCase
-)
-$null = $definedNames.Add($WrapperName)
 
 foreach ($target in $Path) {
   $tokens = $null
@@ -88,14 +93,25 @@ foreach ($target in $Path) {
     exit 1
   }
 
-  $parsed[$target] = [pscustomobject]@{ Ast = $ast; Tokens = $tokens }
+  # dot-source した helper は対象に含まれていなくても名前で判定するため，
+  # ヘルパー名だけは常に既知として扱う
+  $localNames = New-Object 'System.Collections.Generic.HashSet[string]' (
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+  $null = $localNames.Add($WrapperName)
 
   $definitions = $ast.FindAll(
     { param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] },
     $true
   )
   foreach ($definition in $definitions) {
-    $null = $definedNames.Add($definition.Name)
+    $null = $localNames.Add($definition.Name)
+  }
+
+  $parsed[$target] = [pscustomobject]@{
+    Ast          = $ast
+    Tokens       = $tokens
+    DefinedNames = $localNames
   }
 }
 
@@ -107,10 +123,14 @@ function Test-NativeCommandName {
       解決できない名前も native として扱う．module 未導入などで解決に失敗した
       とき，黙って見逃すと「指摘 0 件で成功」に化けるためである．
       判定を緩めるより，偽陽性で気づける側へ倒す．
+      別名は解決先まで辿る．実体が実行ファイルなら native である．
   #>
-  param([string]$Name)
+  param(
+    [string]$Name,
+    [System.Collections.Generic.HashSet[string]]$DefinedNames
+  )
 
-  if ($definedNames.Contains($Name)) {
+  if ($DefinedNames.Contains($Name)) {
     return $false
   }
 
@@ -119,6 +139,19 @@ function Test-NativeCommandName {
   if ($null -eq $resolved) {
     return $true
   }
+
+  # 別名が実行ファイルを指す場合，CommandType は Alias のままである．
+  # 辿らないと native の呼び出しを取りこぼす
+  $seen = 0
+  while ($resolved.CommandType -eq 'Alias' -and $null -ne $resolved.ResolvedCommand) {
+    $resolved = $resolved.ResolvedCommand
+    $seen++
+    # 壊れた別名の循環で止まらなくならないようにする
+    if ($seen -gt 10) {
+      return $true
+    }
+  }
+
   return $resolved.CommandType -eq 'Application'
 }
 
@@ -126,6 +159,7 @@ $findings = @()
 
 foreach ($target in $parsed.Keys) {
   $entry = $parsed[$target]
+  $sourceLines = [System.IO.File]::ReadAllLines($target)
 
   # 注記のある行を集める．comment は AST に載らないため token から拾う．
   # 文字列リテラルで騙れないよう Comment token だけを見る
@@ -135,9 +169,42 @@ foreach ($target in $parsed.Keys) {
     if ($token.Kind -ne 'Comment') {
       continue
     }
-    $null = $commentLines.Add($token.Extent.StartLineNumber)
+    $startLine = $token.Extent.StartLineNumber
     if ($token.Text -match [regex]::Escape($ExceptionMarker)) {
-      $null = $markerLines.Add($token.Extent.StartLineNumber)
+      $null = $markerLines.Add($startLine)
+    }
+    # 行末コメントのある行はコメント行ではない．塊はそこで切れる．
+    # 切らないと，注記が間のコードを跨いで下のコマンドへ届く
+    if ($token.Extent.StartColumnNumber -eq 1) {
+      $null = $commentLines.Add($startLine)
+      continue
+    }
+    $prefix = $sourceLines[$startLine - 1].Substring(
+      0, $token.Extent.StartColumnNumber - 1
+    )
+    if ([string]::IsNullOrWhiteSpace($prefix)) {
+      $null = $commentLines.Add($startLine)
+    }
+  }
+
+  # メンバー呼び出しによる文字列評価を先に拾う
+  $members = $entry.Ast.FindAll(
+    {
+      param($node)
+      $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst]
+    },
+    $true
+  )
+  foreach ($member in $members) {
+    $memberName = $member.Member.Extent.Text.Trim('"', "'")
+    if ($ForbiddenMembers -notcontains $memberName) {
+      continue
+    }
+    $findings += [pscustomobject]@{
+      File    = $target
+      Line    = $member.Extent.StartLineNumber
+      Command = $memberName
+      Reason  = 'string evaluation'
     }
   }
 
@@ -160,7 +227,8 @@ foreach ($target in $parsed.Keys) {
 
     if (-not $isForbidden) {
       # 名前を静的に決められない呼び出し（& $variable など）も native とみなす
-      if ($null -ne $name -and -not (Test-NativeCommandName -Name $name)) {
+      if ($null -ne $name -and
+        -not (Test-NativeCommandName -Name $name -DefinedNames $entry.DefinedNames)) {
         continue
       }
 

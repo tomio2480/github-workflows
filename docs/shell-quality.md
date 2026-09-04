@@ -185,10 +185,16 @@ native command の stderr を終了エラーへ変える．
 出力なしには「対象が無い」と「照会が失敗した」の 2 つが混ざる．
 区別しないと，認証切れが別の失敗へ化ける．
 
-直接呼びのまま残せるのは，失敗が次の手順で必ず表面化する呼び出しに限る．
-`git fetch` と `git rev-parse --is-shallow-repository` が当たる．
-5.1 は昇格でその場が止まる．
-7 は素通りするが，直後の祖先検査が非 0 で終える．
+「後段の検査が拾うから直接呼びでよい」とは考えない．
+`bin/release-patch.ps1` は `git fetch` の失敗を直後の `git merge-base` へ
+委ねていたが，これは成り立たない．
+remote sha がすでにローカルにあれば，fetch が落ちても merge-base は成功する．
+「履歴を取り損ねたまま祖先と判定した」に化ける．
+現在は両方とも包んで，それぞれの終了コードを検査している．
+
+`bin/release-patch.sh` も同じ形にした．
+`if` の条件式では `errexit` が効かず，
+`git rev-parse` の失敗が空文字となって別の分岐へ落ちるためである．
 
 「`$ErrorActionPreference = 'Stop'` があるから fail-fast する」とは考えない．
 7 は native command の非 0 終了で停止しない．
@@ -212,12 +218,16 @@ module 未導入などで解決に失敗したとき，黙って見逃すと
 名前を静的に決められない呼び出し（`& $variable`）も同じ扱いとする．
 dot-source（`. path`）と，ヘルパー自身の本体は対象から除く．
 
-直接呼びのまま残す例外は，同じ行か直前の行へ注記を書く．
+直接呼びのまま残す例外は，行末か直上の連続したコメント塊へ注記を書く．
+行末コメントのある行では塊が切れる．
 
 ```powershell
-# native-direct: 失敗は直後の祖先検査が非 0 で終えるため表面化する
-git fetch --quiet origin "refs/tags/${Major}"
+# native-direct: <なぜ包まなくてよいかを書く>
+git status
 ```
+
+**現在の `bin/` に例外は 1 つも無い．**
+注記は，包めない事情が出たときのための逃げ道である．
 
 `Invoke-Expression` と別名の `iex` は，注記の有無にかかわらず違反とする．
 文字列の中身は AST に現れず，native command かどうかを判定できない．

@@ -90,6 +90,29 @@ Describe 'bin/check-native-calls.ps1' {
     (Invoke-Checker -Fixture 'literal-marker.ps1').ExitCode | Should -Not -Be 0
   }
 
+  It '別ファイルの関数定義で名前を隠せない' {
+    # 定義はファイルを跨いで見えない．全ファイル共通で集めると素通りする
+    $result = Invoke-Checker -Fixture @('shadow-definition.ps1', 'violation.ps1')
+
+    $result.Output | Should -Match 'violation\.ps1:5'
+  }
+
+  It '行末コメントのある行では注記の塊が切れる' {
+    $result = Invoke-Checker -Fixture 'trailing-comment.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'trailing-comment\.ps1:8'
+  }
+
+  It 'メンバー呼び出しによる文字列評価も違反とする' {
+    # CommandAst に現れない．Invoke-Expression を塞ぐだけでは足りない
+    $result = Invoke-Checker -Fixture 'dynamic-eval.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'dynamic-eval\.ps1:5'
+    $result.Output | Should -Match 'dynamic-eval\.ps1:7'
+  }
+
   It '複数ファイルのうち 1 つでも違反があれば落ちる' {
     (Invoke-Checker -Fixture @('compliant.ps1', 'violation.ps1')).ExitCode |
       Should -Not -Be 0
