@@ -136,7 +136,7 @@ repo-local gate は `bin/verify-shell.py` に置く．
 | 検査対象 | 実行するツール |
 |---|---|
 | `bin/*.sh`・`scripts/*.sh` | ShellCheck，shfmt（`-d -i 2 -ci`） |
-| `bin/*.ps1`・`bin/lib/*.ps1` | PSScriptAnalyzer（Error と Warning） |
+| `bin/*.ps1`・`bin/lib/*.ps1` | PSScriptAnalyzer（Error と Warning），`bin/check-native-calls.ps1` |
 | `tests/powershell/*.Tests.ps1` | Pester（`bin/run-pester.ps1` 経由） |
 
 Bats は `unit-bash` job が同じ suite を実行するため gate へ含めない．
@@ -193,6 +193,31 @@ native command の stderr を終了エラーへ変える．
 「`$ErrorActionPreference = 'Stop'` があるから fail-fast する」とは考えない．
 7 は native command の非 0 終了で停止しない．
 5.1 だけが stderr で止まる．両者の差は昇格の有無だけである．
+
+### 機械で守る
+
+この規律は `bin/check-native-calls.ps1` が検査する．
+`bin/verify-shell.py` が PSScriptAnalyzer と同じ対象へ実行する．
+文書に書いただけでは別セッションへ届かないためである（Issue #185）．
+同じ穴を `v2.16.1` と `v2.17.2` で 2 度踏んでいる．
+
+判定は AST で行う．正規表現では複数行にまたがる呼び出しを取りこぼす．
+`CommandAst` を辿り，包まれていない native command の呼び出しを違反とする．
+包まれているとは，`Invoke-NativeCommand` の scriptblock 引数の内側を指す．
+
+native かどうかは `Get-Command` で解決して決める．
+**解決できない名前は native として扱う．**
+module 未導入などで解決に失敗したとき，黙って見逃すと
+「指摘 0 件で成功」に化けるためである．偽陽性で気づける側へ倒す．
+名前を静的に決められない呼び出し（`& $variable`）も同じ扱いとする．
+dot-source（`. path`）と，ヘルパー自身の本体は対象から除く．
+
+直接呼びのまま残す例外は，同じ行か直前の行へ注記を書く．
+
+```powershell
+# native-direct: 失敗は直後の祖先検査が非 0 で終えるため表面化する
+git fetch --quiet origin "refs/tags/${Major}"
+```
 
 ## 🧪 自己テスト
 
