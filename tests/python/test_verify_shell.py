@@ -237,6 +237,61 @@ def test_run_checks_powershell_only_prints_only_powershell_targets(capsys) -> No
     assert "targets (shellcheck, shfmt)" not in captured
 
 
+def test_run_pester_can_fail_on_skipped_tests() -> None:
+    runner = RecordingRunner()
+
+    verify_shell.run_pester(
+        ["tests/powershell/native.Tests.ps1"], runner=runner, fail_on_skipped=True
+    )
+
+    assert runner.calls == [
+        [
+            "pwsh",
+            "-NoProfile",
+            "-File",
+            str(verify_shell.PESTER_SCRIPT),
+            "-FailOnSkipped",
+            "tests/powershell/native.Tests.ps1",
+        ]
+    ]
+
+
+def test_run_checks_powershell_only_fails_on_skipped_tests() -> None:
+    runner = RecordingRunner()
+
+    verify_shell.run_checks(runner=runner, powershell_only=True)
+
+    pester_call = runner.calls[-1]
+    # windows job は 5.1 依存のテストを走らせるために存在する．
+    # skip されたまま緑になっては目的を果たさない
+    assert "-FailOnSkipped" in pester_call
+
+
+def test_run_checks_keeps_skips_tolerated_on_the_default_path() -> None:
+    runner = RecordingRunner()
+
+    verify_shell.run_checks(runner=runner)
+
+    assert all("-FailOnSkipped" not in call for call in runner.calls)
+
+
+def test_run_checks_powershell_only_fails_without_pester_targets(tmp_path) -> None:
+    runner = RecordingRunner()
+
+    returncode = verify_shell.run_checks(
+        runner=runner, powershell_only=True, root=tmp_path
+    )
+
+    assert returncode == 1
+    assert runner.calls == []
+
+
+def test_run_checks_tolerates_absent_pester_targets_by_default(tmp_path) -> None:
+    runner = RecordingRunner()
+
+    assert verify_shell.run_checks(runner=runner, root=tmp_path) == 0
+
+
 def test_powershell_only_still_requires_require_all() -> None:
     completed = subprocess.run(
         [sys.executable, str(GATE), "--powershell-only"],

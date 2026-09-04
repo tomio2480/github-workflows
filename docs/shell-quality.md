@@ -63,6 +63,13 @@ python bin/verify-shell.py --require-all --powershell-only
 
 - PSScriptAnalyzer と Pester だけを実行する．
 - ShellCheck と shfmt の不足を失敗にしない．windows へは載せないためである．
+- Pester の対象が 0 件なら失敗する．
+- skip されたテストが 1 件でもあれば失敗する．
+
+後ろの 2 つは，この job が緑のまま何も検査しない状態を止めるためにある．
+5.1 を要するテストは，5.1 が無ければ自ら skip する．
+それを許すと，5.1 のために設けた job が skip の山を緑で返す．
+本リポジトリでは `bin/run-pester.ps1 -FailOnSkipped` がこれを担う．
 
 有効にする理由は Windows PowerShell 5.1 にある．
 5.1 は ubuntu runner に無い．

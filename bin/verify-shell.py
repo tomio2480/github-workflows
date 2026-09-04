@@ -102,23 +102,42 @@ def run_powershell_analyzer(targets: Sequence[str], runner: Runner) -> int:
     )
 
 
-def run_pester(targets: Sequence[str], runner: Runner) -> int:
+def run_pester(
+    targets: Sequence[str], runner: Runner, fail_on_skipped: bool = False
+) -> int:
     if not targets:
         return 0
-    return runner(["pwsh", "-NoProfile", "-File", str(PESTER_SCRIPT), *targets])
+    options = ["-FailOnSkipped"] if fail_on_skipped else []
+    return runner(
+        ["pwsh", "-NoProfile", "-File", str(PESTER_SCRIPT), *options, *targets]
+    )
 
 
-def run_checks(runner: Runner = default_runner, powershell_only: bool = False) -> int:
+def run_checks(
+    runner: Runner = default_runner,
+    powershell_only: bool = False,
+    root: Path = REPO_ROOT,
+) -> int:
     """全チェックを実行する．途中で打ち切らず，失敗を集約して返す．"""
-    powershell_targets = collect_targets(REPO_ROOT, POWERSHELL_PATTERNS)
-    pester_targets = collect_targets(REPO_ROOT, PESTER_PATTERNS)
+    powershell_targets = collect_targets(root, POWERSHELL_PATTERNS)
+    pester_targets = collect_targets(root, PESTER_PATTERNS)
+
+    # windows job は 5.1 依存のテストを走らせるためだけに存在する．
+    # 対象が 1 つも無い状態は，job が何も検査せず緑で終えることを意味する．
+    if powershell_only and not pester_targets:
+        print(
+            f"no Pester target matched: {', '.join(PESTER_PATTERNS)}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 1
 
     # 「チェックが pass した」と「対象を検査した」を CI ログ上で区別するため，
     # ShellCheck と shfmt が無出力で成功する場合でも対象を残す．
     # 子プロセスの出力と混ざらないよう flush する．
     exit_codes = []
     if not powershell_only:
-        bash_targets = collect_targets(REPO_ROOT, BASH_PATTERNS)
+        bash_targets = collect_targets(root, BASH_PATTERNS)
         print(f"targets (shellcheck, shfmt): {', '.join(bash_targets)}", flush=True)
         exit_codes.append(run_shellcheck(bash_targets, runner))
         exit_codes.append(run_shfmt(bash_targets, runner))
@@ -126,7 +145,9 @@ def run_checks(runner: Runner = default_runner, powershell_only: bool = False) -
     print(f"targets (PSScriptAnalyzer): {', '.join(powershell_targets)}", flush=True)
     print(f"targets (Pester): {', '.join(pester_targets)}", flush=True)
     exit_codes.append(run_powershell_analyzer(powershell_targets, runner))
-    exit_codes.append(run_pester(pester_targets, runner))
+    exit_codes.append(
+        run_pester(pester_targets, runner, fail_on_skipped=powershell_only)
+    )
 
     return 0 if all(code == 0 for code in exit_codes) else 1
 
