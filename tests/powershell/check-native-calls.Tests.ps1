@@ -76,6 +76,37 @@ Describe 'bin/check-native-calls.ps1' {
     $result.Output | Should -Match 'invoke-expression\.ps1:8'
   }
 
+  It 'module 修飾した Invoke-Expression も違反とする' {
+    # GetCommandName() は修飾名を返す．完全一致では躱される
+    $result = Invoke-Checker -Fixture 'qualified-iex.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'qualified-iex\.ps1:5'
+  }
+
+  It 'PowerShell.AddScript による評価も違反とする' {
+    $result = Invoke-Checker -Fixture 'add-script.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'add-script\.ps1:7'
+  }
+
+  It '入れ子の関数定義では名前を隠せない' {
+    # 内側の定義は呼び出し位置から見えない
+    $result = Invoke-Checker -Fixture 'nested-definition.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'nested-definition\.ps1:12'
+  }
+
+  It 'cmdlet の別名は native として扱わない' {
+    # ResolvedCommand が空を返す別名がある．Definition から引き直せているか
+    $result = Invoke-Checker -Fixture 'cmdlet-alias.ps1'
+
+    $result.ExitCode | Should -Be 0
+    $result.Output | Should -Match 'no unwrapped native command call'
+  }
+
   It '解決できない名前も native として扱う' {
     # ツール未導入で解決に失敗したとき，黙って見逃すと
     # 「指摘 0 件で成功」に化ける

@@ -43,7 +43,7 @@ $ForbiddenNames = @('Invoke-Expression', 'iex')
 
 # メンバー呼び出しでも文字列は評価できる．CommandAst に現れないため別に見る．
 # 例は $ExecutionContext.InvokeCommand.InvokeScript('git status') である
-$ForbiddenMembers = @('InvokeScript', 'ExpandString', 'NewScriptBlock')
+$ForbiddenMembers = @('InvokeScript', 'ExpandString', 'NewScriptBlock', 'AddScript')
 
 # 型と組で見るもの．メンバー名だけでは広すぎる．
 # Create は [scriptblock]::Create(...) だけを違反とする．
@@ -107,11 +107,25 @@ foreach ($target in $Path) {
   )
   $null = $localNames.Add($WrapperName)
 
+  # 入れ子の定義は集めない．`function Helper { function gh { } }` の内側は
+  # 呼び出し位置から見えず，実際には native の gh が起動する
   $definitions = $ast.FindAll(
     { param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] },
     $true
   )
   foreach ($definition in $definitions) {
+    $outer = $definition.Parent
+    $isNested = $false
+    while ($null -ne $outer) {
+      if ($outer -is [System.Management.Automation.Language.FunctionDefinitionAst]) {
+        $isNested = $true
+        break
+      }
+      $outer = $outer.Parent
+    }
+    if ($isNested) {
+      continue
+    }
     $null = $localNames.Add($definition.Name)
   }
 
@@ -150,8 +164,18 @@ function Test-NativeCommandName {
   # 別名が実行ファイルを指す場合，CommandType は Alias のままである．
   # 辿らないと native の呼び出しを取りこぼす
   $seen = 0
-  while ($resolved.CommandType -eq 'Alias' -and $null -ne $resolved.ResolvedCommand) {
-    $resolved = $resolved.ResolvedCommand
+  while ($resolved.CommandType -eq 'Alias') {
+    $next = $resolved.ResolvedCommand
+    if ($null -eq $next) {
+      # ResolvedCommand が空の別名がある．Definition から引き直す
+      $next = Get-Command -Name $resolved.Definition -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    }
+    if ($null -eq $next) {
+      # 解決先が分からない．何を起動するか読めないため native 側へ倒す
+      return $true
+    }
+    $resolved = $next
     $seen++
     # 壊れた別名の循環で止まらなくならないようにする
     if ($seen -gt 10) {
@@ -239,13 +263,20 @@ foreach ($target in $parsed.Keys) {
 
     $name = $command.GetCommandName()
 
+    # module 修飾（`Microsoft.PowerShell.Utility\Invoke-Expression`）を外す．
+    # GetCommandName() は修飾名をそのまま返すため，完全一致では躱される
+    $bareName = $name
+    if ($null -ne $bareName -and $bareName.Contains('\')) {
+      $bareName = $bareName.Substring($bareName.LastIndexOf('\') + 1)
+    }
+
     # 文字列評価は包んでも中身を検査できない．包まれていても違反とする
-    $isForbidden = $null -ne $name -and $ForbiddenNames -contains $name
+    $isForbidden = $null -ne $bareName -and $ForbiddenNames -contains $bareName
 
     if (-not $isForbidden) {
       # 名前を静的に決められない呼び出し（& $variable など）も native とみなす
-      if ($null -ne $name -and
-        -not (Test-NativeCommandName -Name $name -DefinedNames $entry.DefinedNames)) {
+      if ($null -ne $bareName -and
+        -not (Test-NativeCommandName -Name $bareName -DefinedNames $entry.DefinedNames)) {
         continue
       }
 

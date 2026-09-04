@@ -229,9 +229,17 @@ git status
 **現在の `bin/` に例外は 1 つも無い．**
 注記は，包めない事情が出たときのための逃げ道である．
 
-`Invoke-Expression` と別名の `iex` は，注記の有無にかかわらず違反とする．
-文字列の中身は AST に現れず，native command かどうかを判定できない．
+文字列を評価する呼び出しは，注記の有無にかかわらず違反とする．
+中身が AST に現れず，native command かどうかを判定できないためである．
 通すと検査そのものを迂回できる．引数は配列で渡す．
+
+対象は次のとおりである．
+
+- `Invoke-Expression`．別名 `iex` と module 修飾した形も含む．
+- `InvokeScript`・`ExpandString`・`NewScriptBlock`・`AddScript` の各メソッド．
+- `[scriptblock]::Create(...)`．
+
+`Create` は型と組で見る．名前だけで倒すと無関係な `Create` を巻き込む．
 
 免除は行単位である．1 行へ native command を 2 つ並べない．
 scriptblock は呼び出しの引数位置へ直接書く．
