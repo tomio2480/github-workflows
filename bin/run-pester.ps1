@@ -27,9 +27,23 @@ $configuration.Run.Path = $Path
 $configuration.Run.PassThru = $true
 $configuration.Output.Verbosity = 'Normal'
 
-$result = Invoke-Pester -Configuration $configuration
+# 対象が 1 件も無いとき Invoke-Pester は例外を投げる．
+# 握りつぶすと「検査しなかった」が緑になる
+try {
+  $result = Invoke-Pester -Configuration $configuration
+} catch {
+  Write-Error $_
+  exit 1
+}
 
-if ($result.FailedCount -gt 0) {
+if ($null -eq $result) {
+  Write-Error 'Invoke-Pester returned no result'
+  exit 1
+}
+
+# 件数ではなく Pester の判定を見る．discovery に失敗した container は
+# FailedCount を 0 のまま Result を Failed にする
+if ($result.Result -ne 'Passed') {
   exit 1
 }
 

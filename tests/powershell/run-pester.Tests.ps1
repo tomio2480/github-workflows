@@ -53,6 +53,19 @@ Describe 'bin/run-pester.ps1' {
     $result.Output | Should -Match 'skipped'
   }
 
+  It 'discovery に失敗した suite で非 0 を返す' {
+    # 件数は 0 のまま Container failed になる．FailedCount だけを見ると
+    # 壊れた suite が緑で通る
+    (Invoke-Runner -Fixture 'broken-discovery.Tests.ps1').ExitCode |
+      Should -Not -Be 0
+  }
+
+  It '対象が 1 件も見つからないとき非 0 を返す' {
+    # Invoke-Pester は例外を投げる．握りつぶすと「検査しなかった」が緑になる
+    (Invoke-Runner -Fixture 'does-not-exist.Tests.ps1').ExitCode |
+      Should -Not -Be 0
+  }
+
   It '-FailOnSkipped でも成功する suite は 0 を返す' {
     (Invoke-Runner -Fixture 'passing.Tests.ps1' -FailOnSkipped).ExitCode |
       Should -Be 0
