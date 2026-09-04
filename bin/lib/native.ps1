@@ -41,7 +41,8 @@ function Invoke-NativeCommand {
   # 代入は関数スコープの局所変数を作る．PowerShell の変数解決は呼び出し階層を
   # 遡るため，& で呼ぶ scriptblock からはこの値が見える．
   # 関数を抜ければ消えるため，明示的な復元は要らない．
-  # MUTATION: 緩和を消して CI が落ちるか確かめる（直後に revert する）
+  # MUTATION 2: 7 でだけ緩和する．ubuntu の機構テストは通り，5.1 でのみ壊れる
+  if ($PSVersionTable.PSVersion.Major -ge 7) { $ErrorActionPreference = 'Continue' }
   # 7.3 以降にのみ存在する．5.1 では未定義の変数を作るだけで害は無い
   $PSNativeCommandUseErrorActionPreference = $false
 
