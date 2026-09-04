@@ -198,8 +198,8 @@ native command の stderr を終了エラーへ変える．
 
 この規律は `bin/check-native-calls.ps1` が検査する．
 `bin/verify-shell.py` が PSScriptAnalyzer と同じ対象へ実行する．
-文書に書いただけでは別セッションへ届かないためである（Issue #185）．
-同じ穴を `v2.16.1` と `v2.17.2` で 2 度踏んでいる．
+文書に書いただけでは別セッションへ届かないためである．
+Issue #185 によれば，同じ穴を `v2.16.1` と `v2.17.2` の作業で 2 度踏んでいる．
 
 判定は AST で行う．正規表現では複数行にまたがる呼び出しを取りこぼす．
 `CommandAst` を辿り，包まれていない native command の呼び出しを違反とする．
@@ -218,6 +218,10 @@ dot-source（`. path`）と，ヘルパー自身の本体は対象から除く�
 # native-direct: 失敗は直後の祖先検査が非 0 で終えるため表面化する
 git fetch --quiet origin "refs/tags/${Major}"
 ```
+
+免除は行単位である．1 行へ native command を 2 つ並べない．
+scriptblock は呼び出しの引数位置へ直接書く．
+変数へ入れてから渡すと，包まれていると判定できない．
 
 ## 🧪 自己テスト
 

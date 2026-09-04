@@ -15,6 +15,14 @@
 #   # native-direct: <理由>
 #
 # 判定は AST で行う．正規表現では複数行にまたがる呼び出しを取りこぼす．
+#
+# 既知の限界は次の 2 つである．どちらも現状の bin/ には当たらない．
+#
+# - 免除は行単位である．1 行へ native command を 2 つ並べると，
+#   注記 1 つで両方が免除される．
+# - scriptblock を変数へ入れてから渡す形（`$sb = { git status }` の後に
+#   `Invoke-NativeCommand $sb`）は，包まれていると判定できない．
+#   scriptblock は呼び出しの引数位置に直接書く．
 
 [CmdletBinding()]
 param(
@@ -114,11 +122,17 @@ $findings = @()
 foreach ($target in $parsed.Keys) {
   $entry = $parsed[$target]
 
-  # 注記のある行を集める．comment は AST に載らないため token から拾う
-  $exemptLines = New-Object 'System.Collections.Generic.HashSet[int]'
+  # 注記のある行を集める．comment は AST に載らないため token から拾う．
+  # 文字列リテラルで騙れないよう Comment token だけを見る
+  $commentLines = New-Object 'System.Collections.Generic.HashSet[int]'
+  $markerLines = New-Object 'System.Collections.Generic.HashSet[int]'
   foreach ($token in $entry.Tokens) {
-    if ($token.Kind -eq 'Comment' -and $token.Text -match [regex]::Escape($ExceptionMarker)) {
-      $null = $exemptLines.Add($token.Extent.StartLineNumber)
+    if ($token.Kind -ne 'Comment') {
+      continue
+    }
+    $null = $commentLines.Add($token.Extent.StartLineNumber)
+    if ($token.Text -match [regex]::Escape($ExceptionMarker)) {
+      $null = $markerLines.Add($token.Extent.StartLineNumber)
     }
   }
 
@@ -146,8 +160,18 @@ foreach ($target in $parsed.Keys) {
     }
 
     $line = $command.Extent.StartLineNumber
-    # 同じ行の行末注記と，直前の行の注記を許す
-    if ($exemptLines.Contains($line) -or $exemptLines.Contains($line - 1)) {
+    # 行末の注記と，直上の連続したコメント塊の中の注記を許す．
+    # 理由が 1 行へ収まらないことがあるためである．
+    # 空行やコードで切れた時点で遡るのをやめる
+    $exempt = $markerLines.Contains($line)
+    $cursor = $line - 1
+    while (-not $exempt -and $commentLines.Contains($cursor)) {
+      if ($markerLines.Contains($cursor)) {
+        $exempt = $true
+      }
+      $cursor--
+    }
+    if ($exempt) {
       continue
     }
 

@@ -51,6 +51,34 @@ Describe 'bin/check-native-calls.ps1' {
     $result.Output | Should -Match 'no unwrapped native command call'
   }
 
+  It '複数行の注記でも直上の塊なら免除する' {
+    # 理由を 1 行へ収められないことがある．塊の先頭に注記があればよい
+    $result = Invoke-Checker -Fixture 'multiline-note.ps1'
+
+    $result.Output | Should -Not -Match 'multiline-note\.ps1:7'
+  }
+
+  It '空行で切れた注記は届かない' {
+    $result = Invoke-Checker -Fixture 'multiline-note.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'multiline-note\.ps1:13'
+  }
+
+  It '解決できない名前も native として扱う' {
+    # ツール未導入で解決に失敗したとき，黙って見逃すと
+    # 「指摘 0 件で成功」に化ける
+    $result = Invoke-Checker -Fixture 'unresolved.ps1'
+
+    $result.ExitCode | Should -Not -Be 0
+    $result.Output | Should -Match 'zz-not-a-real-command'
+  }
+
+  It '文字列の中の注記では免除しない' {
+    # 免除は comment token だけを見る
+    (Invoke-Checker -Fixture 'literal-marker.ps1').ExitCode | Should -Not -Be 0
+  }
+
   It '複数ファイルのうち 1 つでも違反があれば落ちる' {
     (Invoke-Checker -Fixture @('compliant.ps1', 'violation.ps1')).ExitCode |
       Should -Not -Be 0

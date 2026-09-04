@@ -147,7 +147,8 @@ if ($RemoteMajorSha -ne '') {
       # shallow クローンでは remote タグと新 patch の間の履歴が欠けており，
       # 祖先関係を判定できない（実際は祖先でも非祖先と誤判定される）．
       # そのため深さを解消してから fetch する
-      # native-direct: 失敗は直後の merge-base 検査が非 0 で終えるため表面化する
+      # native-direct: 失敗は必ず表面化する．5.1 は昇格でその場が止まり，
+      # 7 は素通りするが直後の merge-base 検査が非 0 で終える
       if ((git rev-parse --is-shallow-repository) -eq 'true') {
         # native-direct: 同上
         git fetch --quiet --unshallow origin "refs/tags/${Major}"
