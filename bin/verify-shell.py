@@ -30,6 +30,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ANALYZER_SCRIPT = REPO_ROOT / "bin" / "analyze-powershell.ps1"
+NATIVE_CALL_SCRIPT = REPO_ROOT / "bin" / "check-native-calls.ps1"
 PESTER_SCRIPT = REPO_ROOT / "bin" / "run-pester.ps1"
 
 BASH_PATTERNS = ("bin/*.sh", "scripts/*.sh")
@@ -102,6 +103,15 @@ def run_powershell_analyzer(targets: Sequence[str], runner: Runner) -> int:
     )
 
 
+def run_native_call_check(targets: Sequence[str], runner: Runner) -> int:
+    """native command の直接呼びを検出する（Issue #185）．"""
+    if not targets:
+        return 0
+    return runner(
+        ["pwsh", "-NoProfile", "-File", str(NATIVE_CALL_SCRIPT), *targets]
+    )
+
+
 def run_pester(
     targets: Sequence[str], runner: Runner, fail_on_skipped: bool = False
 ) -> int:
@@ -142,9 +152,14 @@ def run_checks(
         exit_codes.append(run_shellcheck(bash_targets, runner))
         exit_codes.append(run_shfmt(bash_targets, runner))
 
-    print(f"targets (PSScriptAnalyzer): {', '.join(powershell_targets)}", flush=True)
+    print(
+        f"targets (PSScriptAnalyzer, check-native-calls): "
+        f"{', '.join(powershell_targets)}",
+        flush=True,
+    )
     print(f"targets (Pester): {', '.join(pester_targets)}", flush=True)
     exit_codes.append(run_powershell_analyzer(powershell_targets, runner))
+    exit_codes.append(run_native_call_check(powershell_targets, runner))
     exit_codes.append(
         run_pester(pester_targets, runner, fail_on_skipped=powershell_only)
     )

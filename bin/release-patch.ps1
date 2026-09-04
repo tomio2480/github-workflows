@@ -146,11 +146,25 @@ if ($RemoteMajorSha -ne '') {
     if (-not $DryRun) {
       # shallow クローンでは remote タグと新 patch の間の履歴が欠けており，
       # 祖先関係を判定できない（実際は祖先でも非祖先と誤判定される）．
-      # そのため深さを解消してから fetch する
-      if ((git rev-parse --is-shallow-repository) -eq 'true') {
-        git fetch --quiet --unshallow origin "refs/tags/${Major}"
+      # そのため深さを解消してから fetch する．
+      #
+      # 失敗は自分で検査する．後段の merge-base には委ねられない．
+      # remote sha がすでにローカルにあれば，fetch が落ちても merge-base は
+      # 成功しうる．そのとき「履歴を取り損ねたまま祖先と判定した」に化ける
+      $Shallow = Invoke-NativeCommand { git rev-parse --is-shallow-repository }
+      if ($LASTEXITCODE -ne 0) {
+        Write-Error 'failed to determine whether the repository is shallow'
+        exit 1
+      }
+
+      if ($Shallow -eq 'true') {
+        Invoke-NativeCommand { git fetch --quiet --unshallow origin "refs/tags/${Major}" }
       } else {
-        git fetch --quiet origin "refs/tags/${Major}"
+        Invoke-NativeCommand { git fetch --quiet origin "refs/tags/${Major}" }
+      }
+      if ($LASTEXITCODE -ne 0) {
+        Write-Error "failed to fetch refs/tags/${Major} from origin"
+        exit 1
       }
     }
     Invoke-NativeCommand { git merge-base --is-ancestor $RemoteMajorSha $MergeSha }

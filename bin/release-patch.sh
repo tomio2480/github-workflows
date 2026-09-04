@@ -194,8 +194,15 @@ if [ -n "${REMOTE_MAJOR_SHA}" ]; then
     if [ "${DRY_RUN}" -eq 0 ]; then
       # shallow クローンでは remote タグと新 patch の間の履歴が欠けており，
       # 祖先関係を判定できない（実際は祖先でも非祖先と誤判定される）．
-      # そのため深さを解消してから fetch する
-      if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+      # そのため深さを解消してから fetch する．
+      #
+      # 判定の失敗は自分で検査する．if の条件式では errexit が効かず，
+      # 空文字となって「shallow ではない」側へ落ちるためである
+      if ! shallow="$(git rev-parse --is-shallow-repository)"; then
+        echo "error: failed to determine whether the repository is shallow" >&2
+        exit 1
+      fi
+      if [ "${shallow}" = "true" ]; then
         git fetch --quiet --unshallow origin "refs/tags/${MAJOR}"
       else
         git fetch --quiet origin "refs/tags/${MAJOR}"
