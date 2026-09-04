@@ -64,6 +64,7 @@ def test_collect_targets_excludes_fixture_assets() -> None:
 
     assert targets == [
         "bin/analyze-powershell.ps1",
+        "bin/check-native-calls.ps1",
         "bin/lib/native.ps1",
         "bin/release-patch.ps1",
         "bin/run-pester.ps1",
@@ -167,6 +168,7 @@ def test_run_checks_reports_every_failure() -> None:
         "shfmt",
         "pwsh",
         "pwsh",
+        "pwsh",
     ]
 
 
@@ -218,7 +220,7 @@ def test_run_checks_powershell_only_skips_bash_tools() -> None:
     returncode = verify_shell.run_checks(runner=runner, powershell_only=True)
 
     assert returncode == 0
-    assert [call[0] for call in runner.calls] == ["pwsh", "pwsh"]
+    assert [call[0] for call in runner.calls] == ["pwsh", "pwsh", "pwsh"]
 
 
 def test_run_checks_powershell_only_reports_failure() -> None:
@@ -235,6 +237,48 @@ def test_run_checks_powershell_only_prints_only_powershell_targets(capsys) -> No
     assert "tests/powershell/watch-pr-checks.Tests.ps1" in captured
     # bash 側は windows job で検査しない．対象行ごと出さない
     assert "targets (shellcheck, shfmt)" not in captured
+
+
+def test_run_native_call_check_invokes_pwsh_with_script_file() -> None:
+    runner = RecordingRunner()
+
+    returncode = verify_shell.run_native_call_check(
+        ["bin/release-patch.ps1"], runner=runner
+    )
+
+    assert returncode == 0
+    assert runner.calls == [
+        [
+            "pwsh",
+            "-NoProfile",
+            "-File",
+            str(verify_shell.NATIVE_CALL_SCRIPT),
+            "bin/release-patch.ps1",
+        ]
+    ]
+
+
+def test_run_native_call_check_is_skipped_without_targets() -> None:
+    runner = RecordingRunner()
+
+    assert verify_shell.run_native_call_check([], runner=runner) == 0
+    assert runner.calls == []
+
+
+def test_run_checks_inspects_the_same_targets_as_the_analyzer() -> None:
+    runner = RecordingRunner()
+
+    verify_shell.run_checks(runner=runner)
+
+    analyzer_call = next(
+        call for call in runner.calls if str(verify_shell.ANALYZER_SCRIPT) in call
+    )
+    native_call = next(
+        call for call in runner.calls if str(verify_shell.NATIVE_CALL_SCRIPT) in call
+    )
+
+    # 規律の対象は静的解析と同じ .ps1 である．片方だけ広い・狭いを作らない
+    assert analyzer_call[4:] == native_call[4:]
 
 
 def test_run_pester_can_fail_on_skipped_tests() -> None:
