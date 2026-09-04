@@ -139,6 +139,10 @@ bash 版は `tests/bash/release-patch.bats` が 309 行で網羅している．
 2 度踏んだ時点で repo 側へ Issue を残すか，スクリプトを直す．
 回避策の記憶は，別セッションの自分には届かない．
 
+**後日（2026-09-04）**: Issue #179 として起票し，PR #182 で直した．
+共通ヘルパー `Invoke-NativeCommand` へ集約している．
+経緯は [2026-09-04-issue179-native-stderr.md](2026-09-04-issue179-native-stderr.md) にある．
+
 ## 🧹 ワークツリーの空実体
 
 セッション開始時，`.claude/worktrees/awesome-feynman-9deda8` は空だった．
