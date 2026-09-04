@@ -43,6 +43,8 @@ jobs:
     uses: ./.github/workflows/shell-quality.yml
     with:
       verify-script: bin/verify-shell.py
+      # 5.1 依存の Pester ケースは ubuntu では skip される（Issue #184）
+      windows-verify: true
 
   unit-python:
     name: Python script unit tests

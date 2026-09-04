@@ -13,6 +13,13 @@ on:
         required: false
         type: string
         default: "3.x"
+      windows-verify:
+        description: >-
+          PowerShell の検査を windows runner でも実行するか．
+          有効にする caller は verify script が --powershell-only を解する必要がある．
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,3 +80,33 @@ jobs:
           VERIFY_SCRIPT: ${{ inputs.verify-script }}
         shell: bash
         run: python "${VERIFY_SCRIPT}" --require-all
+
+  # Windows PowerShell 5.1 を要するテストは ubuntu では skip される．
+  # 5.1 は windows runner へ既定で入っているため，PowerShell の検査だけを
+  # ここで再実行する．bash 側の toolchain は載せない（Issue #184）．
+  verify-windows:
+    name: Shell / CLI quality (Windows PowerShell)
+    if: ${{ inputs.windows-verify }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install PowerShell analyzers and tests
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+          Install-Module Pester -RequiredVersion 6.1.0 -Scope CurrentUser -Force
+
+      - name: Run repo-local Shell quality gate (PowerShell only)
+        env:
+          VERIFY_SCRIPT: ${{ inputs.verify-script }}
+        shell: bash
+        run: python "${VERIFY_SCRIPT}" --require-all --powershell-only
