@@ -1,0 +1,174 @@
+﻿# native command の直接呼びを検出する（Issue #185）．
+#
+# 使い方:
+#   pwsh -NoProfile -File bin/check-native-calls.ps1 <path> [<path> ...]
+#
+# 検査対象の決定は bin/verify-shell.py の責務とする．本スクリプトは受け取った
+# path をそのまま検査し，違反が 1 件でもあれば非 0 で終わる．
+#
+# 規律は docs/shell-quality.md の「native command の呼び出し規律」節にある．
+# 終了コードで分岐する native command は Invoke-NativeCommand 経由で呼ぶ．
+# Windows PowerShell 5.1 は stderr を終了エラーへ昇格させるためである．
+#
+# 直接呼びのまま残す正当な例外は，同じ行か直前の行へ次の注記を書く．
+#
+#   # native-direct: <理由>
+#
+# 判定は AST で行う．正規表現では複数行にまたがる呼び出しを取りこぼす．
+
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+  [string[]]$Path
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$WrapperName = 'Invoke-NativeCommand'
+$ExceptionMarker = 'native-direct:'
+
+function Test-WrappedInInvokeNativeCommand {
+  <#
+    .SYNOPSIS
+      CommandAst が Invoke-NativeCommand の scriptblock 引数の内側にあるか．
+  #>
+  param([System.Management.Automation.Language.Ast]$Node)
+
+  $current = $Node.Parent
+  while ($null -ne $current) {
+    if ($current -is [System.Management.Automation.Language.ScriptBlockExpressionAst]) {
+      $owner = $current.Parent
+      if ($owner -is [System.Management.Automation.Language.CommandAst] -and
+        $owner.GetCommandName() -eq $WrapperName) {
+        return $true
+      }
+    }
+    # ヘルパー自身の本体は，渡された scriptblock を呼ぶ側である．
+    # 自分で自分を包むことはできない
+    if ($current -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+      $current.Name -eq $WrapperName) {
+      return $true
+    }
+    $current = $current.Parent
+  }
+  return $false
+}
+
+# 対象すべてを先に parse する．ファイル内で定義した関数は native ではないため，
+# 名前を集めてから判定する．dot-source した helper も対象に含まれていれば拾える
+$parsed = [ordered]@{}
+$definedNames = New-Object 'System.Collections.Generic.HashSet[string]' (
+  [System.StringComparer]::OrdinalIgnoreCase
+)
+$null = $definedNames.Add($WrapperName)
+
+foreach ($target in $Path) {
+  $tokens = $null
+  $parseErrors = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    $target, [ref]$tokens, [ref]$parseErrors
+  )
+
+  if ($parseErrors.Count -gt 0) {
+    Write-Error "failed to parse ${target}: $($parseErrors[0].Message)"
+    exit 1
+  }
+
+  $parsed[$target] = [pscustomobject]@{ Ast = $ast; Tokens = $tokens }
+
+  $definitions = $ast.FindAll(
+    { param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] },
+    $true
+  )
+  foreach ($definition in $definitions) {
+    $null = $definedNames.Add($definition.Name)
+  }
+}
+
+function Test-NativeCommandName {
+  <#
+    .SYNOPSIS
+      呼び出し名が native command に当たるか．
+    .DESCRIPTION
+      解決できない名前も native として扱う．module 未導入などで解決に失敗した
+      とき，黙って見逃すと「指摘 0 件で成功」に化けるためである．
+      判定を緩めるより，偽陽性で気づける側へ倒す．
+  #>
+  param([string]$Name)
+
+  if ($definedNames.Contains($Name)) {
+    return $false
+  }
+
+  $resolved = Get-Command -Name $Name -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($null -eq $resolved) {
+    return $true
+  }
+  return $resolved.CommandType -eq 'Application'
+}
+
+$findings = @()
+
+foreach ($target in $parsed.Keys) {
+  $entry = $parsed[$target]
+
+  # 注記のある行を集める．comment は AST に載らないため token から拾う
+  $exemptLines = New-Object 'System.Collections.Generic.HashSet[int]'
+  foreach ($token in $entry.Tokens) {
+    if ($token.Kind -eq 'Comment' -and $token.Text -match [regex]::Escape($ExceptionMarker)) {
+      $null = $exemptLines.Add($token.Extent.StartLineNumber)
+    }
+  }
+
+  $commands = $entry.Ast.FindAll(
+    { param($node) $node -is [System.Management.Automation.Language.CommandAst] },
+    $true
+  )
+
+  foreach ($command in $commands) {
+    # dot-source（`. path`）は native command の呼び出しではない．
+    # 名前を静的に決められないため，除かないと必ず偽陽性になる
+    if ($command.InvocationOperator -eq 'Dot') {
+      continue
+    }
+
+    $name = $command.GetCommandName()
+
+    # 名前を静的に決められない呼び出し（& $variable など）も native とみなす
+    if ($null -ne $name -and -not (Test-NativeCommandName -Name $name)) {
+      continue
+    }
+
+    if (Test-WrappedInInvokeNativeCommand -Node $command) {
+      continue
+    }
+
+    $line = $command.Extent.StartLineNumber
+    # 同じ行の行末注記と，直前の行の注記を許す
+    if ($exemptLines.Contains($line) -or $exemptLines.Contains($line - 1)) {
+      continue
+    }
+
+    $display = if ($null -eq $name) { $command.Extent.Text } else { $name }
+    $findings += [pscustomobject]@{
+      File    = $target
+      Line    = $line
+      Command = $display
+    }
+  }
+}
+
+if ($findings.Count -gt 0) {
+  Write-Output "direct native command call(s) not wrapped in ${WrapperName}:"
+  foreach ($finding in $findings) {
+    Write-Output "  $($finding.File):$($finding.Line): $($finding.Command)"
+  }
+  Write-Output ''
+  Write-Output "wrap them in ${WrapperName}, or annotate with '# ${ExceptionMarker} <reason>'"
+  exit 1
+}
+
+Write-Output "check-native-calls: no unwrapped native command call in $($Path.Count) file(s)"
+exit 0
