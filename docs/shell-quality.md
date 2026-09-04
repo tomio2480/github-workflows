@@ -71,6 +71,15 @@ python bin/verify-shell.py --require-all --powershell-only
 それを許すと，5.1 のために設けた job が skip の山を緑で返す．
 本リポジトリでは `bin/run-pester.ps1 -FailOnSkipped` がこれを担う．
 
+この 2 つを ubuntu の job へは広げない．
+そちらは PowerShell 資産を持たない caller も通る汎用の gate である．
+対象 0 件も 5.1 不在の skip も，そこでは正常な状態に当たる．
+`windows-verify` を有効にすること自体が
+「5.1 を要するテストを持つ」という宣言であり，非対称はそこに根拠がある．
+
+skip を一律で失敗にする点は，いまは skip の理由が 5.1 の不在に限られるためである．
+windows 上で正当に skip したいテストが出たら，この判定を見直す．
+
 有効にする理由は Windows PowerShell 5.1 にある．
 5.1 は ubuntu runner に無い．
 `powershell.exe` の有無で skip するテストは，そこで飛ぶ．
@@ -133,6 +142,11 @@ repo-local gate は `bin/verify-shell.py` に置く．
 Bats は `unit-bash` job が同じ suite を実行するため gate へ含めない．
 Pester は bats を持たない PowerShell 版の振る舞いを担保するため gate で実行する．
 対象が 1 つも無ければ実行しない．
+
+`tests/powershell/fixtures/` は，どちらの glob にも入らない．
+`bin/run-pester.ps1` の回帰確認に使う資材を置く場所である．
+構文の壊れた `.ps1` を意図して含むため，検査対象から外す．
+glob を再帰へ変えると，この fixture が本体の suite に混ざる．
 
 本リポジトリは `windows-verify: true` を渡す．
 5.1 依存のテストを持つためである（前節参照）．
