@@ -31,3 +31,6 @@ jobs:
     uses: OWNER/github-workflows/.github/workflows/shell-quality.yml@<SHA> # v2
     with:
       verify-script: bin/verify-shell.py
+      # Windows PowerShell 5.1 を要するテストを持つ repo は次を有効にする．
+      # verify script が --powershell-only を解する必要がある．
+      # windows-verify: true

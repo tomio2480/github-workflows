@@ -12,6 +12,7 @@
 
 - 🧭 責務
 - 🚀 導入
+- 🪟 任意の windows job
 - 📌 Tool version
 - 🔄 更新手順
 - 🏠 中央リポジトリ自身の gate
@@ -48,6 +49,46 @@ python bin/verify-shell.py --require-all
 script の path が異なる場合は caller の `verify-script` input を変更する．
 caller workflow の `pull_request.paths` も同じ path へ変更する．
 この input は shell 変数へ渡して引用するため，空白を含む path も 1 引数になる．
+
+## 🪟 任意の windows job
+
+`windows-verify: true` を渡すと，windows runner の job が並ぶ．
+既定は `false` であり，渡さない caller の挙動は変わらない．
+
+有効にした caller の verify script は，次の呼び出しも解する必要がある．
+
+```text
+python bin/verify-shell.py --require-all --powershell-only
+```
+
+- PSScriptAnalyzer と Pester だけを実行する．
+- ShellCheck と shfmt の不足を失敗にしない．windows へは載せないためである．
+- Pester の対象が 0 件なら失敗する．
+- skip されたテストが 1 件でもあれば失敗する．
+
+後ろの 2 つは，この job が緑のまま何も検査しない状態を止めるためにある．
+5.1 を要するテストは，5.1 が無ければ自ら skip する．
+それを許すと，5.1 のために設けた job が skip の山を緑で返す．
+本リポジトリでは `bin/run-pester.ps1 -FailOnSkipped` がこれを担う．
+
+この 2 つを ubuntu の job へは広げない．
+そちらは PowerShell 資産を持たない caller も通る汎用の gate である．
+対象 0 件も 5.1 不在の skip も，そこでは正常な状態に当たる．
+`windows-verify` を有効にすること自体が
+「5.1 を要するテストを持つ」という宣言であり，非対称はそこに根拠がある．
+
+skip を一律で失敗にする点は，いまは skip の理由が 5.1 の不在に限られるためである．
+windows 上で正当に skip したいテストが出たら，この判定を見直す．
+
+有効にする理由は Windows PowerShell 5.1 にある．
+5.1 は ubuntu runner に無い．
+`powershell.exe` の有無で skip するテストは，そこで飛ぶ．
+昇格の癖（後述「native command の呼び出し規律」）は 5.1 でのみ起きるため，
+関数スタブでは代替できない．
+本リポジトリでは 5.1 依存の 2 ケースが ubuntu で skip されていた（Issue #184）．
+
+bash 側の検査は ubuntu の job が担う．
+ShellCheck と shfmt を Windows へ導入せず，CRLF の差異も持ち込まない．
 
 ## 📌 Tool version
 
@@ -101,6 +142,15 @@ repo-local gate は `bin/verify-shell.py` に置く．
 Bats は `unit-bash` job が同じ suite を実行するため gate へ含めない．
 Pester は bats を持たない PowerShell 版の振る舞いを担保するため gate で実行する．
 対象が 1 つも無ければ実行しない．
+
+`tests/powershell/fixtures/` は，どちらの glob にも入らない．
+`bin/run-pester.ps1` の回帰確認に使う資材を置く場所である．
+構文の壊れた `.ps1` を意図して含むため，検査対象から外す．
+glob を再帰へ変えると，この fixture が本体の suite に混ざる．
+
+本リポジトリは `windows-verify: true` を渡す．
+5.1 依存のテストを持つためである（前節参照）．
+ubuntu と windows の 2 job が並び，PowerShell の検査は両方で走る．
 
 fixture 呼び出し（`shell-quality-reusable` job）とは統合しない．
 前者は toolchain と caller contract を検証する自己テストである．

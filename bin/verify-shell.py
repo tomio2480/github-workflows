@@ -11,6 +11,11 @@
 Bats は `test-self-lint.yml` の unit-bash job が同じ suite を実行するため
 本 gate では動かさない．Pester は `tests/powershell/*.Tests.ps1` を対象に
 本 gate から実行する．bats を持たない PowerShell 版の振る舞いを担保する．
+
+`--powershell-only` は PSScriptAnalyzer と Pester だけを実行する．
+windows runner から呼び，Windows PowerShell 5.1 を要するテストを走らせる
+（docs/shell-quality.md「任意の windows job」節，Issue #184）．
+ShellCheck と shfmt は ubuntu 側の job が担うため windows では動かさない．
 """
 
 from __future__ import annotations
@@ -36,9 +41,21 @@ PESTER_PATTERNS = ("tests/powershell/*.Tests.ps1",)
 # 既存スクリプトの整形規則．-i 2 はインデント幅，-ci は case 分岐のインデント．
 SHFMT_OPTIONS = ("-i", "2", "-ci")
 
-REQUIRED_TOOLS = ("shellcheck", "shfmt", "pwsh")
+BASH_TOOLS = ("shellcheck", "shfmt")
+POWERSHELL_TOOLS = ("pwsh",)
 
 Runner = Callable[[Sequence[str]], int]
+
+
+def required_tools(powershell_only: bool) -> tuple[str, ...]:
+    """実行する検査に対応する必須ツールを返す．
+
+    `--powershell-only` では ShellCheck と shfmt を動かさない．
+    それらの不足を失敗にすると，windows runner が常に落ちる．
+    """
+    if powershell_only:
+        return POWERSHELL_TOOLS
+    return BASH_TOOLS + POWERSHELL_TOOLS
 
 
 def default_runner(argv: Sequence[str]) -> int:
@@ -85,47 +102,74 @@ def run_powershell_analyzer(targets: Sequence[str], runner: Runner) -> int:
     )
 
 
-def run_pester(targets: Sequence[str], runner: Runner) -> int:
+def run_pester(
+    targets: Sequence[str], runner: Runner, fail_on_skipped: bool = False
+) -> int:
     if not targets:
         return 0
-    return runner(["pwsh", "-NoProfile", "-File", str(PESTER_SCRIPT), *targets])
+    options = ["-FailOnSkipped"] if fail_on_skipped else []
+    return runner(
+        ["pwsh", "-NoProfile", "-File", str(PESTER_SCRIPT), *options, *targets]
+    )
 
 
-def run_checks(runner: Runner = default_runner) -> int:
+def run_checks(
+    runner: Runner = default_runner,
+    powershell_only: bool = False,
+    root: Path = REPO_ROOT,
+) -> int:
     """全チェックを実行する．途中で打ち切らず，失敗を集約して返す．"""
-    bash_targets = collect_targets(REPO_ROOT, BASH_PATTERNS)
-    powershell_targets = collect_targets(REPO_ROOT, POWERSHELL_PATTERNS)
-    pester_targets = collect_targets(REPO_ROOT, PESTER_PATTERNS)
+    powershell_targets = collect_targets(root, POWERSHELL_PATTERNS)
+    pester_targets = collect_targets(root, PESTER_PATTERNS)
+
+    # windows job は 5.1 依存のテストを走らせるためだけに存在する．
+    # 対象が 1 つも無い状態は，job が何も検査せず緑で終えることを意味する．
+    if powershell_only and not pester_targets:
+        print(
+            f"no Pester target matched: {', '.join(PESTER_PATTERNS)}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 1
 
     # 「チェックが pass した」と「対象を検査した」を CI ログ上で区別するため，
     # ShellCheck と shfmt が無出力で成功する場合でも対象を残す．
     # 子プロセスの出力と混ざらないよう flush する．
-    print(f"targets (shellcheck, shfmt): {', '.join(bash_targets)}", flush=True)
+    exit_codes = []
+    if not powershell_only:
+        bash_targets = collect_targets(root, BASH_PATTERNS)
+        print(f"targets (shellcheck, shfmt): {', '.join(bash_targets)}", flush=True)
+        exit_codes.append(run_shellcheck(bash_targets, runner))
+        exit_codes.append(run_shfmt(bash_targets, runner))
+
     print(f"targets (PSScriptAnalyzer): {', '.join(powershell_targets)}", flush=True)
     print(f"targets (Pester): {', '.join(pester_targets)}", flush=True)
+    exit_codes.append(run_powershell_analyzer(powershell_targets, runner))
+    exit_codes.append(
+        run_pester(pester_targets, runner, fail_on_skipped=powershell_only)
+    )
 
-    exit_codes = [
-        run_shellcheck(bash_targets, runner),
-        run_shfmt(bash_targets, runner),
-        run_powershell_analyzer(powershell_targets, runner),
-        run_pester(pester_targets, runner),
-    ]
     return 0 if all(code == 0 for code in exit_codes) else 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--require-all", action="store_true")
+    parser.add_argument(
+        "--powershell-only",
+        action="store_true",
+        help="PSScriptAnalyzer と Pester だけを実行する（windows job 用）",
+    )
     args = parser.parse_args(argv)
     if not args.require_all:
         parser.error("--require-all is required")
 
-    absent = missing_tools(REQUIRED_TOOLS)
+    absent = missing_tools(required_tools(args.powershell_only))
     if absent:
         print(f"missing tool: {', '.join(absent)}", file=sys.stderr)
         return 1
 
-    return run_checks()
+    return run_checks(powershell_only=args.powershell_only)
 
 
 if __name__ == "__main__":
