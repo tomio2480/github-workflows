@@ -315,6 +315,16 @@ job の `timeout-minutes` は中央 workflow だけで完結する．
 reusable workflow 側の変更だけでは足りない．
 caller 側の `permissions` ブロックの追記が別途必要になる．
 
+この制約は中央リポジトリ自身にも及ぶ．
+中央には caller が無く，`@claude` のメンションが届かなかった（Issue #140）．
+解決には self-caller `.github/workflows/claude-review-self.yml` を置いた．
+reusable workflow へ `issue_comment` を直接足す案は採らなかった．
+1 ファイルが配布用の部品と中央の稼働 workflow を兼ねる形になる．
+`permissions` の決まり方も，呼び出し経路ごとに 2 通りへ分かれる．
+self-caller なら役割分担が中央でも保たれる．
+本体は `workflow_call` 専用であり，caller が trigger と権限を持つ．
+配布物を中央で試す場としても使える．
+
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 7: 変更が caller 側の作業を要するかどうか

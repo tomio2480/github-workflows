@@ -19,6 +19,7 @@
 - caller テンプレートの既定は SHA pin + バージョンコメント（`@<SHA> # v2`）．変更が SHA pin 利用者へ届く経路は Dependabot の更新 PR である．対象は `.github/actions/markdown-lint/action.yml` や `templates/` の変更である．`@main` 直接参照は Dependabot の追随対象外
 - v1 タグ（reusable workflow 形式）は self-detection bug により動作しない．残置はするがリリースノートで非推奨を明示している
 - `@claude` メンション起動の Claude レビュー用 reusable workflow も配布する（v2.6〜）．実体は `.github/workflows/claude-review.yml` である．中央ファイルを自己参照しないため，v1 の self-detection bug は該当しない
+- 中央リポジトリ自身の `@claude` は self-caller `.github/workflows/claude-review-self.yml` が受ける．caller テンプレートと同一構造を保ち，`uses` だけがローカル呼び出しになる．コメント発火の中央 workflow をここへ増やすと二重起動する
 - reviewdog で PR inline コメントを投稿するため，caller 側に 2 点が必要．`pull-requests: write` 権限と，`github-token` input への明示的な渡しである
 - 公開（public）運用される．外部からのフォーク PR は原則マージしない
 
