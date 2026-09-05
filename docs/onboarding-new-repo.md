@@ -152,7 +152,7 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 ```
 
 `uses:` 行の SHA pin は sed で置換済みとなる．併記の版コメントは major のみ（`# v2`）で固定である．
-workflow は default ブランチの定義で発火するため，追加した PR 自身では
+`issue_comment` は default ブランチに workflow がある場合のみ発火するため，追加した PR 自身では
 メンションが発火しない．動作確認はマージ後の別 PR で行う．
 
 ## 6️⃣ Shell quality workflow（任意）
