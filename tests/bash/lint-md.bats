@@ -19,6 +19,7 @@
 #     - 指摘があれば 1 で終了する（CI の reviewdog と異なりローカルはブロックする）
 #     - lint の実行失敗（2）と指摘あり（1）を区別する
 #     - 生成した runtime config を作業ツリーへ残さない
+#     - lint は LF 正規化した複製へ掛け，作業ツリーの改行は書き換えない
 #
 # Test strategy:
 #   npm と lint バイナリを差し替え，ネットワークと実 lint を排除する．
@@ -48,6 +49,10 @@ if [ -n "${FAKE_MDLINT_EXEC_ERROR:-}" ]; then
 fi
 echo "markdownlint-cli2 v0.0.0-fake"
 printf '%s\n' "$@" > "${FAKE_LOG_DIR}/mdlint-args"
+pwd > "${FAKE_LOG_DIR}/mdlint-cwd"
+if [ -n "${FAKE_INSPECT_FILE:-}" ] && [ -f "${FAKE_INSPECT_FILE}" ]; then
+  tr -dc '\r' < "${FAKE_INSPECT_FILE}" | wc -c > "${FAKE_LOG_DIR}/mdlint-cr"
+fi
 if [ -n "${FAKE_MDLINT_FINDINGS:-}" ]; then
   echo "${FAKE_FINDING_PATH:-new.md}:1 MD000/fake fake mdlint finding"
   echo "Summary: 1 error(s)"
@@ -60,6 +65,11 @@ FAKE
   cat > "${FAKE_LINT_BIN}/textlint" <<'FAKE'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "${FAKE_LOG_DIR}/textlint-args"
+pwd > "${FAKE_LOG_DIR}/textlint-cwd"
+# linter が実際に読むファイルの CR 数を残す．正規化の有無をここで見る．
+if [ -n "${FAKE_INSPECT_FILE:-}" ] && [ -f "${FAKE_INSPECT_FILE}" ]; then
+  tr -dc '\r' < "${FAKE_INSPECT_FILE}" | wc -c > "${FAKE_LOG_DIR}/textlint-cr"
+fi
 if [ -n "${FAKE_TEXTLINT_EXEC_ERROR:-}" ]; then
   echo "cannot resolve rule" >&2
   exit 1
@@ -114,7 +124,8 @@ FAKE
 
 teardown() {
   unset FAKE_MDLINT_FINDINGS FAKE_TEXTLINT_FINDINGS FAKE_TEXTLINT_EXEC_ERROR \
-    FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV FAKE_MDLINT_EXEC_ERROR
+    FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV FAKE_MDLINT_EXEC_ERROR \
+    FAKE_INSPECT_FILE
 }
 
 @test "exits 0 without running lint when nothing changed" {
@@ -165,10 +176,10 @@ teardown() {
   run bash "${SCRIPT}"
 
   [ "${status}" -eq 0 ]
-  # caller 設定はリポジトリルート相対で渡る（composite action と同じ）．
-  grep -qx ".markdownlint-cli2.yaml" "${FAKE_LOG_DIR}/mdlint-args"
-  ! grep -q "${CENTRAL_ROOT}/templates/.markdownlint-cli2.yaml" \
-    "${FAKE_LOG_DIR}/mdlint-args"
+  # caller 設定は絶対パスで渡る．linter は LF 正規化した複製の側で動くため，
+  # リポジトリルート相対のままでは解決できない（Issue #169）．
+  grep -q "/\.markdownlint-cli2\.yaml$" "${FAKE_LOG_DIR}/mdlint-args"
+  ! grep -q "templates/.markdownlint-cli2.yaml" "${FAKE_LOG_DIR}/mdlint-args"
 }
 
 @test "honours an explicit --glob" {
@@ -426,4 +437,41 @@ FAKE
   run bash "${SCRIPT}"
 
   [ "${status}" -eq 0 ]
+}
+
+@test "lints an LF-normalised copy of a CRLF target" {
+  # CRLF の作業ツリーでは textlint が行末の CR を 1 字に数え，80 字ちょうどの
+  # 文へ sentence-length の指摘が出る．CI（LF checkout）では出ない（Issue #169）．
+  printf '# crlf\r\n\r\nこれは CRLF の行である．\r\n' > crlf.md
+  export FAKE_INSPECT_FILE="crlf.md"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [ "$(cat "${FAKE_LOG_DIR}/textlint-cr")" -eq 0 ]
+  [ "$(cat "${FAKE_LOG_DIR}/mdlint-cr")" -eq 0 ]
+}
+
+@test "leaves the CRLF line endings of the working tree untouched" {
+  # 作業ツリーの改行設定は利用者のものである．lint のために書き換えない．
+  printf '# crlf\r\n' > crlf.md
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [ "$(tr -dc '\r' < crlf.md | wc -c)" -gt 0 ]
+}
+
+@test "maps findings in a nested copy back to the repository path" {
+  # 複製の相対構造が崩れると，突合が外れて全指摘が黙って消える．
+  mkdir -p docs
+  printf '# nested\r\n' > docs/nested.md
+  export FAKE_TEXTLINT_FINDINGS=1
+  export FAKE_TEXTLINT_ABSOLUTE=1
+  export FAKE_FINDING_PATH="docs/nested.md"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"fake textlint finding"* ]]
 }
