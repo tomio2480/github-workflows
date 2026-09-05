@@ -1,0 +1,46 @@
+name: Claude Review (self)
+
+# 中央リポジトリ自身の PR で @claude を起動するための self-caller．
+# 配布用の caller は templates/.github/workflows/claude-review.yml にあり，
+# 本ファイルはそれと同じ構造を中央リポジトリへ適用したものである．
+# 違いは uses の書き方だけで，中央では自分自身をローカル呼び出しする．
+#
+# 中央の .github/workflows/claude-review.yml は workflow_call 専用のため，
+# 本ファイルが無いと中央 PR のメンションはどの workflow にも届かない（Issue #140）．
+# reusable workflow 側へ直接 trigger を足す案は採らなかった．
+# 1 ファイルが「配布する部品」と「中央の稼働 workflow」を兼ね，
+# 権限の決まり方が呼び出し経路ごとに 2 通りになるためである．
+#
+# 中央リポジトリに caller はこの 1 枚だけである．二重起動は起きない．
+# 増設すると同じメンションで 2 件の run が起きるため，
+# tests/python/test_claude_review_self.py が本数を検査する．
+#
+# 事前準備は caller 向けと同じ 2 点である．
+#   - Claude GitHub App（https://github.com/apps/claude）のインストール．
+#   - Secrets の CLAUDE_CODE_OAUTH_TOKEN 登録（claude setup-token で発行）．
+#
+# workflow は default ブランチの定義で動く．
+# そのため本ファイルを追加した PR 自身の上ではメンションが発火しない．
+# 動作確認はマージ後の別 PR で行う．
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# reusable workflow 側の宣言は本 caller の付与を超えられないため，
+# 必要な権限は caller で明示する．
+# レビュー専用のため contents は read に絞る．
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read # PR の CI 結果を Claude が読むために必要
+
+jobs:
+  claude:
+    uses: ./.github/workflows/claude-review.yml
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
