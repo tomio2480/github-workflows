@@ -37,12 +37,19 @@ def _load(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _triggers(workflow: dict) -> dict:
-    """`on:` の内容を返す．PyYAML の真偽値化と生文字列の双方を受ける．"""
+def _triggers(workflow: dict, source: str) -> dict:
+    """`on:` の内容を返す．PyYAML の真偽値化と生文字列の双方を受ける．
+
+    `on:` が無いファイルは読み飛ばさず落とす．読み飛ばすと，本当は発火する
+    workflow を見落としたまま「該当なし」で通ってしまう．
+    """
     for key in (_ON_KEY, "on"):
         if key in workflow:
             return workflow[key]
-    raise AssertionError("workflow に `on:` が無い")
+    raise AssertionError(
+        f"{source} に `on:` が無い．workflow でないファイルを "
+        ".github/workflows/ へ置いた場合は，本テストの走査対象から外すこと．"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -81,7 +88,9 @@ def test_self_caller_passes_oauth_token_secret(self_caller: dict) -> None:
     secret 名で受け渡す．
     """
     reusable = _load(_REUSABLE)
-    required = set(_triggers(reusable)["workflow_call"]["secrets"])
+    required = set(
+        _triggers(reusable, _REUSABLE.name)["workflow_call"]["secrets"]
+    )
 
     for name, job in self_caller.get("jobs", {}).items():
         if job.get("uses") != _LOCAL_CALL:
@@ -103,7 +112,9 @@ def test_self_caller_triggers_match_template(
     中央だけが別の trigger で動くと，caller で再現しない挙動を中央で見て
     しまう．テンプレートを正とし，中央はそれに従う．
     """
-    assert _triggers(self_caller) == _triggers(template_caller), (
+    assert _triggers(self_caller, _SELF_CALLER.name) == _triggers(
+        template_caller, _TEMPLATE_CALLER.name
+    ), (
         "self-caller の `on:` が caller テンプレートと食い違っている．"
     )
 
@@ -143,11 +154,12 @@ def test_only_one_central_workflow_triggers_on_comments() -> None:
     comment_triggers = {"issue_comment", "pull_request_review_comment"}
     firing = []
     for path in sorted((_REPO_ROOT / ".github/workflows").glob("*.yml")):
-        triggers = _triggers(_load(path))
+        rel = path.relative_to(_REPO_ROOT).as_posix()
+        triggers = _triggers(_load(path), rel)
         if not isinstance(triggers, dict):
             continue
         if comment_triggers & set(triggers):
-            firing.append(path.relative_to(_REPO_ROOT).as_posix())
+            firing.append(rel)
 
     assert firing == [".github/workflows/claude-review-self.yml"], (
         "コメントで発火する中央 workflow が想定と違う．"
