@@ -14,6 +14,7 @@ CI と同じ設定・同じ集計を通し，違いは終了コードだけで�
 - 🎯 検査対象の決まり方
 - 🔍 CI との対応
 - ↩ 改行コードの扱い
+- 🛑 突合できないときは止める
 - ⚡ 依存キャッシュ
 - 🪟 Windows での実行
 - 🪝 lefthook との併用
@@ -127,8 +128,9 @@ CI の reviewdog は非ブロッキングで，指摘があっても job を失�
 ## ↩ 改行コードの扱い
 
 linter を掛ける先は作業ツリーそのものではない．
-対象ファイルを一時ディレクトリへ複製し，`\r` を落としてから掛ける．
+対象ファイルを一時ディレクトリへ複製し，`\r\n` を `\n` へ寄せてから掛ける．
 作業ツリーのファイルは書き換えない．改行の設定は利用者の環境に属するためである．
+複製は `scripts/normalize-lint-targets.py` が作る．
 
 理由は CRLF の作業ツリーで CI と結果が食い違うことにある（Issue #169）．
 `ja-technical-writing/sentence-length` は文の字数を数える．
@@ -140,11 +142,27 @@ CI は LF の checkout で走るため，同じ commit でも 0 件になる．
 文の切れ目のあとに来る `\r` は，次の文の先頭の空白として捨てられるためである．
 そのため誤検出は「長い段落の途中で折り返した文」に偏る．
 
+変換するのは `\r\n` の組だけである．単独の `\r` は改行ではないため残す．
+消すと行が連結され，指摘が消えたり増えたりする．
+末尾改行も足さない．`MD047` が末尾改行の有無を見るためである．
+
 複製へ入れるのは検査対象のファイルだけである．
 報告は `count-lint-findings.py` が対象ファイルへ絞るため，対象外の指摘は
 元から捨てられている．
 glob と `.textlintignore` はパスで効くため，複製が相対構造を保つかぎり
 「glob 全体へ掛ける」という前節の対応は崩れない．
+
+## 🛑 突合できないときは止める
+
+textlint は checkstyle 出力へ絶対パスを書く．
+集計は複製のルートを prefix として剥がし，リポジトリルート相対へ戻す．
+剥がせなかったパスは対象一覧と一致せず，その指摘は捨てられる．
+lint 自体は成功しているため，利用者には「指摘なし」の 0 終了として見える．
+
+Windows では，大小文字・8.3 名・ジャンクションの解決有無で表記が割れうる．
+そのため集計の前に `scripts/check-report-paths.py` で剥がせることを確かめる．
+剥がせない絶対パスが 1 件でもあれば，実行失敗（終了コード 2）として止める．
+黙って 0 件にするより，止めて気づかせる．そのほうが害は小さい．
 
 ## ⚡ 依存キャッシュ
 
@@ -189,6 +207,8 @@ Python は `python3` と `python` のうち，PyYAML を読み込めるほうを
 ## 🧪 テスト
 
 `tests/bash/lint-md.bats` は npm と linter を差し替え，全体の経路を検証する．
+複製の作り方は `tests/python/test_normalize_lint_targets.py` が受け持つ．
+突合の検査は `tests/python/test_check_report_paths.py` が受け持つ．
 対象選定は `tests/bash/list-local-md-targets.bats` が受け持つ．
 表示は `tests/python/test_render_local_lint_report.py` が受け持つ．
 `bats tests/bash` と `python -m pytest tests/python` は CI でも実行される．

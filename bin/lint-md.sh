@@ -253,19 +253,14 @@ LINT_MODULES="$(read_output "${DEPS_OUT}" modules)"
 # 対象ファイルへ絞るため，対象外のファイルの指摘は元から捨てられている．
 # glob と .textlintignore はパスで効くため，相対構造を保つかぎり
 # 「lint は glob 全体へ掛ける」という CI との対応は崩れない．
+# 変換するのは CRLF の組だけである．単独の CR は改行ではなく，消すと行が
+# 連結されて指摘が消えたり増えたりする．末尾改行も足さない（MD047 が見る）．
+# 複製に失敗したまま進むと，そのファイルの指摘だけが黙って消えるため，
+# 例外は握り潰さず die する．
 LINT_ROOT="${WORKDIR}/src"
-MIRRORED=0
-while IFS= read -r target; do
-  [ -n "${target}" ] || continue
-  # 差分には削除済みファイルも入る．実体が無く glob も拾わないため飛ばす．
-  [ -f "${target}" ] || continue
-  mkdir -p "${LINT_ROOT}/$(dirname "${target}")" ||
-    die "cannot create the lint copy of ${target}"
-  # 複製に失敗したまま進むと，そのファイルの指摘だけが黙って消える．
-  tr -d '\r' <"${target}" >"${LINT_ROOT}/${target}" ||
-    die "cannot normalise ${target} for linting"
-  MIRRORED=$((MIRRORED + 1))
-done <"${TARGETS}"
+MIRRORED="$("${PYTHON}" "${SCRIPTS}/normalize-lint-targets.py" \
+  "${TARGETS}" "${TOPLEVEL}" "${LINT_ROOT}")" ||
+  die "failed to prepare the normalised lint copy"
 
 if [ "${MIRRORED}" -eq 0 ]; then
   echo "lint-md: nothing to check"
@@ -318,6 +313,14 @@ FINDINGS_JSON="${WORKDIR}/findings.json"
 # Git Bash の `pwd` は /c/... 形式を返す一方 textlint は C:\... を出すので，
 # 剥がせるよう Windows 形式（pwd -W）を優先する．
 WORKSPACE="$(pwd -W 2>/dev/null)" || WORKSPACE="${LINT_ROOT}"
+# 剥がせない絶対パスは対象一覧と一致せず，その指摘は黙って捨てられる．
+# lint は成功しているため，利用者には「指摘なし」の 0 終了として見える．
+# Windows では大小文字・8.3 名・ジャンクションで表記が割れうるため，
+# 集計へ渡す前に剥がせることを確かめる．
+"${PYTHON}" "${SCRIPTS}/check-report-paths.py" \
+  "${TEXTLINT_REPORT}" "${WORKSPACE}" ||
+  die "lint findings cannot be mapped back to the repository"
+
 GITHUB_WORKSPACE="${WORKSPACE}" \
   "${PYTHON}" "${SCRIPTS}/count-lint-findings.py" \
   "${TEXTLINT_REPORT}" "${MDLINT_REPORT}" \

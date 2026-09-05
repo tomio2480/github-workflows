@@ -20,6 +20,7 @@
 #     - lint の実行失敗（2）と指摘あり（1）を区別する
 #     - 生成した runtime config を作業ツリーへ残さない
 #     - lint は LF 正規化した複製へ掛け，作業ツリーの改行は書き換えない
+#     - 報告のパスを元へ戻せないときは 0 終了せず実行失敗とする
 #
 # Test strategy:
 #   npm と lint バイナリを差し替え，ネットワークと実 lint を排除する．
@@ -81,6 +82,10 @@ if [ -n "${FAKE_TEXTLINT_FINDINGS:-}" ]; then
   if [ -n "${FAKE_TEXTLINT_ABSOLUTE:-}" ]; then
     FINDING_FILE="$(pwd -W 2>/dev/null || pwd)/${FINDING_FILE}"
   fi
+  # workspace prefix を剥がせない絶対パス．集計では黙って捨てられる．
+  if [ -n "${FAKE_TEXTLINT_UNMAPPED:-}" ]; then
+    FINDING_FILE="/elsewhere/${FAKE_FINDING_PATH:-new.md}"
+  fi
   cat <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <checkstyle version="4.3">
@@ -125,7 +130,7 @@ FAKE
 teardown() {
   unset FAKE_MDLINT_FINDINGS FAKE_TEXTLINT_FINDINGS FAKE_TEXTLINT_EXEC_ERROR \
     FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV FAKE_MDLINT_EXEC_ERROR \
-    FAKE_INSPECT_FILE
+    FAKE_INSPECT_FILE FAKE_TEXTLINT_UNMAPPED
 }
 
 @test "exits 0 without running lint when nothing changed" {
@@ -474,4 +479,28 @@ FAKE
 
   [ "${status}" -eq 1 ]
   [[ "${output}" == *"fake textlint finding"* ]]
+}
+
+@test "exits 2 when a finding path cannot be mapped back to the repository" {
+  # 剥がせない絶対パスを黙って捨てると「指摘なし」で 0 終了に化ける．
+  # Windows では大小文字・8.3 名・ジャンクションで表記が割れうる．
+  echo "# new" > new.md
+  export FAKE_TEXTLINT_FINDINGS=1
+  export FAKE_TEXTLINT_UNMAPPED=1
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 2 ]
+  [[ "${output}" == *"cannot be mapped back"* ]]
+}
+
+@test "keeps a lone CR in the linted copy" {
+  # 単独の CR は改行ではない．消すと行が連結され，指摘が消えたり増えたりする．
+  printf '# cr\r\n\r\nbefore\rafter\r\n' > cr.md
+  export FAKE_INSPECT_FILE="cr.md"
+
+  run bash "${SCRIPT}"
+
+  [ "${status}" -eq 0 ]
+  [ "$(cat "${FAKE_LOG_DIR}/textlint-cr")" -eq 1 ]
 }
