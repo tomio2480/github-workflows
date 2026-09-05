@@ -131,6 +131,20 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 本 workflow は中央ファイルを自己参照しないため，
 v1 md-lint の self-detection bug は該当しない．
 
+### 中央リポジトリ自身の導線
+
+reusable workflow は `workflow_call` 専用のため，これだけでは中央リポジトリの
+PR で `@claude` が発火しない．中央には self-caller
+`.github/workflows/claude-review-self.yml` を別に置いている．
+trigger と `permissions` は caller テンプレートと同一である．
+`uses` だけがローカル呼び出し（`./.github/workflows/claude-review.yml`）になる．
+
+reusable workflow 本体へ trigger を足す案は採っていない．
+1 ファイルが配布用の部品と中央の稼働 workflow を兼ねると，
+権限の決まり方が呼び出し経路ごとに 2 通りへ分かれるためである．
+テンプレートとのずれは `tests/python/test_claude_review_self.py` が検出する．
+コメントで発火する中央 workflow の本数も同テストが検査し，二重起動を防ぐ．
+
 ### 既知の警告：cache 書き込み拒否
 
 実行ログに `cache write denied: token has no writable scopes` という警告が
@@ -158,6 +172,7 @@ github-workflows/
 │   │       └── action.yml         # Claude セッション URL 検査（v2.17〜）
 │   ├── workflows/
 │   │   ├── claude-review.yml      # Claude レビュー用 reusable workflow（v2.6〜）
+│   │   ├── claude-review-self.yml # 中央自身の @claude 起動 self-caller
 │   │   ├── md-lint.yml            # 自リポジトリ向けの Markdown lint caller
 │   │   ├── shell-quality.yml      # Shell / CLI quality reusable workflow
 │   │   └── test-self-lint.yml     # 単体／統合テスト用 CI workflow
