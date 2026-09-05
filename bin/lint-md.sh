@@ -34,6 +34,9 @@
 #   実行のときだけであり，変更ファイルだけを引数で渡すと CI と結果がずれる．
 #   対象ファイルへの絞り込みは CI の summary と同じ count-lint-findings.py の
 #   --diff-files-from に任せる．
+#   ただし linter を掛けるのは作業ツリーそのものではなく，対象ファイルを
+#   LF 正規化した一時複製である．CRLF の作業ツリーでは textlint が行末の CR を
+#   1 字に数え，CI では出ない sentence-length の指摘が出るためである（Issue #169）．
 #   差異は終了コードだけである．CI の reviewdog は非ブロッキングだが，
 #   ローカルは指摘ありで非 0 終了する．push 前に気づくためのゲートであり，
 #   素通ししては用をなさないためである．
@@ -148,7 +151,9 @@ MDLINT_GENERATED=""
 # runtime config は caller の作業ツリーへ生成されうる（cli2 が相対パスを
 # config のディレクトリ基準で解決するため）．終了経路によらず消す．
 # 単一引用のため MDLINT_GENERATED は trap 発火時の値で評価される．
-trap 'rm -rf "${WORKDIR}"; [ -n "${MDLINT_GENERATED}" ] && rm -f "${MDLINT_GENERATED}"; true' EXIT
+# 複製の中で linter を動かすため，消す前にリポジトリルートへ戻る．cwd を
+# 抱えたままの rm -rf は Windows で失敗する．
+trap 'cd "${TOPLEVEL}" 2>/dev/null; rm -rf "${WORKDIR}"; [ -n "${MDLINT_GENERATED}" ] && rm -f "${MDLINT_GENERATED}"; true' EXIT
 
 TARGETS="${WORKDIR}/targets.txt"
 if [ "${#FILES[@]}" -eq 0 ]; then
@@ -191,6 +196,19 @@ TEXTLINT_IGNORE="$(bash "${SCRIPTS}/resolve-config-path.sh" .textlintignore "${T
 PRH_CFG="$(bash "${SCRIPTS}/resolve-config-path.sh" prh.yml "${TEMPLATES}")" ||
   die "failed to resolve prh.yml"
 
+# caller の設定はリポジトリルート相対で返る．linter は LF 正規化した複製の側で
+# 動かすため，相対のままでは解決できない．ここで絶対パスへ寄せる．
+absolutize() {
+  case "$1" in
+    /* | [A-Za-z]:[/\\]*) printf '%s\n' "$1" ;;
+    *) printf '%s\n' "${TOPLEVEL}/$1" ;;
+  esac
+}
+MDLINT_CFG="$(absolutize "${MDLINT_CFG}")"
+TEXTLINT_CFG="$(absolutize "${TEXTLINT_CFG}")"
+TEXTLINT_IGNORE="$(absolutize "${TEXTLINT_IGNORE}")"
+PRH_CFG="$(absolutize "${PRH_CFG}")"
+
 # caller root の追加設定は任意．resolve-config-path.sh は「無ければ中央」を
 # 返す規約のため流用せず，action と同じく個別に扱う．
 ALLOWLIST_CFG=""
@@ -210,8 +228,9 @@ MDLINT_OUT="${WORKDIR}/mdlint.out"
 GITHUB_OUTPUT="${MDLINT_OUT}" "${PYTHON}" \
   "${SCRIPTS}/generate-mdlint-runtime.py" "${MDLINT_CFG}" ||
   die "failed to generate the runtime markdownlint config"
-MDLINT_RUNTIME="$(read_output "${MDLINT_OUT}" config)"
+MDLINT_RUNTIME="$(absolutize "$(read_output "${MDLINT_OUT}" config)")"
 MDLINT_GENERATED="$(read_output "${MDLINT_OUT}" generated)"
+[ -n "${MDLINT_GENERATED}" ] && MDLINT_GENERATED="$(absolutize "${MDLINT_GENERATED}")"
 
 # --- lint 依存の導入（lockfile 鍵つきキャッシュを再利用する）---
 CACHE_DIR="${LINT_MD_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/github-workflows-md-lint}"
@@ -224,6 +243,36 @@ ACTION_PATH="${ACTION_DIR}" RUNNER_TEMP="${WORKDIR}" GITHUB_OUTPUT="${DEPS_OUT}"
   { cat "${WORKDIR}/install.log" >&2 && die "failed to install lint dependencies"; }
 LINT_BIN="$(read_output "${DEPS_OUT}" bin)"
 LINT_MODULES="$(read_output "${DEPS_OUT}" modules)"
+
+# --- LF 正規化した複製の作成（Issue #169）---
+# CRLF の作業ツリーでは textlint が行末の CR を 1 字に数え，80 字ちょうどの文へ
+# sentence-length の指摘が出る．CI は LF checkout のため出ない．作業ツリーの
+# 改行設定は利用者のものなので書き換えず，複製の側で lint する．
+#
+# 複製へ入れるのは対象ファイルだけでよい．報告は count-lint-findings.py が
+# 対象ファイルへ絞るため，対象外のファイルの指摘は元から捨てられている．
+# glob と .textlintignore はパスで効くため，相対構造を保つかぎり
+# 「lint は glob 全体へ掛ける」という CI との対応は崩れない．
+LINT_ROOT="${WORKDIR}/src"
+MIRRORED=0
+while IFS= read -r target; do
+  [ -n "${target}" ] || continue
+  # 差分には削除済みファイルも入る．実体が無く glob も拾わないため飛ばす．
+  [ -f "${target}" ] || continue
+  mkdir -p "${LINT_ROOT}/$(dirname "${target}")" ||
+    die "cannot create the lint copy of ${target}"
+  # 複製に失敗したまま進むと，そのファイルの指摘だけが黙って消える．
+  tr -d '\r' <"${target}" >"${LINT_ROOT}/${target}" ||
+    die "cannot normalise ${target} for linting"
+  MIRRORED=$((MIRRORED + 1))
+done <"${TARGETS}"
+
+if [ "${MIRRORED}" -eq 0 ]; then
+  echo "lint-md: nothing to check"
+  exit 0
+fi
+
+cd "${LINT_ROOT}" || die "cannot enter the lint copy"
 
 # --- markdownlint ---
 # cli2 は起動に成功すると必ず banner 行を出す．「exit 1 かつ banner あり」
@@ -264,9 +313,11 @@ fi
 FINDINGS_JSON="${WORKDIR}/findings.json"
 # textlint の checkstyle 出力はファイル名を絶対パスで書く．集計側は
 # GITHUB_WORKSPACE を prefix として剥がして相対化するため，ここで渡す．
+# 剥がす相手は linter を動かした複製のルートである（cwd がそれ）．相対構造は
+# リポジトリと同じなので，剥がした結果はリポジトリルート相対のパスになる．
 # Git Bash の `pwd` は /c/... 形式を返す一方 textlint は C:\... を出すので，
 # 剥がせるよう Windows 形式（pwd -W）を優先する．
-WORKSPACE="$(pwd -W 2>/dev/null)" || WORKSPACE="${TOPLEVEL}"
+WORKSPACE="$(pwd -W 2>/dev/null)" || WORKSPACE="${LINT_ROOT}"
 GITHUB_WORKSPACE="${WORKSPACE}" \
   "${PYTHON}" "${SCRIPTS}/count-lint-findings.py" \
   "${TEXTLINT_REPORT}" "${MDLINT_REPORT}" \
