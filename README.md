@@ -164,6 +164,7 @@ github-workflows/
 │   └── dependabot.yml             # third-party action の自動更新
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
 │   ├── add-pr-reaction.sh         # 👀 reaction 付与（fail-open）
+│   ├── check-report-paths.py      # 報告の絶対パスが workspace 配下かを検査（v2.19.3〜）
 │   ├── check-session-url.sh       # PR の commit・本文からセッション URL を検出（fail-closed）
 │   ├── count-lint-findings.py     # textlint XML / markdownlint テキストから件数集計
 │   ├── generate-mdlint-runtime.py # outputFormatters を除去した runtime config 生成
@@ -171,11 +172,13 @@ github-workflows/
 │   ├── install-lint-deps.sh       # lint 依存を lockfile から npm ci（ローカルは鍵つき再利用）
 │   ├── list-local-md-targets.sh   # ローカル lint の報告対象を差分から選ぶ
 │   ├── list-pr-diff-files.sh      # summary 絞り込み用に PR 差分ファイルを取得（fail-open）
+│   ├── normalize-lint-targets.py  # lint 対象を LF 正規化した複製として書き出す（v2.19.3〜）
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   ├── render-local-lint-report.py # ローカル lint の集計結果を端末向けに整形
 │   └── resolve-config-path.sh
 ├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
 │   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部（verify-shell.py から呼ぶ）
+│   ├── check-native-calls.ps1     # native command の直接呼びを AST で検出（v2.19.1〜）
 │   ├── lint-md.sh                 # push 前ローカル Markdown lint（v2.15〜）
 │   ├── release-patch.sh           # 定例 patch リリース（タグ・Release・v2 追従）
 │   ├── release-patch.ps1          # 同上の PowerShell 版
