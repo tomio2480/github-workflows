@@ -37,6 +37,21 @@ def _load(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def _central_workflows(directory: Path | None = None) -> list[Path]:
+    """workflow ファイルを列挙する．
+
+    GitHub は `.yml` と `.yaml` の双方を workflow として認識する．片方だけを
+    走査すると，もう片方で足された workflow が検査を素通りする．
+
+    `directory` は検査の自己テスト用に差し替える．既定は中央リポジトリの
+    `.github/workflows/` である．
+    """
+    target = directory if directory is not None else _REPO_ROOT / ".github/workflows"
+    return sorted(
+        path for suffix in ("*.yml", "*.yaml") for path in target.glob(suffix)
+    )
+
+
 def _triggers(workflow: dict, source: str) -> dict:
     """`on:` の内容を返す．PyYAML の真偽値化と生文字列の双方を受ける．
 
@@ -144,6 +159,20 @@ def test_self_caller_does_not_grant_contents_write(self_caller: dict) -> None:
     )
 
 
+def test_central_workflows_covers_both_yaml_extensions(tmp_path: Path) -> None:
+    """列挙が `.yml` と `.yaml` の双方へ届くこと．
+
+    片方だけを走査すると，もう片方で足されたコメント発火 workflow を
+    見落としたまま「二重起動なし」で通る．走査の穴そのものを検査する．
+    """
+    (tmp_path / "a.yml").write_text("on: push\n", encoding="utf-8")
+    (tmp_path / "b.yaml").write_text("on: push\n", encoding="utf-8")
+    (tmp_path / "c.txt").write_text("workflow ではない\n", encoding="utf-8")
+
+    names = {path.name for path in _central_workflows(tmp_path)}
+    assert names == {"a.yml", "b.yaml"}, f"列挙が想定と違う: {sorted(names)}"
+
+
 def test_only_one_central_workflow_triggers_on_comments() -> None:
     """コメントで発火する中央 workflow が 1 つだけであること．
 
@@ -153,7 +182,7 @@ def test_only_one_central_workflow_triggers_on_comments() -> None:
     """
     comment_triggers = {"issue_comment", "pull_request_review_comment"}
     firing = []
-    for path in sorted((_REPO_ROOT / ".github/workflows").glob("*.yml")):
+    for path in _central_workflows():
         rel = path.relative_to(_REPO_ROOT).as_posix()
         triggers = _triggers(_load(path), rel)
         if not isinstance(triggers, dict):
