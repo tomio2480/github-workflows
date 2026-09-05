@@ -40,6 +40,7 @@
 | 9 | caller 側から見た破壊的変更 | 運用ミス | タグ運用（[CLAUDE.md](../CLAUDE.md)） |
 | 10 | claude-review（`issue_comment` 発火）で cache 書き込み拒否警告 | 影響なし・受容 | `actions: write` 付与は見送り．最小権限を優先し警告を受容（Issue [#76](https://github.com/tomio2480/github-workflows/issues/76)） |
 | 11 | `session-url-check` が検出行（PR 本文・コミットメッセージの一部）を `::error::` として echo し，公開 repo の Actions ログへ URL の複製が残る | 低 | セッション ID を `****` にマスクしてから出力する．出力はログ注釈のみで実行はしない．内容は投稿者自身が書いた PR の文字列である |
+| 12 | 中央リポジトリ自身が comment 発火の workflow（`claude-review-self.yml`）を持ち，第三者のコメントで `pull-requests: write` を伴う job が起動しうる | 低 | `claude-code-action` が既定でコメント投稿者の write 権限を検査する．`allowed_non_write_users` は設定しない．checkout は ref 未指定（default ブランチのみ）で，PR head は取得しない．`contents` は read に絞る（Issue [#140](https://github.com/tomio2480/github-workflows/issues/140)） |
 
 「他人の要望や PR を取り込まなければ基本安全」は概ね正しい．追加で third-party action の SHA ピンと GitHub 設定強化を行えば公開運用に十分な安全性が得られる．
 
