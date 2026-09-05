@@ -23,6 +23,19 @@ on:
 jobs:
   claude:
     # issue_comment は通常の Issue でも発火するため，PR のコメントに限定する．
+    #
+    # 本判定を caller 側へ移さない．理由は 2 点である．
+    # 1. 移しても workflow run の件数は変わらない．run は on: が event に
+    #    一致した時点で作られ，job の if: はその後に評価される．どちらに
+    #    置いても対象外のコメントは skipped run として記録される．
+    # 2. 移すと判定が caller ごとのファイルへ複製され，中央から差し替え
+    #    られなくなる．Dependabot が追随するのは uses: の参照だけである．
+    # caller へ置くのは on: と permissions のように，GitHub の仕様が caller
+    # に置くことを強制するものだけとする（Issue #140 の検討）．
+    #
+    # 本判定は課金の防壁でもある．claude-code-action 自身も trigger_phrase を
+    # 判定するため誤応答はしないが，if: を外すと job が起動し，checkout と
+    # action 起動分の runner 時間を実際に消費する．
     if: |
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
