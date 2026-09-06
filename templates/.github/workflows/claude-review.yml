@@ -13,9 +13,15 @@ name: Claude Review
 #     例: gh secret set CLAUDE_CODE_OAUTH_TOKEN -R OWNER/REPO
 #
 # 起動はメンション方式である．PR のコメントに @claude を含めると発火する．
-# issue_comment は default ブランチに workflow がある場合のみ発火する．
-# そのため本ファイルを追加した PR 自身の上では，PR コメントで発火しない．
-# 動作確認はマージ後の別 PR で行う．
+#
+# 発火条件は event ごとに違う（Issue #197 で実測して決着）．
+#   - issue_comment（PR の会話タブ）は default ブランチに workflow がある
+#     場合のみ発火する．本ファイルを追加した PR 自身の上では発火しない．
+#   - pull_request_review_comment（diff 行へのレビューコメント）は
+#     PR 側の定義で発火する．default ブランチに無くてよい．
+# つまり本ファイルを追加した PR 自身でも，diff 行へ @claude を含む
+# レビューコメントを投稿すれば動作確認できる．
+# 会話タブでの確認はマージ後の別 PR で行う．
 #
 # @claude を含まないコメントでも run は作られ，skipped で終わる．これは正常で
 # ある．run は on: が event に一致した時点で作られ，メンション判定は呼ばれる側
