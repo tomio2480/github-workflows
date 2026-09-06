@@ -100,14 +100,15 @@ runs:
             fi
           done <<< "${PIN_GLOBS}"
         else
-          # 既定はスクリプトの DEFAULT_GLOBS と意図的に異なる．
-          # スクリプト側は中央自身の走査（templates/ を含む）を既定とするが，
-          # caller に templates/ は無い．一方 caller は .yaml 拡張子の
-          # workflow を置きうるため，こちらは両拡張子を見る．
+          # スクリプトの DEFAULT_GLOBS から `templates/**` を除いた範囲とする．
+          # caller は中央の配布物置き場を持たないためである．
+          # 拡張子の双方と入れ子の composite action を見る点は揃える
+          # （Issue #195・PR #199）．片方だけを走査すると，もう片方へ
+          # 置かれた pin がどの検査にも掛からず素通りする．
           args+=(--glob '.github/workflows/*.yml')
           args+=(--glob '.github/workflows/*.yaml')
-          args+=(--glob '.github/actions/*/action.yml')
-          args+=(--glob '.github/actions/*/action.yaml')
+          args+=(--glob '.github/actions/**/action.yml')
+          args+=(--glob '.github/actions/**/action.yaml')
         fi
         # `[ ... ] && args+=(...)` の形は使わない．その行が最終行になった
         # とき，条件が偽だと終了コードがステップの結果になる．
