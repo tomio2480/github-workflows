@@ -153,8 +153,9 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 
 `uses:` 行の SHA pin は sed で置換済みとなる．併記の版コメントは major のみ（`# v2`）で固定である．
 
-動作確認の経路は event ごとに違う．Issue #197 で実測して決着した．
+動作確認の経路は event ごとに違う．Issue #197 で実測した．
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 2. コメント発火イベントの制約
@@ -164,11 +165,21 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN  # 値は対話入力で渡す
 | event | 投稿する場所 | default ブランチ限定 | 追加した PR 自身で確認できるか |
 |---|---|---|---|
 | `issue_comment` | PR の会話タブ | 課される | できない |
-| `pull_request_review_comment` | diff 行のレビューコメント | 課されない | できる |
+| `pull_request_review_comment` | diff 行のレビューコメント | 課されない（観測） | 同一 repo の branch なら可 |
 
-**caller を追加した PR 自身で動作確認できる．**
+**同一リポジトリの branch なら，その PR 自身で動作確認できる．**
 diff 行へ `@claude` を含むレビューコメントを投稿すればよい．
 会話タブでの確認はマージ後の別 PR で行う．
+
+限定が 2 つある．いずれも守れないと確認できない．
+
+- **fork からの PR では使えない．** 発火するかどうか自体を確認していない．
+  加えて fork 由来の run には repository secret が渡らず，
+  `GITHUB_TOKEN` も read-only になるため Claude の応答まで到達しない．
+- **公式ドキュメントの記述とは食い違う挙動である．** 2026-09-07 時点の観測であり，
+  GitHub が文書どおりへ揃えれば使えなくなる．確認できなければ従来どおり
+  マージ後の別 PR で行う．
+
 経緯は [知見ノート](notes/2026-09-07-issue197-prc-trigger.md) を参照する．
 
 ## 6️⃣ Shell quality workflow（任意）

@@ -5,9 +5,14 @@
 公式ドキュメントは，コメントで発火する 2 つの event へ同じ制約を課す．
 `issue_comment` と `pull_request_review_comment` の双方である．
 制約は「default ブランチに workflow ファイルが存在する場合のみ発火する」である．
-PR #193 の観測はこれと食い違っていた．使い捨ての PR で 1 回だけ実験し，
-**ドキュメントの記述が `pull_request_review_comment` について不正確である**
-ことを確定させた．本稿は実験の組み方と，交絡を潰す過程を残す．
+PR #193 の観測はこれと食い違っていた．使い捨ての PR で実験し，
+**`pull_request_review_comment` が PR 側の定義で発火することを再現した．**
+
+ただし**確定できたのは観測であって，仕様ではない．**
+測ったのは 2026-09-07 時点，同一リポジトリの branch での挙動である．
+意図した契約なのか不具合なのかまでは判別できない．
+文書どおりへ修正されれば，これに依存した手順は破綻する．
+本稿は実験の組み方と，交絡を潰す過程，そして限定の付け方を残す．
 
 ## 🗺 目次
 
@@ -17,6 +22,7 @@ PR #193 の観測はこれと食い違っていた．使い捨ての PR で 1 �
 - 交絡を潰す
 - 実験が既存のガードを踏んだ
 - 配布物とドキュメントへの反映
+- 確かめていないこと
 - 参照
 
 ## 🔍 何が食い違っていたか
@@ -52,6 +58,7 @@ workflow entity の登録時点の扱いや，`refs/pull/N/merge` の解決結�
 
 ## 📊 観測結果
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 1. probe workflow の発火（同一 PR・同一 branch）
@@ -107,24 +114,74 @@ probe を `.github/workflows/` へ置いた時点で，二重起動検査が落�
 
 イベント別に書き分ける形へ改めた．両者を同じ制約でまとめると誤りになる．
 
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
 表 2. コメント発火イベントの制約
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
-| event | default ブランチ限定 | 追加した PR 自身で確認できるか |
+| event | default ブランチ限定 | 同一 repo の branch PR 自身で確認できるか |
 |---|---|---|
 | `issue_comment` | 課される | できない |
-| `pull_request_review_comment` | 課されない | **できる** |
+| `pull_request_review_comment` | 課されない（観測） | **できる** |
 
-`pull_request_review_comment` で確認できるため，
+同一リポジトリの branch から作った PR なら，
 オンボーディングの「動作確認はマージ後の別 PR で行う」は緩められる．
 caller を追加した PR の diff 行へ `@claude` を含むレビューコメントを
 投稿すれば，その場で run と応答を見られる．
 
-ただし `issue_comment`（PR の会話タブ）は従来どおりである．
+`issue_comment`（PR の会話タブ）は従来どおりである．
 利用者へ案内する導線が 2 通りに分かれる点は残る．
+
+### 脅威モデルの前提が 1 つ崩れた
+
+`docs/security.md` の 12 番は，対策の根拠を 1 つ誤っていた．
+「checkout は ref 未指定（default ブランチのみ）で，PR head は取得しない」である．
+**この記述は `pull_request_review_comment` について成り立たない．**
+
+reusable workflow の checkout は `ref:` を指定しないため `GITHUB_SHA` を取る．
+本イベントの `GITHUB_SHA` は PR の merge commit である．
+実測では `9ff1c71e` であり，当時の `main`（`20e660c`）ではなかった．
+
+PR 側の定義で動くことには，もう 1 つの帰結がある．
+**PR ブランチへ push できる者は workflow 自身を書き換えられる．**
+`claude-code-action` の権限検査も，書き換えれば外せる．
+同一 repo の write collaborator は信頼境界の内側に置く．
+
+fork PR では repository secret が渡らず `GITHUB_TOKEN` も read-only へ降格するため，
+この経路は成立しない．表 3 のとおり，逆に確認手順としても使えない．
+
+## 🚧 確かめていないこと
+
+実験の射程を明示する．**ここを書かないと，読み手は測っていない範囲まで
+結論が及ぶと読む．**
+
+<!-- 図表キャプションは体言止めとするため，キャプション行のみ許容する（Issue #57 の方針）． -->
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 3. 測った範囲と測っていない範囲
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
+
+| 条件 | 測ったか | 備考 |
+|---|---|---|
+| 同一 repo の branch PR | 測った | 発火する．2 回とも success |
+| fork からの PR | **測っていない** | 発火の有無自体が未確認 |
+| 最小 probe（`if:` も `types` も無し） | 測った | これで発火した |
+| 実際の caller（`types: [created]` と reusable 側の `if:`） | **測っていない** | 構成が違う |
+
+fork については，仮に発火しても確認手順としては使えない．
+公式ドキュメントが次を明記している．
+
+> With the exception of `GITHUB_TOKEN`, secrets are not passed to the runner
+> when a workflow is triggered from a forked repository.
+
+`CLAUDE_CODE_OAUTH_TOKEN` が渡らず，`GITHUB_TOKEN` も read-only になる．
+run が作られたとしても Claude の応答までは到達しない．
+
+実際の caller 構成での確認は，次に caller を追加する PR で行える．
+そこで初めて `types: [created]` と reusable 側の `if:` を通した経路が測れる．
 
 ## 📚 参照
 

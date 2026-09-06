@@ -19,13 +19,20 @@ name: Claude Review (self)
 #   - Claude GitHub App（https://github.com/apps/claude）のインストール．
 #   - Secrets の CLAUDE_CODE_OAUTH_TOKEN 登録（claude setup-token で発行）．
 #
-# 発火条件は event ごとに違う（Issue #197 で実測して決着）．
+# 発火条件は event ごとに違う（Issue #197 で実測）．
 #   - issue_comment（PR の会話タブ）は default ブランチに workflow がある
 #     場合のみ発火する．本ファイルを追加した PR 自身の上では発火しない．
 #   - pull_request_review_comment（diff 行へのレビューコメント）は
 #     PR 側の定義で発火する．default ブランチに無くてよい．
 #     GITHUB_WORKFLOW_REF が refs/pull/N/merge を指すことで確かめた．
-# 公式ドキュメントは両者へ同じ制約を課しているが，後者については誤りである．
+# 公式ドキュメントは両者へ同じ制約を課すが，後者は観測と食い違う．
+# 確定したのは 2026-09-07 時点・同一リポジトリの branch での挙動である．
+# 仕様として保証されたものではなく，fork PR では未検証である．
+#
+# 後者の経路では GITHUB_SHA が PR の merge commit を指す．ref 未指定の
+# checkout は default ブランチではなく PR の内容を取る．PR ブランチへ
+# push できる者は本ファイル自体を書き換えられるため，同一リポジトリの
+# write collaborator は信頼境界の内側として扱う（docs/security.md の 13 番）．
 # 経緯は docs/notes/2026-09-07-issue197-prc-trigger.md を参照する．
 
 on:
