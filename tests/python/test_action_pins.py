@@ -29,12 +29,15 @@ import pytest
 
 
 _MODULE = importlib.import_module("check-action-pins")
+# 型注釈のために別名を置く．importlib 経由の取得は静的解析が追えないが，
+# `from __future__ import annotations` により注釈は評価されないため成立する．
+Pin = _MODULE.Pin
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture(scope="module")
-def action_pins() -> list:
+def action_pins() -> list[Pin]:
     pins = _MODULE.collect_pins(_REPO_ROOT)
     assert pins, (
         "SHA pin を 1 件も収集できなかった．検索対象の glob か正規表現が"
@@ -43,7 +46,7 @@ def action_pins() -> list:
     return pins
 
 
-def test_pins_are_collected_from_templates_and_central(action_pins: list) -> None:
+def test_pins_are_collected_from_templates_and_central(action_pins: list[Pin]) -> None:
     """収集が `templates/` と中央の双方へ届いていることを確認する．
 
     どちらか片方しか読めていないと，ずれの検査そのものが成立しない．
@@ -57,7 +60,7 @@ def test_pins_are_collected_from_templates_and_central(action_pins: list) -> Non
     )
 
 
-def test_same_action_is_pinned_to_one_sha(action_pins: list) -> None:
+def test_same_action_is_pinned_to_one_sha(action_pins: list[Pin]) -> None:
     """同じ action がリポジトリ内で 2 つ以上の SHA を指していないこと．
 
     意図的に版を分けたい事情が生じた場合は，本テストを緩めるのではなく
@@ -80,7 +83,7 @@ def test_same_action_is_pinned_to_one_sha(action_pins: list) -> None:
     )
 
 
-def test_every_pin_has_trailing_version_comment(action_pins: list) -> None:
+def test_every_pin_has_trailing_version_comment(action_pins: list[Pin]) -> None:
     """すべての pin が行末に版コメントを持つこと．
 
     Dependabot が自動で書き換えるのは SHA と同じ行のコメントだけである．
@@ -97,7 +100,7 @@ def test_every_pin_has_trailing_version_comment(action_pins: list) -> None:
     )
 
 
-def test_version_comment_looks_like_a_version(action_pins: list) -> None:
+def test_version_comment_looks_like_a_version(action_pins: list[Pin]) -> None:
     """版コメントが `vX`〜`vX.Y.Z` 形式であること．
 
     Dependabot が書き出すのは版だけである（`# v7.0.1`）．action 名を添えた
@@ -113,7 +116,7 @@ def test_version_comment_looks_like_a_version(action_pins: list) -> None:
     )
 
 
-def test_same_sha_has_consistent_version_comment(action_pins: list) -> None:
+def test_same_sha_has_consistent_version_comment(action_pins: list[Pin]) -> None:
     """同じ SHA に対して 2 通りの版表記が書かれていないこと．
 
     SHA と版の対応そのもの（当該 SHA が本当に v7.0.1 か）は上流へ問い合わせ
