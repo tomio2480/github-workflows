@@ -21,6 +21,7 @@ v2.6 以降は，`@claude` で起動するレビュー用 workflow も配布す�
 - 🖥 push 前ローカル lint（任意）
 - 🐚 Shell quality workflow（任意）
 - 🔗 セッション URL 検査 workflow（任意）
+- 🧪 Workflow 検査 workflow（任意）
 - 🤖 Claude レビュー workflow（任意）
 - 🗂 ディレクトリ構成
 - 🚀 人間向け Quick Start
@@ -93,6 +94,31 @@ Claude Code は cloud と Remote Control のセッションで既定の `Claude-
 caller の checkout は不要で，必要な権限は `contents: read` と `pull-requests: read` である．
 詳しい検出条件と限界は
 [Claude セッション URL 検査 composite action](docs/session-url-check.md) を参照する．
+
+## 🧪 Workflow 検査 workflow（任意）
+
+`.github/actions/workflow-lint` は，caller の workflow ファイル自身を検査する．
+検査は 2 つある．`actionlint` による構文・式・埋め込み shell の静的検査と，
+`uses:` の SHA pin を上流と突き合わせる検査である．
+
+workflow ファイルだけを変更する PR では，他の caller が `paths` に該当せず
+起動しない．Dependabot の Actions 更新 PR が無検証のままマージ可能になるため，
+本 caller で最低 1 つの check を通す．
+
+pin の突合は 3 段に分かれる．
+
+- SHA が上流に実在しない: 失敗．
+- 版コメントの系譜に SHA が属さない: 失敗．
+- 最新タグより古い: 警告．
+
+最新タグとの一致を失敗にすると，中央が patch を切った瞬間に全 caller が
+赤くなる．追随は Dependabot の担当領域のため，古さは警告にとどめる．
+可動タグ（`# v2`）は系譜に属していれば通し，固定タグ（`# v2.19.5`）は
+同じ commit を指していることを求める．
+
+導入時は caller template を caller repo へコピーする．
+対象は `templates/.github/workflows/workflow-lint.yml` である．
+caller 側の checkout が要る．必要な権限は `contents: read` である．
 
 ## 🤖 Claude レビュー workflow（任意）
 
@@ -168,8 +194,10 @@ github-workflows/
 │   │   │   ├── action.yml         # composite action 本体（v2）
 │   │   │   ├── package.json       # lint 依存の宣言
 │   │   │   └── package-lock.json  # lint 依存の固定（install-lint-deps.sh が使う）
-│   │   └── session-url-check/
-│   │       └── action.yml         # Claude セッション URL 検査（v2.17〜）
+│   │   ├── session-url-check/
+│   │   │   └── action.yml         # Claude セッション URL 検査（v2.17〜）
+│   │   └── workflow-lint/
+│   │       └── action.yml         # workflow の構文検査と pin の上流突合
 │   ├── workflows/
 │   │   ├── claude-review.yml      # Claude レビュー用 reusable workflow（v2.6〜）
 │   │   ├── claude-review-self.yml # 中央自身の @claude 起動 self-caller
@@ -217,7 +245,8 @@ github-workflows/
 │   │       ├── claude-review.yml  # Claude レビュー用 caller（任意）
 │   │       ├── md-lint.yml        # 呼び出し側ワークフロー（lint 導入の必須ファイル）
 │   │       ├── session-url-check.yml # セッション URL 検査 caller（任意）
-│   │       └── shell-quality.yml  # Shell quality caller（任意）
+│   │       ├── shell-quality.yml  # Shell quality caller（任意）
+│   │       └── workflow-lint.yml  # Workflow 検査 caller（任意）
 │   ├── .markdownlint-cli2.yaml    # 中央デフォルト＋override 用
 │   ├── .textlintrc.json           # 中央デフォルト＋override 用
 │   ├── .textlintignore            # 中央 ignore 設定＋override 用
