@@ -165,16 +165,21 @@ GitHub は双方を workflow として認識する．
 確認できない．導線を新設する変更に共通する制約であり，
 検証をマージ後へ持ち越す前提で計画する必要がある．
 
+**この一般化は広すぎた．** 2026-09-07 の実験により，
+`pull_request_review_comment` なら PR 自身で確認できることが判った．
+制約が掛かるのは `issue_comment` だけである．
+次節と [2026-09-07-issue197-prc-trigger.md](2026-09-07-issue197-prc-trigger.md) を参照する．
+
 `issue_comment` については裏が取れている．
 [公式ドキュメント](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
 は default ブランチに workflow がある場合のみ発火すると明記する．
 マージ後の PR #194 で `@claude` を投稿し，run が 1 件だけ起動して
 Claude が応答することも実地で確認した．
 
-### 未解決：`pull_request_review_comment` の観測が仕様と食い違う
+### 決着済み：`pull_request_review_comment` は PR 側の定義で発火する
 
 **公式ドキュメントは同じ default ブランチ限定を両イベントへ課している．
-だが観測はそれと食い違う．**
+だが観測はそれと食い違った．**
 
 self-caller の run のうち 2 件が `pull_request_review_comment` 由来である．
 id は `33970730022` と `33970948898` である．
@@ -183,9 +188,18 @@ id は `33970730022` と `33970948898` である．
 default ブランチへ入ったのは 14:31 である．
 つまり default ブランチに無い時間帯へ run が作られている．
 
-どちらが正しいかは未確定である．**この節の記述を根拠に
-「レビューコメントなら caller 追加 PR 自身で動作確認できる」と結論しない．**
-決着は Issue #197 で扱う．
+この時点では未確定として扱い，決着を Issue #197 へ送った．
+根拠が観測 1 件しか無く，別の説明も立てられたためである．
+
+**2026-09-07 の再現実験で決着した．** ドキュメントの記述は
+`pull_request_review_comment` について不正確である．
+`GITHUB_WORKFLOW_REF` が `refs/pull/N/merge` を指し，
+`main` に存在しない定義が PR 側で実行されることを確かめた．
+同一 PR で `issue_comment` を対照に取り，そちらは発火しないことも確認した．
+経緯は [2026-09-07-issue197-prc-trigger.md](2026-09-07-issue197-prc-trigger.md) を参照する．
+
+したがって「レビューコメントなら caller 追加 PR 自身で動作確認できる」は
+成り立つ．ただし `issue_comment` については従来どおり成り立たない．
 
 ## 参照
 
