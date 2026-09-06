@@ -74,12 +74,21 @@ def scan_targets(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Path]
     return list(seen)
 
 
+class UnreadableTarget(Exception):
+    """走査対象を読めなかったことを，原因のファイル名付きで伝える．"""
+
+
 def collect_pins(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Pin]:
     """root 配下の走査対象から SHA pin を収集する．"""
     pins: list[Pin] = []
     for path in scan_targets(root, globs):
         rel = path.relative_to(root).as_posix()
-        lines = path.read_text(encoding="utf-8").splitlines()
+        # 生のトレースバックだけでは，caller リポジトリで原因のファイルを
+        # 特定できない．握りつぶさず，どれが読めなかったかを添えて投げ直す．
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as error:
+            raise UnreadableTarget(f"{rel}: 読み取りに失敗した（{error}）") from error
         for lineno, line in enumerate(lines, start=1):
             matched = _USES_PIN.match(line)
             if matched is None:
@@ -138,9 +147,13 @@ def inconsistent_versions(pins: Sequence[Pin]) -> dict[str, dict[str, list[str]]
     }
 
 
-def _format_grouped(grouped: dict[str, dict[str, list[str]]], label: str) -> list[str]:
+def _format_grouped(
+    grouped: dict[str, dict[str, list[str]]],
+    label: str,
+    key_label: str = "{key}",
+) -> list[str]:
     return [
-        f"  {key}: "
+        f"  {key_label.format(key=key)}: "
         + " / ".join(
             f"{label.format(value=value)} ({', '.join(locations)})"
             for value, locations in sorted(entries.items())
@@ -183,7 +196,8 @@ def find_violations(pins: Sequence[Pin]) -> list[str]:
     inconsistent = inconsistent_versions(pins)
     if inconsistent:
         messages.append("同じ SHA へ異なる版コメントが書かれている．どちらかが誤りである．")
-        messages.extend(_format_grouped(inconsistent, "`# {value}`"))
+        # SHA は 7 桁へ短縮する．pytest 経路のメッセージと見え方を揃えるため．
+        messages.extend(_format_grouped(inconsistent, "`# {value}`", "{key:.7}"))
 
     return messages
 
@@ -222,7 +236,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     for path in targets:
         print(f"  {path.relative_to(args.root).as_posix()}", flush=True)
 
-    pins = collect_pins(args.root, globs)
+    # 走査対象が 0 件なら，pin の有無を論じる以前に読めていない．
+    # `Path.glob()` は存在しないディレクトリでも例外を出さず空を返すため，
+    # root の指定ミスがここまで素通りする．`--allow-empty` でも緩めない．
+    # 「pin が 0 件」と「そもそも 1 つも読んでいない」は別の事象である．
+    if not targets:
+        print(
+            f"走査対象が 0 件だった（root: {args.root}）．root か glob の指定が"
+            "実態と合っていない．--allow-empty はこの状態を許さない．",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        pins = collect_pins(args.root, globs)
+    except UnreadableTarget as error:
+        print(str(error), file=sys.stderr)
+        return 1
     print(f"collected pins: {len(pins)}", flush=True)
 
     if not pins and not args.allow_empty:

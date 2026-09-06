@@ -41,10 +41,14 @@ def pin_line(action: str, sha: str, comment: str | None = "v1.2.3") -> str:
 
 
 def run_cli(root: Path, *extra: str) -> subprocess.CompletedProcess:
+    # `encoding` を明示する．`text=True` だけではロケール依存のデコードになり，
+    # Windows（cp932）でローカル実行したとき日本語メッセージが化けるか
+    # `UnicodeDecodeError` になる．検査は日本語の部分一致に依存している．
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--root", str(root), *extra],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
 
 
@@ -291,3 +295,62 @@ def test_cli_allows_empty_collection_when_explicitly_permitted(
     result = run_cli(tmp_path, "--allow-empty")
 
     assert result.returncode == 0, result.stderr
+
+
+def test_cli_fails_on_an_empty_scan_even_when_empty_is_permitted(
+    tmp_path: Path,
+) -> None:
+    """走査対象が 0 件なら `--allow-empty` でも失敗させること．
+
+    `Path.glob()` は存在しないディレクトリでも例外を出さず空を返す．
+    そのため root の指定ミスと，pin を持たない正常な caller が，
+    `--allow-empty` を付けた瞬間に同じ緑になる．
+    「pin が 0 件」と「そもそも 1 つも読んでいない」は別の事象であり，
+    後者は必ず落とす．
+    """
+    result = run_cli(tmp_path / "does-not-exist", "--allow-empty")
+
+    assert result.returncode != 0
+    assert "走査対象" in result.stderr
+
+
+def test_cli_shortens_sha_in_the_inconsistent_version_message(
+    tmp_path: Path,
+) -> None:
+    """同一 SHA の版表記ずれでも SHA を短縮して出すこと．
+
+    pytest 経路のメッセージは 7 桁へ短縮している．CLI 経路だけ 40 桁の
+    まま出ると，同じ違反が経路によって違う見え方になる．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [pin_line("actions/checkout", _SHA_A, "v7.0.1")],
+    )
+    write_workflow(
+        tmp_path,
+        ".github/workflows/test.yml",
+        [pin_line("actions/checkout", _SHA_A, "v7.0.2")],
+    )
+
+    result = run_cli(tmp_path)
+
+    assert result.returncode != 0
+    assert _SHA_A not in result.stderr, "SHA が短縮されずに出ている"
+    assert _SHA_A[:7] in result.stderr
+
+
+def test_cli_names_the_file_it_could_not_read(tmp_path: Path) -> None:
+    """読めないファイルは，どれが原因かを示して落とすこと．
+
+    生のトレースバックだけでは，caller リポジトリで原因のファイルを
+    特定できない．
+    """
+    path = tmp_path / ".github" / "workflows" / "broken.yml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"uses: actions/checkout@" + b"\xff\xfe" * 4)
+
+    result = run_cli(tmp_path)
+
+    assert result.returncode != 0
+    assert "broken.yml" in result.stderr
