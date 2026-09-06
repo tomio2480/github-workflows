@@ -316,8 +316,21 @@ def verify_upstream(pins: Sequence[Pin], client) -> list[UpstreamFinding]:
     return findings
 
 
+class UpstreamUnavailable(Exception):
+    """上流へ問い合わせられなかったことを伝える．
+
+    「実在しない」「タグが無い」と区別する．区別しないと，一過性の
+    レート制限や 5xx が「pin が壊れている」という誤った診断になる．
+    """
+
+
 def _default_fetch(url: str, headers: dict[str, str]) -> tuple[int, bytes]:
-    """GitHub API を 1 回叩く．404 は例外にせず status として返す．"""
+    """GitHub API を 1 回叩く．404 は例外にせず status として返す．
+
+    HTTP 応答が返らない事象（名前解決失敗・接続断・タイムアウト）は
+    `URLError` になる．生の traceback では「到達できなかった」ことが
+    利用者に伝わらないため，呼び出し側（`_get`）で包み直す．
+    """
     request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -351,7 +364,12 @@ class GitHubUpstream:
         self._tag_cache: dict[str, dict[str, str]] = {}
 
     def _get(self, path: str) -> tuple[int, object]:
-        status, body = self._fetch(f"{self._api}{path}", dict(self._headers))
+        try:
+            status, body = self._fetch(f"{self._api}{path}", dict(self._headers))
+        except (urllib.error.URLError, OSError) as error:
+            raise UpstreamUnavailable(
+                f"{path}: 上流へ問い合わせられなかった（{error}）"
+            ) from error
         if not body:
             return status, None
         try:
@@ -370,10 +388,16 @@ class GitHubUpstream:
         tags: dict[str, str] = {}
         page = 1
         while True:
-            status, payload = self._get(
-                f"/repos/{repo}/tags?per_page=100&page={page}"
-            )
-            if status != 200 or not isinstance(payload, list) or not payload:
+            path = f"/repos/{repo}/tags?per_page=100&page={page}"
+            status, payload = self._get(path)
+            # 失敗を空の結果としてキャッシュしない．一過性のレート制限や 5xx で
+            # 空を覚えると，以降その repo の pin がすべて「タグが無い」という
+            # 誤った error になる．1 回の障害が実行全体を汚す．
+            if status != 200:
+                raise UpstreamUnavailable(
+                    f"{path}: タグ一覧を取得できなかった（HTTP {status}）"
+                )
+            if not isinstance(payload, list) or not payload:
                 break
             for entry in payload:
                 name = entry.get("name")
@@ -520,7 +544,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "警告: GITHUB_TOKEN が無い．未認証で問い合わせるためレート制限が厳しい．",
             file=sys.stderr,
         )
-    findings = verify_upstream(pins, GitHubUpstream(token=token, api=args.api))
+    try:
+        findings = verify_upstream(pins, GitHubUpstream(token=token, api=args.api))
+    except UpstreamUnavailable as error:
+        # 検査不能を「pin が壊れている」と report しない．落とすのは同じでも，
+        # 診断が違えば利用者の次の一手が変わる（再実行か，pin の修正か）．
+        print(f"上流突合を完了できなかった: {error}", file=sys.stderr)
+        return 1
 
     errors = [finding for finding in findings if finding.level == "error"]
     warnings = [finding for finding in findings if finding.level == "warning"]
