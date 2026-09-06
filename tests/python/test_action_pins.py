@@ -46,10 +46,17 @@ _USES_PIN = re.compile(
 # SHA と版が残っていることに意味がある．検査へ入れると直しようのない指摘に
 # なる．オンボーディング手順（`docs/onboarding-new-repo.md`）も SHA を
 # `git/refs/tags` から変数へ解決する形で，固定 SHA を書き下していない．
+#
+# 拡張子は `.yml` と `.yaml` の双方を見る（Issue #195）．GitHub は workflow を
+# 双方の名前で認識し，composite action の定義も `action.yaml` が有効である．
+# 片方だけを走査すると，もう片方の pin が検査を素通りする．
 _SEARCH_GLOBS = (
     ".github/workflows/*.yml",
+    ".github/workflows/*.yaml",
     ".github/actions/*/action.yml",
+    ".github/actions/*/action.yaml",
     "templates/**/*.yml",
+    "templates/**/*.yaml",
 )
 
 
@@ -66,11 +73,18 @@ class Pin:
     location: str
 
 
-def _collect_pins() -> list[Pin]:
+def _collect_pins(root: Path | None = None) -> list[Pin]:
+    """SHA pin を収集する．
+
+    `root` は走査の穴そのものを検査する自己テスト用に差し替える．既定は
+    リポジトリのルートである．実在の `.github/` の中身へ依存させないため，
+    列挙の対象を引数で受ける．
+    """
+    base = root if root is not None else _REPO_ROOT
     pins: list[Pin] = []
     for pattern in _SEARCH_GLOBS:
-        for path in sorted(_REPO_ROOT.glob(pattern)):
-            rel = path.relative_to(_REPO_ROOT).as_posix()
+        for path in sorted(base.glob(pattern)):
+            rel = path.relative_to(base).as_posix()
             for lineno, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), start=1
             ):
@@ -133,6 +147,37 @@ def test_uses_pin_captures_whole_trailing_comment(
     assert matched is not None, f"pin 行がマッチしない: {line!r}"
     assert matched.group("sha") == _DUMMY_SHA
     assert matched.group("version") == expected_version
+
+
+def test_collect_pins_covers_both_yaml_extensions(tmp_path: Path) -> None:
+    """収集が `.yml` と `.yaml` の双方へ届くこと．
+
+    GitHub は workflow を `.yml` と `.yaml` の双方で認識し，composite action の
+    定義ファイル名も `action.yml` と `action.yaml` の双方が有効である．片方だけを
+    走査すると，もう片方へ置かれた pin がどの検査にも掛からない．検査は成功した
+    まま素通りするため，失敗が沈黙する．走査の穴そのものをここで検査する．
+
+    本テストが守るのは「`templates/` の pin が中央から取り残されないこと」
+    （Issue #156）であって，「`.yml` の範囲で取り残されないこと」ではない．
+    """
+    line = f"      uses: actions/checkout@{_DUMMY_SHA} # v7.0.1\n"
+    placements = (
+        ".github/workflows/central.yml",
+        ".github/workflows/central.yaml",
+        ".github/actions/sample-yml/action.yml",
+        ".github/actions/sample-yaml/action.yaml",
+        "templates/.github/workflows/caller.yml",
+        "templates/.github/workflows/caller.yaml",
+    )
+    for rel in (*placements, "templates/.github/workflows/caller.txt"):
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(line, encoding="utf-8")
+
+    locations = {pin.location for pin in _collect_pins(tmp_path)}
+    assert locations == {f"{rel}:1" for rel in placements}, (
+        f"収集の対象が想定と違う: {sorted(locations)}"
+    )
 
 
 @pytest.fixture(scope="module")
