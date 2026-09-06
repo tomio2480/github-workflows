@@ -50,11 +50,18 @@ _USES_PIN = re.compile(
 # 拡張子は `.yml` と `.yaml` の双方を見る（Issue #195）．GitHub は workflow を
 # 双方の名前で認識し，composite action の定義も `action.yaml` が有効である．
 # 片方だけを走査すると，もう片方の pin が検査を素通りする．
+#
+# composite action は `**` で受ける．任意のパスへ置けるため
+# `.github/actions/<group>/<name>/action.yml` も有効な構成である．
+# `*` は 1 階層しか一致せず，入れ子の pin が漏れる．`**` は 0 階層にも
+# 一致するため，既存の 1 階層構成も同じパターンで覆える．
+# `.github/dependabot.yml` が `/.github/actions/*` で入れ子を拾う方針
+# （Issue #153）とも範囲が揃う．
 _SEARCH_GLOBS = (
     ".github/workflows/*.yml",
     ".github/workflows/*.yaml",
-    ".github/actions/*/action.yml",
-    ".github/actions/*/action.yaml",
+    ".github/actions/**/action.yml",
+    ".github/actions/**/action.yaml",
     "templates/**/*.yml",
     "templates/**/*.yaml",
 )
@@ -150,15 +157,20 @@ def test_uses_pin_captures_whole_trailing_comment(
 
 
 def test_collect_pins_covers_both_yaml_extensions(tmp_path: Path) -> None:
-    """収集が `.yml` と `.yaml` の双方へ届くこと．
+    """収集が拡張子の双方と，composite action の入れ子へ届くこと．
 
     GitHub は workflow を `.yml` と `.yaml` の双方で認識し，composite action の
     定義ファイル名も `action.yml` と `action.yaml` の双方が有効である．片方だけを
     走査すると，もう片方へ置かれた pin がどの検査にも掛からない．検査は成功した
     まま素通りするため，失敗が沈黙する．走査の穴そのものをここで検査する．
 
+    深さも同様である．composite action は任意のパスへ置けるため，
+    `.github/actions/<group>/<name>/action.yml` は有効な構成である．
+    `*` は 1 階層しか一致しないため，`**` で受ける．
+
     本テストが守るのは「`templates/` の pin が中央から取り残されないこと」
-    （Issue #156）であって，「`.yml` の範囲で取り残されないこと」ではない．
+    （Issue #156）であって，「`.yml` かつ 1 階層の範囲で取り残されないこと」
+    ではない．走査は，守ろうとしている条件と同じ広さで取る．
     """
     line = f"      uses: actions/checkout@{_DUMMY_SHA} # v7.0.1\n"
     placements = (
@@ -166,6 +178,8 @@ def test_collect_pins_covers_both_yaml_extensions(tmp_path: Path) -> None:
         ".github/workflows/central.yaml",
         ".github/actions/sample-yml/action.yml",
         ".github/actions/sample-yaml/action.yaml",
+        ".github/actions/group/nested-yml/action.yml",
+        ".github/actions/group/nested-yaml/action.yaml",
         "templates/.github/workflows/caller.yml",
         "templates/.github/workflows/caller.yaml",
     )
