@@ -140,17 +140,15 @@ caller を追加した PR の diff 行へ `@claude` を含むレビューコメ�
 「checkout は ref 未指定（default ブランチのみ）で，PR head は取得しない」である．
 **この記述は `pull_request_review_comment` について成り立たない．**
 
-reusable workflow の checkout は `ref:` を指定しないため `GITHUB_SHA` を取る．
-本イベントの `GITHUB_SHA` は PR の merge commit である．
-実測では `9ff1c71e` であり，当時の `main`（`20e660c`）ではなかった．
+実測はこうである．reusable workflow の checkout は `ref:` を指定しないため
+`GITHUB_SHA` を取る．本イベントの `GITHUB_SHA` は `9ff1c71e` だった．
+当時の `main` は `20e660c` であり，一致しない．PR の merge commit である．
 
-PR 側の定義で動くことには，もう 1 つの帰結がある．
-**PR ブランチへ push できる者は workflow 自身を書き換えられる．**
-`claude-code-action` の権限検査も，書き換えれば外せる．
-同一 repo の write collaborator は信頼境界の内側に置く．
+**発火条件を測ると，脅威モデルの前提まで動くことがある．**
+発火するかどうかだけを見ていたら，この誤りには気づかなかった．
 
-fork PR では repository secret が渡らず `GITHUB_TOKEN` も read-only へ降格するため，
-この経路は成立しない．表 3 のとおり，逆に確認手順としても使えない．
+脅威としての評価と対策は `docs/security.md` の 13 番を正典とする．
+本稿はそこへ至った実測を残すに留める．
 
 ## 🚧 確かめていないこと
 
