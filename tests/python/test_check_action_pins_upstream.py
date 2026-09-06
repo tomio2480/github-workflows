@@ -389,3 +389,79 @@ def test_client_reports_an_unreachable_upstream_clearly() -> None:
         client.commit_exists("actions/checkout", _TIP)
 
     assert "actions/checkout" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        pytest.param(403, id="レート制限"),
+        pytest.param(500, id="サーバ側の障害"),
+        pytest.param(502, id="ゲートウェイの障害"),
+    ],
+)
+def test_commit_existence_does_not_turn_a_failure_into_absence(status: int) -> None:
+    """一過性の障害を「実在しない」と読み替えないこと．
+
+    `status == 200` だけで判定すると，403 や 5xx が「SHA が上流に無い」という
+    error に化ける．pin は壊れていないのに壊れていると報告する形であり，
+    利用者は直しようのない指摘を受け取る．
+    """
+    client = _MODULE.GitHubUpstream(
+        token=None, fetch=RecordingFetch({"/commits/": (status, b"{}")})
+    )
+
+    with pytest.raises(_MODULE.UpstreamUnavailable):
+        client.commit_exists("actions/checkout", _TIP)
+
+
+def test_commit_existence_still_reads_404_as_absence() -> None:
+    """404 は本当に実在しない．障害と混同して落とさないこと．"""
+    client = _MODULE.GitHubUpstream(
+        token=None, fetch=RecordingFetch({"/commits/": (404, b"{}")})
+    )
+
+    assert client.commit_exists("actions/checkout", _ALIEN) is False
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        pytest.param(403, id="レート制限"),
+        pytest.param(500, id="サーバ側の障害"),
+    ],
+)
+def test_ancestry_does_not_turn_a_failure_into_a_negative(status: int) -> None:
+    """一過性の障害を「祖先でない」と読み替えないこと．
+
+    帰結は 2 つあり，いずれも悪い．
+    可動タグの判定では「系譜に属さない」という誤った error になる．
+    古さの判定では条件式が偽になり，**本来出るべき warning が黙って消える**．
+    後者は job が 0 error のまま緑で終わるため，
+    「検査したはずが問い合わせられていなかった」ことが可視化されない．
+    """
+    client = _MODULE.GitHubUpstream(
+        token=None, fetch=RecordingFetch({"/compare/": (status, b"{}")})
+    )
+
+    with pytest.raises(_MODULE.UpstreamUnavailable):
+        client.is_ancestor(_REPO, _OLD, _TIP)
+
+
+def test_transient_failure_does_not_silently_drop_a_stale_warning() -> None:
+    """上流障害のとき，古さの警告を黙って消さずに検査不能として落とすこと．
+
+    `verify_upstream` から見た経路で確かめる．メソッド単体ではなく，
+    判定全体として偽 green にならないことが要件である．
+    """
+    pins = [Pin(_REPO, _OLD, "v2", "a.yml:1")]
+    fetch = RecordingFetch(
+        {
+            "/commits/": (200, b"{}"),
+            "/tags?": (200, tags_payload([("v2", _TIP), ("v2.19.5", _TIP)])),
+            "/compare/": (403, b"{}"),
+        }
+    )
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    with pytest.raises(_MODULE.UpstreamUnavailable):
+        _MODULE.verify_upstream(pins, client)
