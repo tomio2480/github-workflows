@@ -1,0 +1,122 @@
+name: "Workflow lint (composite action)"
+description: "caller の workflow ファイルを actionlint で検査し，uses: の SHA pin を上流と突き合わせる composite action"
+
+# 設計のポイント:
+#   - $GITHUB_ACTION_PATH 経由で中央 scripts/ を参照する．caller は script を持たない．
+#   - caller のファイルを走査するため，caller 側で actions/checkout が要る．
+#     session-url-check と違い API だけでは完結しない．
+#   - actionlint は版を固定し sha256 で検証してから使う．
+#     公式の案内は `bash <(curl .../main/scripts/download-actionlint.bash)` だが，
+#     main からの取得かつ curl のパイプ実行であり，全参照を SHA pin する本
+#     リポジトリの方針と整合しない．自ら課す pin 検査を自ら破ることになる．
+#   - third-party action を使わない．Dependabot の追随対象は生じない．
+#   - pin の上流突合はネットワークを要する．pytest 側はネットワークへ依存しない
+#     ままとし，突合は token を持つこの層だけで行う（Issue #200）．
+
+inputs:
+  github-token:
+    description: "上流突合に使う token．caller 側で secrets.GITHUB_TOKEN を with で渡す"
+    required: true
+  pin-globs:
+    description: >-
+      pin を走査する glob．改行区切りで複数指定する．
+      既定は .github/workflows/*.yml と .github/actions/*/action.yml．
+    required: false
+    default: ""
+  allow-empty:
+    description: "pin を 1 件も持たない repo を成功として扱うか"
+    required: false
+    default: "false"
+  verify-upstream:
+    description: "SHA の実在と版コメントの系譜を上流へ問い合わせるか"
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install actionlint
+      shell: bash
+      env:
+        ACTIONLINT_VERSION: "1.7.12"
+        ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+      run: |
+        set -euo pipefail
+
+        # 配布物は linux amd64 のみを取得する．他の runner で呼ばれたときに
+        # curl か tar か実行のどれかで落ちると，理由が読み取れない．
+        # 対応範囲をここで明示して落とす．
+        if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
+          echo "::error::この action は linux amd64 の runner だけに対応する（検出: $(uname -s) $(uname -m)）" >&2
+          exit 1
+        fi
+
+        tool_dir="$(mktemp -d)"
+        trap 'rm -rf "${tool_dir}"' EXIT
+
+        archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        curl -fsSLo "${tool_dir}/${archive}" \
+          "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+        echo "${ACTIONLINT_SHA256}  ${tool_dir}/${archive}" | sha256sum --check --strict
+        tar -xzf "${tool_dir}/${archive}" -C "${tool_dir}"
+        sudo install "${tool_dir}/actionlint" /usr/local/bin/actionlint
+        actionlint --version
+
+    - name: Run actionlint
+      shell: bash
+      run: |
+        set -euo pipefail
+        # 検査対象をログへ残す．actionlint は指摘が無いと何も出さないため，
+        # 走査が空振りした結果と成功が区別できない（github-dev Skill の規律）．
+        mapfile -t targets < <(
+          find .github/workflows -maxdepth 1 -type f \
+            \( -name '*.yml' -o -name '*.yaml' \) | sort
+        )
+        echo "targets (actionlint): ${#targets[@]} file(s)"
+        printf '  %s\n' "${targets[@]}"
+
+        if [ "${#targets[@]}" -eq 0 ]; then
+          echo "::error::.github/workflows に検査対象が 1 件も無い．" >&2
+          exit 1
+        fi
+
+        actionlint -color "${targets[@]}"
+
+    - name: Check action pins
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PIN_GLOBS: ${{ inputs.pin-globs }}
+        ALLOW_EMPTY: ${{ inputs.allow-empty }}
+        VERIFY_UPSTREAM: ${{ inputs.verify-upstream }}
+      run: |
+        set -euo pipefail
+        args=()
+        if [ -n "${PIN_GLOBS}" ]; then
+          while IFS= read -r pattern; do
+            if [ -n "${pattern}" ]; then
+              args+=(--glob "${pattern}")
+            fi
+          done <<< "${PIN_GLOBS}"
+        else
+          # 既定はスクリプトの DEFAULT_GLOBS と意図的に異なる．
+          # スクリプト側は中央自身の走査（templates/ を含む）を既定とするが，
+          # caller に templates/ は無い．一方 caller は .yaml 拡張子の
+          # workflow を置きうるため，こちらは両拡張子を見る．
+          args+=(--glob '.github/workflows/*.yml')
+          args+=(--glob '.github/workflows/*.yaml')
+          args+=(--glob '.github/actions/*/action.yml')
+          args+=(--glob '.github/actions/*/action.yaml')
+        fi
+        # `[ ... ] && args+=(...)` の形は使わない．その行が最終行になった
+        # とき，条件が偽だと終了コードがステップの結果になる．
+        if [ "${ALLOW_EMPTY}" = "true" ]; then
+          args+=(--allow-empty)
+        fi
+        if [ "${VERIFY_UPSTREAM}" = "true" ]; then
+          args+=(--verify-upstream)
+        fi
+
+        python3 "${ACTION_PATH}/../../../scripts/check-action-pins.py" \
+          --root . "${args[@]}"

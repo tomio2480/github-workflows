@@ -2,13 +2,14 @@ name: Self test (composite action)
 
 # composite action の TDD 検証用 CI workflow．
 #
-# 6 jobs:
+# 7 jobs:
 #   - unit-python: scripts/*.py の pytest
 #   - unit-bash: scripts/*.sh の bats
 #   - shell-quality-reusable: reusable workflow の tool setup と caller contract
 #   - shell-quality-self: 本リポジトリのシェル資産に対する repo-local gate
 #   - integration-action: ./.github/actions/markdown-lint を fixture に対して走らせる
 #   - integration-session-url-check: ./.github/actions/session-url-check を本 PR に対して走らせる
+#   - integration-workflow-lint: ./.github/actions/workflow-lint を本リポジトリへ走らせる
 #
 # shell-quality-reusable と shell-quality-self は役割が異なるため統合しない．
 # 前者は fixture で caller contract を検証し，後者は本リポジトリ自身の
@@ -142,3 +143,29 @@ jobs:
         uses: ./.github/actions/session-url-check
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  integration-workflow-lint:
+    name: Workflow lint on this repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - unit-python
+    # 上流への読み取りしか行わない．workflow レベルの pull-requests: write は
+    # 要らないため，job では contents: read だけへ絞る．
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run composite action against this repository
+        # 配布する composite action を，中央自身の workflow と templates/ へ当てる．
+        # templates/ は Dependabot の走査対象外のため，pin が取り残されやすい
+        # （Issue #156）．上流突合まで通すことで，取り残しをここで拾う．
+        uses: ./.github/actions/workflow-lint
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pin-globs: |
+            .github/workflows/*.yml
+            .github/actions/*/action.yml
+            templates/**/*.yml
