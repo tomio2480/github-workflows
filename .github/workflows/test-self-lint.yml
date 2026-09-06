@@ -2,13 +2,14 @@ name: Self test (composite action)
 
 # composite action の TDD 検証用 CI workflow．
 #
-# 6 jobs:
+# 7 jobs:
 #   - unit-python: scripts/*.py の pytest
 #   - unit-bash: scripts/*.sh の bats
 #   - shell-quality-reusable: reusable workflow の tool setup と caller contract
 #   - shell-quality-self: 本リポジトリのシェル資産に対する repo-local gate
 #   - integration-action: ./.github/actions/markdown-lint を fixture に対して走らせる
 #   - integration-session-url-check: ./.github/actions/session-url-check を本 PR に対して走らせる
+#   - integration-workflow-lint: ./.github/actions/workflow-lint を本リポジトリへ走らせる
 #
 # shell-quality-reusable と shell-quality-self は役割が異なるため統合しない．
 # 前者は fixture で caller contract を検証し，後者は本リポジトリ自身の
@@ -146,9 +147,11 @@ jobs:
   integration-workflow-lint:
     name: Workflow lint on this repository
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs:
       - unit-python
-    # 読み取りしか行わないため，workflow レベルの pull-requests: write を job で絞る．
+    # 上流への読み取りしか行わない．workflow レベルの pull-requests: write は
+    # 要らないため，job では contents: read だけへ絞る．
     permissions:
       contents: read
     steps:

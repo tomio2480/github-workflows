@@ -252,3 +252,140 @@ def test_is_moving_tag_classifies_by_component_count(
     version: str, moving: bool
 ) -> None:
     assert _MODULE.is_moving_tag(version) is moving
+
+
+class RecordingFetch:
+    """`GitHubUpstream` の HTTP 呼び出しを差し替える．
+
+    `responses` は URL の部分一致から `(status, body)` への対応である．
+    """
+
+    def __init__(self, responses: dict[str, tuple[int, bytes]]) -> None:
+        self.responses = responses
+        self.urls: list[str] = []
+        self.headers: list[dict[str, str]] = []
+
+    def __call__(self, url: str, headers: dict[str, str]) -> tuple[int, bytes]:
+        self.urls.append(url)
+        self.headers.append(headers)
+        for fragment, response in self.responses.items():
+            if fragment in url:
+                return response
+        return 404, b"{}"
+
+
+def tags_payload(entries: list[tuple[str, str]]) -> bytes:
+    import json
+
+    return json.dumps(
+        [{"name": name, "commit": {"sha": sha}} for name, sha in entries]
+    ).encode()
+
+
+def test_client_asks_the_commit_endpoint_and_reads_the_status() -> None:
+    """実在確認は commits エンドポイントの status で決めること．"""
+    fetch = RecordingFetch({f"/repos/actions/checkout/commits/{_TIP}": (200, b"{}")})
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    assert client.commit_exists("actions/checkout", _TIP) is True
+    assert client.commit_exists("actions/checkout", _ALIEN) is False
+    assert fetch.urls[0].endswith(f"/repos/actions/checkout/commits/{_TIP}")
+
+
+def test_client_sends_the_token_when_given() -> None:
+    fetch = RecordingFetch({"/commits/": (200, b"{}")})
+    client = _MODULE.GitHubUpstream(token="secret-value", fetch=fetch)
+
+    client.commit_exists("actions/checkout", _TIP)
+
+    assert fetch.headers[0]["Authorization"] == "Bearer secret-value"
+
+
+def test_client_compares_descendant_against_ancestor_in_that_order() -> None:
+    """compare は `base...head` で head が base の祖先なら `behind` を返す．
+
+    base に子孫，head に祖先を置く．順序を逆にすると判定が反転する．
+    """
+    fetch = RecordingFetch({"/compare/": (200, b'{"status": "behind"}')})
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    assert client.is_ancestor(_REPO, _OLD, _TIP) is True
+    assert fetch.urls[0].endswith(f"/compare/{_TIP}...{_OLD}")
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        pytest.param("behind", True, id="祖先"),
+        pytest.param("identical", True, id="同一"),
+        pytest.param("ahead", False, id="子孫"),
+        pytest.param("diverged", False, id="分岐"),
+    ],
+)
+def test_client_maps_compare_status_to_ancestry(status: str, expected: bool) -> None:
+    import json
+
+    body = json.dumps({"status": status}).encode()
+    client = _MODULE.GitHubUpstream(
+        token=None, fetch=RecordingFetch({"/compare/": (200, body)})
+    )
+
+    assert client.is_ancestor(_REPO, _OLD, _TIP) is expected
+
+
+def test_client_pages_through_tags_until_a_short_page() -> None:
+    """タグは 100 件ずつ辿り，短いページで打ち切ること．"""
+    page1 = tags_payload([(f"v2.0.{i}", f"{i:040d}") for i in range(100)])
+    page2 = tags_payload([("v2.1.0", _TIP)])
+    # 照合は `&page=N` で行う．`page=N` だけだと `per_page=100` の一部にも
+    # 一致し，全ページが 1 ページ目の応答を返して無限ループになる．
+    fetch = RecordingFetch({"&page=1": (200, page1), "&page=2": (200, page2)})
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    assert client.tag_sha(_REPO, "v2.1.0") == _TIP
+    assert sum("/tags?" in url for url in fetch.urls) == 2
+
+
+def test_client_asks_for_tags_only_once_per_repository() -> None:
+    fetch = RecordingFetch({"/tags?": (200, tags_payload([("v2.1.0", _TIP)]))})
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    client.tag_sha(_REPO, "v2.1.0")
+    client.tag_at(_REPO, _TIP)
+    client.latest_tag(_REPO, 2)
+
+    assert sum("/tags?" in url for url in fetch.urls) == 1
+
+
+def test_client_does_not_cache_a_failed_tag_lookup() -> None:
+    """タグの取得に失敗したら，空の結果をキャッシュしないこと．
+
+    一過性のレート制限や 5xx で空をキャッシュすると，以降その repo の pin が
+    すべて「タグが無い」という誤った error になる．1 回の障害が実行全体を汚す．
+    """
+    client = _MODULE.GitHubUpstream(
+        token=None, fetch=RecordingFetch({"/tags?": (503, b"{}")})
+    )
+
+    with pytest.raises(_MODULE.UpstreamUnavailable):
+        client.tag_sha(_REPO, "v2")
+
+    # 復旧後は正しく引けること（失敗が固定化していないこと）．
+    client._fetch = RecordingFetch({"/tags?": (200, tags_payload([("v2", _TIP)]))})
+    assert client.tag_sha(_REPO, "v2") == _TIP
+
+
+def test_client_reports_an_unreachable_upstream_clearly() -> None:
+    """到達できない上流は，生の traceback でなく趣旨の伝わる例外にすること．"""
+
+    def failing_fetch(url: str, headers: dict[str, str]):
+        import urllib.error
+
+        raise urllib.error.URLError("getaddrinfo failed")
+
+    client = _MODULE.GitHubUpstream(token=None, fetch=failing_fetch)
+
+    with pytest.raises(_MODULE.UpstreamUnavailable) as caught:
+        client.commit_exists("actions/checkout", _TIP)
+
+    assert "actions/checkout" in str(caught.value)

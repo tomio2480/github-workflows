@@ -42,6 +42,15 @@ runs:
         ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
       run: |
         set -euo pipefail
+
+        # 配布物は linux amd64 のみを取得する．他の runner で呼ばれたときに
+        # curl か tar か実行のどれかで落ちると，理由が読み取れない．
+        # 対応範囲をここで明示して落とす．
+        if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
+          echo "::error::この action は linux amd64 の runner だけに対応する（検出: $(uname -s) $(uname -m)）" >&2
+          exit 1
+        fi
+
         tool_dir="$(mktemp -d)"
         trap 'rm -rf "${tool_dir}"' EXIT
 
@@ -86,16 +95,28 @@ runs:
         args=()
         if [ -n "${PIN_GLOBS}" ]; then
           while IFS= read -r pattern; do
-            [ -n "${pattern}" ] && args+=(--glob "${pattern}")
+            if [ -n "${pattern}" ]; then
+              args+=(--glob "${pattern}")
+            fi
           done <<< "${PIN_GLOBS}"
         else
+          # 既定はスクリプトの DEFAULT_GLOBS と意図的に異なる．
+          # スクリプト側は中央自身の走査（templates/ を含む）を既定とするが，
+          # caller に templates/ は無い．一方 caller は .yaml 拡張子の
+          # workflow を置きうるため，こちらは両拡張子を見る．
           args+=(--glob '.github/workflows/*.yml')
           args+=(--glob '.github/workflows/*.yaml')
           args+=(--glob '.github/actions/*/action.yml')
           args+=(--glob '.github/actions/*/action.yaml')
         fi
-        [ "${ALLOW_EMPTY}" = "true" ] && args+=(--allow-empty)
-        [ "${VERIFY_UPSTREAM}" = "true" ] && args+=(--verify-upstream)
+        # `[ ... ] && args+=(...)` の形は使わない．その行が最終行になった
+        # とき，条件が偽だと終了コードがステップの結果になる．
+        if [ "${ALLOW_EMPTY}" = "true" ]; then
+          args+=(--allow-empty)
+        fi
+        if [ "${VERIFY_UPSTREAM}" = "true" ]; then
+          args+=(--verify-upstream)
+        fi
 
         python3 "${ACTION_PATH}/../../../scripts/check-action-pins.py" \
           --root . "${args[@]}"
