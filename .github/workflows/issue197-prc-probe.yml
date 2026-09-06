@@ -1,0 +1,44 @@
+# Issue #197 の再現実験．使い捨てであり，main へマージしない．
+#
+# 目的は 1 点のみである．`pull_request_review_comment` が
+# 「default ブランチに workflow ファイルが存在しない」状態で発火するかを見る．
+#
+# 公式ドキュメントは本イベントへも「default ブランチに存在する場合のみ発火」と
+# 記しているが，PR #193 の実測では default ブランチへ入る前に run が 2 件作られた．
+# ドキュメントと観測のどちらが正しいかを確定させる．
+#
+# `if:` は置かない．発火の有無そのものを見るためである．
+# 実験の性質上，本ファイルは branch ごと破棄する．
+name: Issue 197 probe (pull_request_review_comment)
+
+on:
+  pull_request_review_comment:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe which definition fired
+    runs-on: ubuntu-latest
+    steps:
+      # checkout しない．どの定義で動いたかは GITHUB_REF と GITHUB_SHA で判る．
+      # 実験に third-party action を持ち込まないことで pin の検査も避ける．
+      - name: 目印と参照を出す
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "ISSUE197-PROBE-MARKER"
+          echo "definition=branch-only (main には存在しない)"
+          echo "event_name=${EVENT_NAME}"
+          echo "event_action=${EVENT_ACTION}"
+          echo "pr_number=${PR_NUMBER}"
+          echo "pr_head_ref=${PR_HEAD_REF}"
+          echo "pr_head_sha=${PR_HEAD_SHA}"
+          echo "GITHUB_REF=${GITHUB_REF}"
+          echo "GITHUB_SHA=${GITHUB_SHA}"
+          echo "GITHUB_WORKFLOW_REF=${GITHUB_WORKFLOW_REF}"
