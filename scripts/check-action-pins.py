@@ -378,8 +378,19 @@ class GitHubUpstream:
             return status, None
 
     def commit_exists(self, repo: str, sha: str) -> bool:
-        status, _ = self._get(f"/repos/{repo}/commits/{sha}")
-        return status == 200
+        """SHA が上流に実在するかを返す．
+
+        404 だけを「実在しない」と読む．403（レート制限）や 5xx を False へ
+        丸めると，一過性の障害が「pin が壊れている」という誤った error になる．
+        `_tags` と同じく，確かめられなかったことは確かめた結果と区別する．
+        """
+        path = f"/repos/{repo}/commits/{sha}"
+        status, _ = self._get(path)
+        if status == 200:
+            return True
+        if status == 404:
+            return False
+        raise UpstreamUnavailable(f"{path}: 実在を確かめられなかった（HTTP {status}）")
 
     def _tags(self, repo: str) -> dict[str, str]:
         """タグ名から commit SHA への対応を返す．repo ごとに 1 度だけ引く．"""
@@ -439,14 +450,21 @@ class GitHubUpstream:
 
         compare の `base...head` は，head が base より後ろにあるとき `behind`
         を返す．base を子孫，head を祖先に置いて判定する．
+
+        確かめられなかったことを False へ丸めない．丸めると帰結が 2 つ生じ，
+        いずれも悪い．可動タグの判定では「系譜に属さない」という誤った error に
+        なる．古さの判定では条件式が偽になり，本来出るべき warning が黙って
+        消える．後者は 0 error のまま緑で終わるため，問い合わせに失敗したこと
+        自体が見えなくなる．
         """
         if ancestor == descendant:
             return True
-        status, payload = self._get(
-            f"/repos/{repo}/compare/{descendant}...{ancestor}"
-        )
+        path = f"/repos/{repo}/compare/{descendant}...{ancestor}"
+        status, payload = self._get(path)
         if status != 200 or not isinstance(payload, dict):
-            return False
+            raise UpstreamUnavailable(
+                f"{path}: 祖先関係を確かめられなかった（HTTP {status}）"
+            )
         return payload.get("status") in {"identical", "behind"}
 
 
