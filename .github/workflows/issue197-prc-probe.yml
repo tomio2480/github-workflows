@@ -11,8 +11,11 @@
 # 実験の性質上，本ファイルは branch ごと破棄する．
 name: Issue 197 probe (pull_request_review_comment)
 
+# 対照実験のため `issue_comment` も並べる．ドキュメントは両者へ同じ制約を
+# 課しているため，同一 PR・同一条件で両方を叩けば，制約が本当に同じかが判る．
 on:
   pull_request_review_comment:
+  issue_comment:
 
 permissions:
   contents: read
