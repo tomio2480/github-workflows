@@ -356,12 +356,33 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 `pull_request` 発火の run は `github.ref` が PR の ref を指す．
 group は PR ごとに分かれる．
-一方 comment 発火の 2 つは違う．
-`issue_comment` と `pull_request_review_comment` が当たる．
-どちらも `github.ref` は default ブランチを指す．GitHub の文書に明記がある．
-同じ書き方をすると，すべての PR のコメント run が 1 つの group へ集まる．
+**comment 発火の 2 つは，同じには扱えない．**
 
-集まると害が出る．`cancel-in-progress: true` を添えた場合，
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 8: comment 発火の event ごとの ref と PR 識別子
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
+
+| event | `github.ref` | PR を識別する値 |
+|---|---|---|
+| `issue_comment` | default ブランチ | `github.event.issue.number` |
+| `pull_request_review_comment` | `refs/pull/<N>/merge` | `github.event.pull_request.number` |
+
+右列の非対称は実測による．
+`pull_request_review_comment` に `github.event.issue` は存在しない
+（[知見ノート](notes/2026-09-05-issue140-self-caller.md)）．
+`github.ref` の値も Issue #197 で実測した
+（[知見ノート](notes/2026-09-07-issue197-prc-trigger.md)）．
+**GitHub の文書は両方を default ブランチと書いており，観測と食い違う．**
+観測に基づく以上，GitHub 側が文書へ揃えれば変わりうる．
+
+害が出るのは `issue_comment` だけである．
+`github.ref` で group を作ると，すべての PR の run が 1 つへ集まる．
+`pull_request_review_comment` は ref が PR ごとに分かれるため，
+同じ書き方でも group は分かれる．
+
+集まると何が起きるか．`cancel-in-progress: true` を添えた場合，
 無関係な PR のコメントが，別の PR で走る `@claude` の応答を打ち切る．
 添えない場合も，1 つの group で保留できる run は既定で 1 件である．
 後から来た run が前の保留を追い出す．
@@ -372,8 +393,10 @@ job が `skipped` で終わるだけであり，group の占有は起きる．
 caller repo の実測では，直近 100 run のうち 97 件が `skipped` であった．
 巻き添えの母数は大きい．
 
-足すなら group キーへ PR を識別する値を入れる．
-`github.event.issue.number` が当たる．
+足すなら group キーは event ごとに選ぶ．表 8 の右列が当たる．
+**1 つの式で両方を賄おうとしない．**
+`github.event.issue.number` だけで書いたとする．
+review comment の run は識別されず，1 つの group へ集まる．
 入れたうえで，group が PR ごとに分かれることを実測で確かめる．
 
 そもそも利得が薄い．
@@ -399,7 +422,7 @@ comment 発火の workflow は，同一 PR で連続実行しても打ち消す�
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 8: テスト 5 層
+表 9: テスト 5 層
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
@@ -421,7 +444,7 @@ comment 発火の workflow は，同一 PR で連続実行しても打ち消す�
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 9: よくある失敗と対処
+表 10: よくある失敗と対処
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
