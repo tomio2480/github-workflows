@@ -1,0 +1,41 @@
+name: Workflow Lint
+
+# 対象リポジトリの .github/workflows/workflow-lint.yml として配置する caller workflow．
+# `OWNER` を利用する github-workflows のオーナー名へ置換する．
+# `@<SHA>` は利用したい github-workflows の確定 commit SHA へ置換する．
+#
+# workflow ファイルだけを変更する PR では，他の caller（md-lint・shell-quality 等）は
+# paths に該当せず起動しない．Dependabot の Actions 更新 PR が無検証のまま
+# マージ可能になるため，本 caller で最低 1 つの check を通す．
+#
+# 検査は 2 つある．
+#   - actionlint: workflow の構文・式・埋め込み shell の静的検査．
+#   - action pins: uses: の SHA が上流に実在し，版コメントの系譜に属するかの突合．
+#     最新タグより古いだけの pin は落とさず警告にとどめる（追随は Dependabot の担当）．
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Lint workflows via composite action
+        uses: OWNER/github-workflows/.github/actions/workflow-lint@<SHA> # v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
