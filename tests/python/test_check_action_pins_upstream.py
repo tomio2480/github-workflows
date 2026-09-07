@@ -538,3 +538,36 @@ def test_repository_accessibility_is_asked_once_per_repository() -> None:
 
     repo_calls = [u for u in fetch.urls if u.endswith(f"/repos/{_REPO}")]
     assert len(repo_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        pytest.param(403, id="レート制限"),
+        pytest.param(500, id="サーバ側の障害"),
+    ],
+)
+def test_repository_check_does_not_blame_permissions_for_a_transient_failure(
+    status: int,
+) -> None:
+    """repository の可視性確認でも，一過性障害を権限の問題と読み替えないこと．
+
+    404 だけが「読めない」を意味する．403 や 5xx を「読めない」へ丸めると，
+    落とす方向は同じでも診断が変わる．「private なら token が要る」という
+    案内は，実際には再実行すれば直る場面で誤誘導になる．
+    `commit_exists` が掲げる原則を，可視性確認の側も守る．
+    """
+    fetch = RecordingFetch(
+        {
+            "/commits/": (404, b"{}"),
+            "=/repos/tomio2480/github-workflows": (status, b"{}"),
+        }
+    )
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    with pytest.raises(_MODULE.UpstreamUnavailable) as caught:
+        client.commit_exists(_REPO, _ALIEN)
+
+    message = str(caught.value)
+    assert "token" not in message, f"権限の問題として案内している: {message}"
+    assert str(status) in message

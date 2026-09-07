@@ -482,10 +482,21 @@ class GitHubUpstream:
         raise UpstreamUnavailable(f"{path}: 実在を確かめられなかった（HTTP {status}）")
 
     def _repo_accessible(self, repo: str) -> bool:
-        """repository 自体を読めるかを返す．repo ごとに 1 度だけ引く．"""
+        """repository 自体を読めるかを返す．repo ごとに 1 度だけ引く．
+
+        404 だけが「読めない」を意味する．403 や 5xx を「読めない」へ丸めない．
+        落とす方向は同じでも診断が変わる．「private なら token が要る」という
+        案内は，実際には再実行すれば直る場面で誤誘導になる．
+        `commit_exists` が掲げる原則を，可視性確認の側も守る．
+        """
         if repo in self._repo_cache:
             return self._repo_cache[repo]
-        status, _ = self._get(f"/repos/{repo}")
+        path = f"/repos/{repo}"
+        status, _ = self._get(path)
+        if status not in (200, 404):
+            raise UpstreamUnavailable(
+                f"{path}: repository を確かめられなかった（HTTP {status}）"
+            )
         accessible = status == 200
         self._repo_cache[repo] = accessible
         return accessible
