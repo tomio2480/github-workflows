@@ -227,9 +227,17 @@ def test_every_composite_action_is_inside_dependabot_scan_range() -> None:
     patterns = dependabot_action_directories()
     assert patterns, "dependabot.yml の github-actions に走査対象が無い"
 
+    directories = composite_action_directories(_REPO_ROOT)
+    # 収集が空だと「対象が無いので違反も無い」で通ってしまう．走査が壊れた
+    # ときに指摘 0 件の成功へ化けるため，まず拾えていることを確かめる．
+    assert directories, (
+        "`.github/actions/` から composite action を 1 件も拾えなかった．"
+        "収集の側が壊れている可能性がある．偽 green を避けるため fail させる．"
+    )
+
     uncovered = [
         directory
-        for directory in composite_action_directories(_REPO_ROOT)
+        for directory in directories
         if not any(_directory_matches(directory, pattern) for pattern in patterns)
     ]
 
