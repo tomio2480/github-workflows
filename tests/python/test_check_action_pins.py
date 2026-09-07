@@ -603,231 +603,193 @@ def test_collect_unpinned_ignores_quoted_template_placeholders(
     assert _MODULE.collect_unpinned(tmp_path) == []
 
 
+
 # `uses` の鍵が現れる書き方を列挙し，それぞれがどの区分へ入るかを固定する．
 # 区分は `pin`（SHA pin として収集），`unpinned`（浮動参照として報告），
-# `unrecognized`（形として認識できないと報告）の 3 つである．
-# **どの区分にも入らない形** が「検査したのに何も検査していない」状態を作る．
-_REMOTE_REFERENCE_FORMS = (
-    ("bare-pin", f"      uses: actions/checkout@{_SHA_A}", "pin"),
-    ("bare-float", "      uses: actions/checkout@v7", "unpinned"),
-    ("double-quoted-pin", f'      uses: "actions/checkout@{_SHA_A}"', "pin"),
-    ("double-quoted-float", '      uses: "actions/checkout@v7"', "unpinned"),
-    ("single-quoted-pin", f"      uses: 'actions/checkout@{_SHA_A}'", "pin"),
-    ("single-quoted-float", "      uses: 'actions/checkout@v7'", "unpinned"),
-    ("list-element-pin", f"      - uses: actions/checkout@{_SHA_A}", "pin"),
-    ("list-element-float", "      - uses: actions/checkout@v7", "unpinned"),
+# `unrecognized`（収集できる形になっていないと報告），`none`（規律の対象外）である．
+# 対象外を除き，**どの区分にも入らない形** が「検査したのに何も検査していない」
+# 状態を作る．
+_USES_FORMS = (
+    ("bare-pin", (f"      uses: actions/checkout@{_SHA_A}",), "pin"),
+    ("bare-float", ("      uses: actions/checkout@v7",), "unpinned"),
+    ("double-quoted-pin", (f'      uses: "actions/checkout@{_SHA_A}"',), "pin"),
+    ("double-quoted-float", ('      uses: "actions/checkout@v7"',), "unpinned"),
+    ("single-quoted-pin", (f"      uses: 'actions/checkout@{_SHA_A}'",), "pin"),
+    ("single-quoted-float", ("      uses: 'actions/checkout@v7'",), "unpinned"),
+    ("list-element-pin", (f"      - uses: actions/checkout@{_SHA_A}",), "pin"),
+    ("list-element-float", ("      - uses: actions/checkout@v7",), "unpinned"),
     (
         "quoted-pin-with-comment",
-        f'      uses: "actions/checkout@{_SHA_A}" # v7.0.1',
+        (f'      uses: "actions/checkout@{_SHA_A}" # v7.0.1',),
         "pin",
     ),
+    ("local-action", ("      uses: ./.github/actions/local",), "none"),
+    ("docker-reference", ("      uses: docker://alpine:3.22",), "none"),
     # ここから下は YAML としては成立するが，本リポジトリでは書かせない形である．
     # Dependabot が書き換えるのは `uses: <action>@<SHA> # vX.Y.Z` の 1 行だけで，
     # 下の形へ置くと版コメントの規律（Issue #157）が成立しない．
-    # 収集できないまま放置せず，認識できない形として落とす．
-    ("value-on-next-line", "      uses:", "unrecognized"),
-    ("flow-mapping-pin", f"      - {{uses: actions/checkout@{_SHA_A}}}", "unrecognized"),
-    ("flow-mapping-float", "      - {uses: actions/checkout@v7}", "unrecognized"),
-    ("space-before-colon", f"      uses : actions/checkout@{_SHA_A}", "unrecognized"),
+    ("value-on-next-line", ("      uses:", "        actions/checkout@v7"), "unrecognized"),
+    ("flow-mapping-pin", (f"      - {{uses: actions/checkout@{_SHA_A}}}",), "unrecognized"),
+    ("flow-mapping-float", ("      - {uses: actions/checkout@v7}",), "unrecognized"),
+    ("space-before-colon", (f"      uses : actions/checkout@{_SHA_A}",), "unrecognized"),
     (
         "flow-mapping-second-key",
-        "      - {name: x, uses: actions/checkout@v7}",
+        ("      - {name: x, uses: actions/checkout@v7}",),
+        "unrecognized",
+    ),
+    # 以下 3 件は Codex のレビュー（PR #214）で見つかった素通りである．
+    ("quoted-key", ('      - "uses": actions/checkout@v7',), "unrecognized"),
+    (
+        "sibling-after-compact-block-scalar",
+        (
+            "    steps:",
+            "      - name: |",
+            "          長い説明",
+            "        uses : actions/checkout@v7",
+        ),
+        "unrecognized",
+    ),
+    (
+        "local-reference-in-another-value",
+        (
+            '      - {name: "migrate from uses: ./old", '
+            "uses: actions/checkout@v7}",
+        ),
         "unrecognized",
     ),
 )
 
 
 @pytest.mark.parametrize(
-    ("label", "line", "expected"),
-    _REMOTE_REFERENCE_FORMS,
-    ids=[form[0] for form in _REMOTE_REFERENCE_FORMS],
+    ("label", "lines", "expected"),
+    _USES_FORMS,
+    ids=[form[0] for form in _USES_FORMS],
 )
 def test_every_uses_form_falls_into_exactly_one_category(
-    label: str, line: str, expected: str, tmp_path: Path
+    label: str, lines: tuple[str, ...], expected: str, tmp_path: Path
 ) -> None:
-    """どの書き方も 3 区分のどれか 1 つへ必ず入ること（Issue #211）．
+    """どの書き方も想定した区分へ入ること（Issue #211）．
 
-    正規表現で規律を検査する gate は，通り抜ける書き方を自分で列挙しないと
-    穴に気づけない．本テストは書き方の一覧そのものを固定する．
+    規律で検査する gate は，通り抜ける書き方を自分で列挙しないと穴に気づけない．
+    本テストは書き方の一覧そのものを固定する．
     新しい書き方を許すときは，ここへ 1 行足してから実装を触る．
     """
-    write_workflow(tmp_path, ".github/workflows/build.yml", [line])
+    write_workflow(tmp_path, ".github/workflows/build.yml", list(lines))
 
     found = {
         "pin": len(_MODULE.collect_pins(tmp_path)),
         "unpinned": len(_MODULE.collect_unpinned(tmp_path)),
         "unrecognized": len(_MODULE.collect_unrecognized(tmp_path)),
     }
+    total = sum(found.values())
 
-    assert sum(found.values()) == 1, (
+    if expected == "none":
+        assert total == 0, f"{label}: 規律の対象外を違反として数えた（{found}）"
+        return
+    assert total == 1, (
         f"{label}: 区分が 1 つに定まらなかった（{found}）．"
         "0 なら検査を素通りしており，2 以上なら二重に数えている．"
     )
     assert found[expected] == 1, f"{label}: 想定と違う区分へ入った（{found}）"
 
 
-def test_collect_unrecognized_ignores_uses_inside_comments(tmp_path: Path) -> None:
-    """コメント中の `uses:` を認識できない形として数えないこと．
-
-    実ファイルの comment は `uses:` の書き方そのものを説明する．
-    コメントごと拾うと，正しく書かれたリポジトリが常に落ちる．
-    """
-    write_workflow(
-        tmp_path,
-        ".github/workflows/build.yml",
-        [
+# 正しく書かれたファイルを違反にしない．落ちる gate は外されるため，
+# 誤検出は見逃しと同じだけ検査を損なう．
+_VALID_DOCUMENTS = (
+    (
+        "comment-mentions-uses",
+        (
             "# Dependabot が追随するのは uses: の参照だけである．",
             f"      uses: actions/checkout@{_SHA_A} # v7.0.1",
-            "      run: echo x # uses : ダミー",
-        ],
-    )
-
-    assert _MODULE.collect_unrecognized(tmp_path) == []
+        ),
+    ),
+    (
+        "prose-with-half-width-comma",
+        ('description: "Checks pins, uses: syntax must match Dependabot"',),
+    ),
+    ("another-key-containing-uses", ("      houses: 3",)),
+    ("uses-inside-a-plain-scalar", ("      run: ./uses:x",)),
+    (
+        "block-scalar-content",
+        ("description: >", "  uses: の SHA pin を検査する", "runs:", "  using: composite"),
+    ),
+    (
+        "block-scalar-with-indentation-indicator-first",
+        ("description: |2-", "  uses: の説明文", "runs:", "  using: composite"),
+    ),
+    (
+        "prose-inside-a-flow-mapping",
+        ('      - {name: "text mentions uses: syntax", run: echo x, shell: bash}',),
+    ),
+)
 
 
 @pytest.mark.parametrize(
-    "line",
-    [
-        pytest.param("      uses: ./.github/actions/local", id="ローカル action"),
-        pytest.param("      uses: docker://alpine:3.22", id="docker 参照"),
-        pytest.param("      houses: 3", id="uses を含む別の鍵"),
-        pytest.param("      run: ./uses:x", id="鍵でない位置の uses:"),
-    ],
+    ("label", "lines"),
+    _VALID_DOCUMENTS,
+    ids=[document[0] for document in _VALID_DOCUMENTS],
 )
-def test_collect_unrecognized_ignores_out_of_scope_lines(
-    line: str, tmp_path: Path
+def test_valid_documents_are_not_reported(
+    label: str, lines: tuple[str, ...], tmp_path: Path
 ) -> None:
-    """pin の規律の対象外を，認識できない形として数えないこと．
+    """`uses` の鍵でない記述を違反として数えないこと．
 
-    ローカル action と docker 参照は上流の SHA を持たない．
-    別の鍵や本文中の文字列を拾うと，誤検出でリポジトリが落ちる．
+    本リポジトリは `uses:` の書き方そのものを説明する文書を持つ．
+    地の文やコメントを鍵と読むと，正しいファイルが常に落ちる．
     """
-    write_workflow(tmp_path, ".github/workflows/build.yml", [line])
+    write_workflow(tmp_path, ".github/actions/x/action.yml", list(lines))
 
-    assert _MODULE.collect_unrecognized(tmp_path) == []
-
-
-@pytest.mark.parametrize(
-    "line",
-    [
-        pytest.param(
-            'description: "Checks pins, uses: syntax must match Dependabot"',
-            id="半角コンマの地の文",
-        ),
-        pytest.param(
-            "description: 検査し，uses: の pin を突き合わせる",
-            id="全角コンマの地の文",
-        ),
-        pytest.param('    name: "uses: の検査"', id="引用符の中の説明文"),
-    ],
-)
-def test_collect_unrecognized_ignores_uses_written_in_prose(
-    line: str, tmp_path: Path
-) -> None:
-    """値として書かれた地の文の `uses:` を鍵と読まないこと．
-
-    flow mapping の 2 番目以降の鍵を拾うため，コンマの直後も見ている．
-    範囲を `{}` の内側へ限らないと，コンマを挟んで `uses:` と書いただけの
-    説明文が違反になる．本リポジトリは `uses:` の書き方そのものを
-    `description` や `name` で説明するため，実際に踏む．
-    """
-    write_workflow(tmp_path, ".github/actions/x/action.yml", [line])
-
-    assert _MODULE.collect_unrecognized(tmp_path) == []
+    assert _MODULE.collect_unrecognized(tmp_path) == [], f"{label}: 誤検出した"
 
 
-def test_collect_unrecognized_ignores_block_scalar_content(tmp_path: Path) -> None:
-    """block scalar の中身を鍵と読まないこと．
-
-    `description: >` や `run: |` の中身は文字列であり，行頭に `uses:` と
-    書かれていても mapping の鍵ではない．本リポジトリは `uses:` の書き方を
-    説明する文書を持つため，中身を拾うと正しいファイルが落ちる．
-    """
-    write_workflow(
-        tmp_path,
-        ".github/actions/x/action.yml",
-        [
-            "description: >",
-            "  uses: の SHA pin を検査する",
-            "runs:",
-            "  using: composite",
-        ],
-    )
-
-    assert _MODULE.collect_unrecognized(tmp_path) == []
-
-
-def test_collect_unrecognized_reports_a_uses_block_scalar_header(
-    tmp_path: Path,
-) -> None:
-    """`uses:` 自体を block scalar で書いた行は報告すること．
-
-    中身を読み飛ばす扱いが，鍵そのものの見逃しへ広がってはならない．
-    """
+def test_collect_unrecognized_reports_the_line_of_the_key(tmp_path: Path) -> None:
+    """報告は鍵の行を指すこと．場所が分からないと直せない．"""
     write_workflow(
         tmp_path,
         ".github/workflows/build.yml",
-        ["      uses: |", "        actions/checkout@v7"],
-    )
-
-    assert len(_MODULE.collect_unrecognized(tmp_path)) == 1
-
-
-def test_collect_unrecognized_resumes_after_a_block_scalar_ends(
-    tmp_path: Path,
-) -> None:
-    """block scalar を抜けたあとの行を，また鍵として見ること．
-
-    抜けを判定できないと，以降のファイル全体が検査から外れる．
-    素通りの範囲が 1 行から残り全体へ広がる．
-    """
-    write_workflow(
-        tmp_path,
-        ".github/workflows/build.yml",
-        [
-            "    steps:",
-            "      - name: x",
-            "        run: |",
-            "          echo uses: ダミー",
-            "      - {uses: actions/checkout@v7}",
-        ],
+        ["jobs:", "  a:", "    steps:", "      - {uses: actions/checkout@v7}"],
     )
 
     found = _MODULE.collect_unrecognized(tmp_path)
 
-    assert [item.location for item in found] == [".github/workflows/build.yml:5"]
+    assert [item.location for item in found] == [".github/workflows/build.yml:4"]
 
 
-def test_collect_unrecognized_keeps_the_hash_inside_quotes(tmp_path: Path) -> None:
-    """引用符の内側の `#` をコメントの開始として扱わないこと．
+def test_collect_unrecognized_raises_on_a_broken_document(tmp_path: Path) -> None:
+    """YAML として読めないファイルは，黙って飛ばさず落とすこと．
 
-    切り出しを誤ると，行の残りが消えて `uses` の鍵ごと見えなくなる．
-    見えなくなった行は認識できない形としても報告されず，素通りする．
+    読めないファイルを飛ばすと，そこに書かれた `uses` はどの検査にも掛からない．
+    「検査したのに何も検査していない」状態へ戻る．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/broken.yml",
+        ["jobs:", "  a: [", "  b: }"],
+    )
+
+    with pytest.raises(_MODULE.UnparsableTarget) as error:
+        _MODULE.collect_unrecognized(tmp_path)
+
+    assert "broken.yml" in str(error.value)
+
+
+def test_collect_unrecognized_reports_missing_yaml_support(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PyYAML が無い環境では，検査を省かず落とすこと．
+
+    省くと，収集できない形の `uses` が黙って通る．
+    検査を持たない状態と，検査が通った状態を取り違えさせない．
     """
     write_workflow(
         tmp_path,
         ".github/workflows/build.yml",
-        ['      - {uses: "actions/checkout@v7#frag"}'],
+        [f"      uses: actions/checkout@{_SHA_A} # v7.0.1"],
     )
+    monkeypatch.setattr(_MODULE, "yaml", None)
 
-    assert len(_MODULE.collect_unrecognized(tmp_path)) == 1
-
-
-def test_collect_unrecognized_reports_unbalanced_quotes(tmp_path: Path) -> None:
-    """開始と終了の引用符が対にならない行も報告すること．
-
-    `_USES_PIN` と `_UNPINNED_USES` は後方参照で対を求めるため，対にならない行は
-    どちらにも掛からない．YAML の二重引用符スカラーは複数行にまたがれるので，
-    「対にならない ＝ 必ず不正な YAML」とは言えない．
-    正しく解釈できないなら，解釈できないと報告する．
-    """
-    write_workflow(
-        tmp_path,
-        ".github/workflows/build.yml",
-        [f"      uses: \"actions/checkout@{_SHA_A}'"],
-    )
-
-    assert len(_MODULE.collect_unrecognized(tmp_path)) == 1
+    with pytest.raises(_MODULE.MissingYamlSupport):
+        _MODULE.collect_unrecognized(tmp_path)
 
 
 def test_cli_fails_on_an_unrecognized_uses_form(tmp_path: Path) -> None:

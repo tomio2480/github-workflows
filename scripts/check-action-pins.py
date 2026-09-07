@@ -30,6 +30,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+# 収集できない形の `uses` を見つけるには YAML の解釈が要る（Issue #211）．
+# 「その `uses` は mapping の鍵か，文字列の中身か」は，鍵の引用・値の引用・
+# block scalar の指示子・flow mapping の鍵と値の区別が絡む．行単位の正規表現で
+# 答えようとすると，見逃しと誤検出が交互に出る（PR #214 のレビュー 3 巡で実証）．
+#
+# 取り込めないときは検査を省かず落とす．省くと，収集できない形の `uses` が
+# 黙って通り，検査を持たない状態と検査が通った状態を取り違える．
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - 導入済みの環境では通らない
+    yaml = None
+
 
 # `uses: owner/repo@<40 桁 SHA>` と，あれば行末の版コメントを拾う．
 # ローカル action（`./` 始まり）とタグ参照は対象外．タグ参照の禁止は
@@ -110,31 +122,8 @@ _UNPINNED_USES = re.compile(
     r"(?P=quote)"
 )
 
-# `uses` の鍵が現れる行を，書き方によらず広く拾う（Issue #211，PR #214）．
-# 上の 2 つは 1 行のブロック形式しか解さない．YAML はほかの書き方も許すため，
-# 値を次行へ置く形・flow mapping・コロン前に空白のある形は **どちらの正規表現にも
-# 掛からず素通りする** ．収集できない形は，収集できないと報告する．
-#
-# 素通りを許さないだけでなく，これらの形は本リポジトリでは書かせない．
-# Dependabot が書き換えるのは `uses: <action>@<SHA> # vX.Y.Z` の 1 行だけであり，
-# 別の形へ置くと版コメントの規律（Issue #157）が成立しないためである．
-#
-# 鍵の位置を限る．行頭・リスト要素の先頭・flow mapping の内側だけを見る．
-# 位置を限らないと `run: ./uses:x` のような本文まで拾う．
-#
-# flow mapping の 2 番目以降の鍵（`{name: x, uses: y}`）は `{` から `}` の手前
-# までの範囲で探す．コンマの直後を無条件に見ると，コンマを挟んで `uses:` と
-# 書いただけの説明文が違反になる．本リポジトリは `uses:` の書き方そのものを
-# `description` や `name` で説明するため，実際に踏む．
-_USES_KEY = re.compile(r"^\s*(?:-\s*)?(?:\{\s*)?uses\s*:|\{[^}]*\buses\s*:")
-
 # 上流の SHA を持たない参照は pin の規律の対象外である．
-_OUT_OF_SCOPE_USES = re.compile(r"uses\s*:\s*[\"']?(?:\./|docker://)")
-
-# block scalar の開始行．中身は文字列であり，行頭に `uses:` と書かれていても
-# mapping の鍵ではない．本リポジトリは `uses:` の書き方を説明する文書を持つため，
-# 中身を鍵として拾うと正しいファイルが落ちる．
-_BLOCK_SCALAR_HEADER = re.compile(r"^\s*(?:-\s*)?[^:#]+:\s*[|>][+-]?\d*\s*$")
+_OUT_OF_SCOPE_PREFIXES = ("./", "docker://")
 
 # 配布テンプレの `@<SHA>` は未置換の目印である．山括弧を含む ref は git の
 # 参照として成立しないため，浮動参照と区別できる．
@@ -170,28 +159,6 @@ class UnrecognizedUse:
     location: str
 
 
-def _strip_comment(line: str) -> str:
-    """引用符の外にあるコメントを落とす．
-
-    YAML の `#` は，行頭か空白の直後に来たときだけコメントを開く．
-    `@v7#frag` のように直前が空白でない `#` は値の一部である．
-    ここを取り違えると行の残りが消え，`uses` の鍵ごと見えなくなる．
-    見えなくなった行は認識できない形としても報告されず，素通りする．
-    """
-    quote: str | None = None
-    for index, char in enumerate(line):
-        if quote is not None:
-            if char == quote:
-                quote = None
-            continue
-        if char in "\"'":
-            quote = char
-            continue
-        if char == "#" and (index == 0 or line[index - 1].isspace()):
-            return line[:index]
-    return line
-
-
 def scan_targets(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Path]:
     """走査対象のファイルを重複なく返す．"""
     seen: dict[Path, None] = {}
@@ -204,6 +171,22 @@ def scan_targets(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Path]
 
 class UnreadableTarget(Exception):
     """走査対象を読めなかったことを，原因のファイル名付きで伝える．"""
+
+
+class UnparsableTarget(Exception):
+    """走査対象を YAML として解釈できなかったことを伝える．
+
+    解釈できないファイルを飛ばすと，そこに書かれた `uses` はどの検査にも
+    掛からない．「検査したのに何も検査していない」状態へ戻る．
+    """
+
+
+class MissingYamlSupport(Exception):
+    """PyYAML を取り込めなかったことを伝える．
+
+    検査を省くと，収集できない形の `uses` が黙って通る．
+    検査を持たない状態と，検査が通った状態を取り違えさせない．
+    """
 
 
 def collect_pins(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Pin]:
@@ -265,45 +248,81 @@ def collect_unpinned(
     return unpinned
 
 
+def _uses_entries(node, seen: set[int]):
+    """YAML の節から `uses` の鍵を探し，`(行番号, 値)` を返す．
+
+    解釈は PyYAML に任せる．鍵の引用・値の引用・block scalar の指示子・
+    flow mapping の鍵と値の区別は，いずれも parser がすでに解いている．
+    行番号は鍵の側から取る．値を次行へ置く形でも，直すべき場所は鍵の行である．
+
+    alias は同じ節を指すため，辿った節を覚えて二重に数えない．
+    """
+    if id(node) in seen:
+        return
+    seen.add(id(node))
+    if isinstance(node, yaml.MappingNode):
+        for key_node, value_node in node.value:
+            if isinstance(key_node, yaml.ScalarNode) and key_node.value == "uses":
+                value = (
+                    value_node.value
+                    if isinstance(value_node, yaml.ScalarNode)
+                    else None
+                )
+                yield key_node.start_mark.line + 1, value
+            yield from _uses_entries(value_node, seen)
+    elif isinstance(node, yaml.SequenceNode):
+        for item in node.value:
+            yield from _uses_entries(item, seen)
+
+
 def collect_unrecognized(
     root: Path, globs: Sequence[str] = DEFAULT_GLOBS
 ) -> list[UnrecognizedUse]:
-    """`uses` の鍵はあるが，収集できる形になっていない行を集める．
+    """`uses` の鍵はあるが，収集できる形になっていない箇所を集める．
 
-    `collect_pins` と `collect_unpinned` のどちらにも掛からない書き方は，
-    pin としても違反としても現れない．素通りを違反として表に出す．
+    `collect_pins` と `collect_unpinned` は 1 行のブロック形式しか解さない．
+    YAML はほかの書き方も許すため，そこから外れた `uses` は pin としても
+    違反としても現れず，検査が成功したまま素通りする．
+    YAML として解釈した鍵と，行から収集できた結果を突き合わせて差を出す．
 
-    コメント中の `uses:` は対象外とする．実ファイルの comment は `uses:` の
-    書き方そのものを説明するため，拾うと正しいリポジトリが常に落ちる．
+    これらの形は本リポジトリでは書かせない．Dependabot が書き換えるのは
+    `uses: <action>@<SHA> # vX.Y.Z` の 1 行だけであり，別の形へ置くと
+    版コメントの規律（Issue #157）が成立しないためである．
     """
+    if yaml is None:
+        raise MissingYamlSupport(
+            "PyYAML を取り込めなかった．収集できない形の `uses` を検出できない．"
+            "検査を省くと素通りと区別が付かないため失敗させる．"
+        )
     unrecognized: list[UnrecognizedUse] = []
     for path in scan_targets(root, globs):
         rel = path.relative_to(root).as_posix()
         try:
-            lines = path.read_text(encoding="utf-8").splitlines()
+            text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as error:
             raise UnreadableTarget(f"{rel}: 読み取りに失敗した（{error}）") from error
-        # block scalar の中身を読み飛ばすため，開始行の字下げを覚えておく．
-        # 抜けを判定できないと，以降のファイル全体が検査から外れる．
-        # 素通りの範囲が 1 行から残り全体へ広がる．
-        block_indent: int | None = None
-        for lineno, line in enumerate(lines, start=1):
-            indent = len(line) - len(line.lstrip())
-            if block_indent is not None:
-                if not line.strip() or indent > block_indent:
+        try:
+            documents = list(yaml.compose_all(text))
+        except yaml.YAMLError as error:
+            raise UnparsableTarget(
+                f"{rel}: YAML として解釈できなかった（{error}）"
+            ) from error
+        lines = text.splitlines()
+        for document in documents:
+            if document is None:
+                continue
+            for lineno, value in _uses_entries(document, set()):
+                # 上流の SHA を持たない参照は pin の規律の対象外である．
+                if value is not None and value.startswith(_OUT_OF_SCOPE_PREFIXES):
                     continue
-                block_indent = None
-            code = _strip_comment(line)
-            is_block_header = bool(_BLOCK_SCALAR_HEADER.match(code))
-            if _USES_KEY.search(code) and not _OUT_OF_SCOPE_USES.search(code):
-                # 鍵そのものが block scalar で書かれていても見逃さない．
-                # 中身を読み飛ばす扱いを，鍵の見逃しへ広げない．
-                if not (_USES_PIN.match(line) or _UNPINNED_USES.match(line)):
-                    unrecognized.append(
-                        UnrecognizedUse(text=code.strip(), location=f"{rel}:{lineno}")
+                line = lines[lineno - 1]
+                if _USES_PIN.match(line) or _UNPINNED_USES.match(line):
+                    continue
+                unrecognized.append(
+                    UnrecognizedUse(
+                        text=line.strip(), location=f"{rel}:{lineno}"
                     )
-            if is_block_header:
-                block_indent = indent
+                )
     return unrecognized
 
 
@@ -797,7 +816,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # そこに書かれた pin はどの検査にも掛からない．偽 green の経路である．
     try:
         unrecognized = collect_unrecognized(args.root, globs)
-    except UnreadableTarget as error:
+    except (UnreadableTarget, UnparsableTarget, MissingYamlSupport) as error:
         print(str(error), file=sys.stderr)
         return 1
     if unrecognized:
