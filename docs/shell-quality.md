@@ -268,6 +268,19 @@ runner の pwsh は script の末尾で `exit $LASTEXITCODE` を実行する．
 `shell-quality.yml` の module 導入 step 2 箇所が該当する（Issue #205）．
 退行は `tests/python/test_shell_quality_bootstrap.py` が検出する．
 
+**戻しは単独で置かない．**
+本節の冒頭に書いたとおり，7 は native command の非 0 終了で停止しない．
+`Install-Module` の内側が native command を呼んで失敗したとき，
+PowerShell のエラーが飛ぶとはかぎらない．
+そこへ戻しを置くと，導入できていない状態を成功として通す．
+
+戻しの前に，**意図した版が実際に入ったことを確かめる** ．
+在否ではなく版で突き合わせる．
+runner には別版が preinstall されていることがあり，
+在否だけでは残っていた版で素通りする．
+「エラーが飛ばなかった」という消極的な根拠を，
+「入った」という積極的な根拠へ置き換えるのが要点である．
+
 同じ step には別の前提もあった．
 `Set-PSRepository` は PSGallery が登録済みであることを要求する．
 未登録の runner に当たると，検査へ到達する前にここで落ちる．

@@ -79,10 +79,23 @@ jobs:
           }
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
           Install-Module Pester -RequiredVersion 6.1.0 -Scope CurrentUser -Force
+          # 意図した版が実際に入ったことを確かめる．pwsh 7 は native command の
+          # 非 0 終了で停止しないため，`Install-Module` の内側が呼ぶ native
+          # command の失敗はエラーとして飛ばないことがある．「エラーが飛ばな
+          # かった」を成功の根拠にすると，入っていない状態を成功と読む．
+          $required = @{ PSScriptAnalyzer = '1.25.0'; Pester = '6.1.0' }
+          foreach ($name in $required.Keys) {
+            $found = Get-Module -ListAvailable -Name $name |
+              Where-Object { $_.Version -eq [version]$required[$name] }
+            if (-not $found) {
+              throw "$name $($required[$name]) を導入できていない"
+            }
+          }
           # `Register-PSRepository -Default` は windows runner で内部の
           # `nuget.exe` が異常終了し `$LASTEXITCODE` へ 1 を残す．登録自体は
           # 成功しているが，runner の pwsh は最後の `$LASTEXITCODE` を step の
           # 終了コードへ伝播する．明示的に戻さないと，成功したまま落ちる．
+          # 上の突き合わせを通った後にのみ戻す．
           $global:LASTEXITCODE = 0
 
       - name: Run repo-local Shell quality gate
@@ -119,10 +132,23 @@ jobs:
           }
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
           Install-Module Pester -RequiredVersion 6.1.0 -Scope CurrentUser -Force
+          # 意図した版が実際に入ったことを確かめる．pwsh 7 は native command の
+          # 非 0 終了で停止しないため，`Install-Module` の内側が呼ぶ native
+          # command の失敗はエラーとして飛ばないことがある．「エラーが飛ばな
+          # かった」を成功の根拠にすると，入っていない状態を成功と読む．
+          $required = @{ PSScriptAnalyzer = '1.25.0'; Pester = '6.1.0' }
+          foreach ($name in $required.Keys) {
+            $found = Get-Module -ListAvailable -Name $name |
+              Where-Object { $_.Version -eq [version]$required[$name] }
+            if (-not $found) {
+              throw "$name $($required[$name]) を導入できていない"
+            }
+          }
           # `Register-PSRepository -Default` は windows runner で内部の
           # `nuget.exe` が異常終了し `$LASTEXITCODE` へ 1 を残す．登録自体は
           # 成功しているが，runner の pwsh は最後の `$LASTEXITCODE` を step の
           # 終了コードへ伝播する．明示的に戻さないと，成功したまま落ちる．
+          # 上の突き合わせを通った後にのみ戻す．
           $global:LASTEXITCODE = 0
 
       - name: Run repo-local Shell quality gate (PowerShell only)
