@@ -603,35 +603,44 @@ def test_collect_unpinned_ignores_quoted_template_placeholders(
     assert _MODULE.collect_unpinned(tmp_path) == []
 
 
-# 走査を素通りしうる `uses:` の書き方を列挙する．remote 参照は pin として
-# 収集されるか，浮動参照として報告されるかの **どちらかに必ず入る** ．
-# どちらにも入らない形が「検査したのに何も検査していない」状態を作る．
+# `uses` の鍵が現れる書き方を列挙し，それぞれがどの区分へ入るかを固定する．
+# 区分は `pin`（SHA pin として収集），`unpinned`（浮動参照として報告），
+# `unrecognized`（形として認識できないと報告）の 3 つである．
+# **どの区分にも入らない形** が「検査したのに何も検査していない」状態を作る．
 _REMOTE_REFERENCE_FORMS = (
-    ("bare-pin", f"      uses: actions/checkout@{_SHA_A}", True),
-    ("bare-float", "      uses: actions/checkout@v7", False),
-    ("double-quoted-pin", f'      uses: "actions/checkout@{_SHA_A}"', True),
-    ("double-quoted-float", '      uses: "actions/checkout@v7"', False),
-    ("single-quoted-pin", f"      uses: 'actions/checkout@{_SHA_A}'", True),
-    ("single-quoted-float", "      uses: 'actions/checkout@v7'", False),
-    ("list-element-pin", f"      - uses: actions/checkout@{_SHA_A}", True),
-    ("list-element-float", "      - uses: actions/checkout@v7", False),
+    ("bare-pin", f"      uses: actions/checkout@{_SHA_A}", "pin"),
+    ("bare-float", "      uses: actions/checkout@v7", "unpinned"),
+    ("double-quoted-pin", f'      uses: "actions/checkout@{_SHA_A}"', "pin"),
+    ("double-quoted-float", '      uses: "actions/checkout@v7"', "unpinned"),
+    ("single-quoted-pin", f"      uses: 'actions/checkout@{_SHA_A}'", "pin"),
+    ("single-quoted-float", "      uses: 'actions/checkout@v7'", "unpinned"),
+    ("list-element-pin", f"      - uses: actions/checkout@{_SHA_A}", "pin"),
+    ("list-element-float", "      - uses: actions/checkout@v7", "unpinned"),
     (
         "quoted-pin-with-comment",
         f'      uses: "actions/checkout@{_SHA_A}" # v7.0.1',
-        True,
+        "pin",
     ),
+    # ここから下は YAML としては成立するが，本リポジトリでは書かせない形である．
+    # Dependabot が書き換えるのは `uses: <action>@<SHA> # vX.Y.Z` の 1 行だけで，
+    # 下の形へ置くと版コメントの規律（Issue #157）が成立しない．
+    # 収集できないまま放置せず，認識できない形として落とす．
+    ("value-on-next-line", "      uses:", "unrecognized"),
+    ("flow-mapping-pin", f"      - {{uses: actions/checkout@{_SHA_A}}}", "unrecognized"),
+    ("flow-mapping-float", "      - {uses: actions/checkout@v7}", "unrecognized"),
+    ("space-before-colon", f"      uses : actions/checkout@{_SHA_A}", "unrecognized"),
 )
 
 
 @pytest.mark.parametrize(
-    ("label", "line", "is_pinned"),
+    ("label", "line", "expected"),
     _REMOTE_REFERENCE_FORMS,
     ids=[form[0] for form in _REMOTE_REFERENCE_FORMS],
 )
-def test_every_remote_reference_form_is_collected_or_reported(
-    label: str, line: str, is_pinned: bool, tmp_path: Path
+def test_every_uses_form_falls_into_exactly_one_category(
+    label: str, line: str, expected: str, tmp_path: Path
 ) -> None:
-    """どの書き方でも，pin か違反のどちらかとして必ず現れること（Issue #211）．
+    """どの書き方も 3 区分のどれか 1 つへ必ず入ること（Issue #211）．
 
     正規表現で規律を検査する gate は，通り抜ける書き方を自分で列挙しないと
     穴に気づけない．本テストは書き方の一覧そのものを固定する．
@@ -639,10 +648,106 @@ def test_every_remote_reference_form_is_collected_or_reported(
     """
     write_workflow(tmp_path, ".github/workflows/build.yml", [line])
 
-    pins = _MODULE.collect_pins(tmp_path)
-    unpinned = _MODULE.collect_unpinned(tmp_path)
+    found = {
+        "pin": len(_MODULE.collect_pins(tmp_path)),
+        "unpinned": len(_MODULE.collect_unpinned(tmp_path)),
+        "unrecognized": len(_MODULE.collect_unrecognized(tmp_path)),
+    }
 
-    assert len(pins) + len(unpinned) == 1, (
-        f"{label}: pin としても違反としても現れず，検査を素通りした"
+    assert sum(found.values()) == 1, (
+        f"{label}: 区分が 1 つに定まらなかった（{found}）．"
+        "0 なら検査を素通りしており，2 以上なら二重に数えている．"
     )
-    assert bool(pins) is is_pinned, f"{label}: pin と違反の判定が入れ替わっている"
+    assert found[expected] == 1, f"{label}: 想定と違う区分へ入った（{found}）"
+
+
+def test_collect_unrecognized_ignores_uses_inside_comments(tmp_path: Path) -> None:
+    """コメント中の `uses:` を認識できない形として数えないこと．
+
+    実ファイルの comment は `uses:` の書き方そのものを説明する．
+    コメントごと拾うと，正しく書かれたリポジトリが常に落ちる．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [
+            "# Dependabot が追随するのは uses: の参照だけである．",
+            f"      uses: actions/checkout@{_SHA_A} # v7.0.1",
+            "      run: echo x # uses : ダミー",
+        ],
+    )
+
+    assert _MODULE.collect_unrecognized(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("      uses: ./.github/actions/local", id="ローカル action"),
+        pytest.param("      uses: docker://alpine:3.22", id="docker 参照"),
+        pytest.param("      houses: 3", id="uses を含む別の鍵"),
+        pytest.param("      run: ./uses:x", id="鍵でない位置の uses:"),
+    ],
+)
+def test_collect_unrecognized_ignores_out_of_scope_lines(
+    line: str, tmp_path: Path
+) -> None:
+    """pin の規律の対象外を，認識できない形として数えないこと．
+
+    ローカル action と docker 参照は上流の SHA を持たない．
+    別の鍵や本文中の文字列を拾うと，誤検出でリポジトリが落ちる．
+    """
+    write_workflow(tmp_path, ".github/workflows/build.yml", [line])
+
+    assert _MODULE.collect_unrecognized(tmp_path) == []
+
+
+def test_collect_unrecognized_keeps_the_hash_inside_quotes(tmp_path: Path) -> None:
+    """引用符の内側の `#` をコメントの開始として扱わないこと．
+
+    切り出しを誤ると，行の残りが消えて `uses` の鍵ごと見えなくなる．
+    見えなくなった行は認識できない形としても報告されず，素通りする．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        ['      - {uses: "actions/checkout@v7#frag"}'],
+    )
+
+    assert len(_MODULE.collect_unrecognized(tmp_path)) == 1
+
+
+def test_collect_unrecognized_reports_unbalanced_quotes(tmp_path: Path) -> None:
+    """開始と終了の引用符が対にならない行も報告すること．
+
+    `_USES_PIN` と `_UNPINNED_USES` は後方参照で対を求めるため，対にならない行は
+    どちらにも掛からない．YAML の二重引用符スカラーは複数行にまたがれるので，
+    「対にならない ＝ 必ず不正な YAML」とは言えない．
+    正しく解釈できないなら，解釈できないと報告する．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [f"      uses: \"actions/checkout@{_SHA_A}'"],
+    )
+
+    assert len(_MODULE.collect_unrecognized(tmp_path)) == 1
+
+
+def test_cli_fails_on_an_unrecognized_uses_form(tmp_path: Path) -> None:
+    """認識できない形があれば CLI が落ち，場所を名指しすること．"""
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [
+            "jobs:",
+            "  a:",
+            "    steps:",
+            f"      - {{uses: actions/checkout@{_SHA_A}}}",
+        ],
+    )
+
+    result = run_cli(tmp_path, "--allow-empty")
+
+    assert result.returncode != 0
+    assert ".github/workflows/build.yml:4" in result.stderr

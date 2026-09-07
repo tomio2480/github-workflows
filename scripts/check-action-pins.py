@@ -43,8 +43,9 @@ from typing import Sequence
 # `uses: "owner/repo@<SHA>"` を同じ値として解釈する．囲まれた形を収集できないと，
 # SHA の一致検査にも版コメントの検査にも掛からない．開始と終了の引用符が対に
 # なることを後方参照で求める．版コメントは引用符の外に置かれるため，閉じ引用符の
-# 後ろで拾う．対にならない書き方（閉じ忘れ）は YAML として成立せず，
-# actionlint 側の関心事とする．
+# 後ろで拾う．対にならない行は `collect_unrecognized` が拾う．YAML の二重引用符
+# スカラーは複数行にまたがれるため，対にならないことを「不正な YAML だから
+# 対象外」とは扱えない．
 _USES_PIN = re.compile(
     r"^\s*(?:-\s*)?uses:\s*(?P<quote>[\"']?)"
     r"(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)"
@@ -109,6 +110,22 @@ _UNPINNED_USES = re.compile(
     r"(?P=quote)"
 )
 
+# `uses` の鍵が現れる行を，書き方によらず広く拾う（Issue #211，PR #214）．
+# 上の 2 つは 1 行のブロック形式しか解さない．YAML はほかの書き方も許すため，
+# 値を次行へ置く形・flow mapping・コロン前に空白のある形は **どちらの正規表現にも
+# 掛からず素通りする** ．収集できない形は，収集できないと報告する．
+#
+# 素通りを許さないだけでなく，これらの形は本リポジトリでは書かせない．
+# Dependabot が書き換えるのは `uses: <action>@<SHA> # vX.Y.Z` の 1 行だけであり，
+# 別の形へ置くと版コメントの規律（Issue #157）が成立しないためである．
+#
+# 鍵の位置を限る．行頭・リスト要素の先頭・flow mapping の要素境界だけを見る．
+# 位置を限らないと `run: ./uses:x` のような本文まで拾う．
+_USES_KEY = re.compile(r"^\s*(?:-\s*)?(?:\{\s*)?uses\s*:|[{,]\s*uses\s*:")
+
+# 上流の SHA を持たない参照は pin の規律の対象外である．
+_OUT_OF_SCOPE_USES = re.compile(r"uses\s*:\s*[\"']?(?:\./|docker://)")
+
 # 配布テンプレの `@<SHA>` は未置換の目印である．山括弧を含む ref は git の
 # 参照として成立しないため，浮動参照と区別できる．
 _PLACEHOLDER_REF = re.compile(r"^<.+>$")
@@ -133,6 +150,36 @@ class UnpinnedRef:
     action: str
     ref: str
     location: str
+
+
+@dataclass(frozen=True)
+class UnrecognizedUse:
+    """`uses` の鍵はあるが，収集できる形になっていない行 1 箇所．"""
+
+    text: str
+    location: str
+
+
+def _strip_comment(line: str) -> str:
+    """引用符の外にあるコメントを落とす．
+
+    YAML の `#` は，行頭か空白の直後に来たときだけコメントを開く．
+    `@v7#frag` のように直前が空白でない `#` は値の一部である．
+    ここを取り違えると行の残りが消え，`uses` の鍵ごと見えなくなる．
+    見えなくなった行は認識できない形としても報告されず，素通りする．
+    """
+    quote: str | None = None
+    for index, char in enumerate(line):
+        if quote is not None:
+            if char == quote:
+                quote = None
+            continue
+        if char in "\"'":
+            quote = char
+            continue
+        if char == "#" and (index == 0 or line[index - 1].isspace()):
+            return line[:index]
+    return line
 
 
 def scan_targets(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Path]:
@@ -206,6 +253,38 @@ def collect_unpinned(
                 )
             )
     return unpinned
+
+
+def collect_unrecognized(
+    root: Path, globs: Sequence[str] = DEFAULT_GLOBS
+) -> list[UnrecognizedUse]:
+    """`uses` の鍵はあるが，収集できる形になっていない行を集める．
+
+    `collect_pins` と `collect_unpinned` のどちらにも掛からない書き方は，
+    pin としても違反としても現れない．素通りを違反として表に出す．
+
+    コメント中の `uses:` は対象外とする．実ファイルの comment は `uses:` の
+    書き方そのものを説明するため，拾うと正しいリポジトリが常に落ちる．
+    """
+    unrecognized: list[UnrecognizedUse] = []
+    for path in scan_targets(root, globs):
+        rel = path.relative_to(root).as_posix()
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as error:
+            raise UnreadableTarget(f"{rel}: 読み取りに失敗した（{error}）") from error
+        for lineno, line in enumerate(lines, start=1):
+            code = _strip_comment(line)
+            if not _USES_KEY.search(code):
+                continue
+            if _OUT_OF_SCOPE_USES.search(code):
+                continue
+            if _USES_PIN.match(line) or _UNPINNED_USES.match(line):
+                continue
+            unrecognized.append(
+                UnrecognizedUse(text=code.strip(), location=f"{rel}:{lineno}")
+            )
+    return unrecognized
 
 
 def divergent_shas(pins: Sequence[Pin]) -> dict[str, dict[str, list[str]]]:
@@ -687,6 +766,30 @@ def main(argv: Sequence[str] | None = None) -> int:
                     *[
                         f"  {ref.location}: {ref.action}@{ref.ref}"
                         for ref in unpinned
+                    ],
+                ]
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
+    # 認識できない形も `--allow-empty` によらず落とす．収集できないまま通すと，
+    # そこに書かれた pin はどの検査にも掛からない．偽 green の経路である．
+    try:
+        unrecognized = collect_unrecognized(args.root, globs)
+    except UnreadableTarget as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    if unrecognized:
+        print(
+            "\n".join(
+                [
+                    "収集できない形で `uses` が書かれている．"
+                    "`uses: <action>@<SHA> # vX.Y.Z` の 1 行へ揃えること．"
+                    "Dependabot が書き換えるのはこの形だけである（Issue #157）．",
+                    *[
+                        f"  {item.location}: {item.text}"
+                        for item in unrecognized
                     ],
                 ]
             ),
