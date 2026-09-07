@@ -78,6 +78,7 @@ cat .github/workflows/md-lint.yml
 
 Shell quality も使う場合は，同じ `${OWNER}` / `${SHA}` から caller を取得する．
 対象 repo 固有の `bin/verify-shell.py` と CLI テストは中央へ移さず，caller repo に置く．
+gate の雛形は `templates/verify-shell.py` から取得できる．
 
 ```bash
 curl -fsSL \
@@ -85,7 +86,18 @@ curl -fsSL \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/shell-quality.yml
+
+mkdir -p bin
+curl -fsSL \
+  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/verify-shell.py" \
+  > bin/verify-shell.py
 ```
+
+PowerShell 資産を持つ repo は `templates/analyze-powershell.ps1` も置く．
+置き場所は `bin/analyze-powershell.ps1` とする．持たない repo は置かない．
+
+雛形の設定節を書き換える手順は
+[Shell / CLI quality reusable workflow](shell-quality.md) を参照する．
 
 セッション URL 検査も使う場合は，同じ `${OWNER}` / `${SHA}` から caller を取得する．
 

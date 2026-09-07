@@ -36,7 +36,8 @@ PESTER_SCRIPT = REPO_ROOT / "bin" / "run-pester.ps1"
 BASH_PATTERNS = ("bin/*.sh", "scripts/*.sh")
 # bin/lib/ は dot-source して使う共有ヘルパーを置く．実行はしないが
 # 振る舞いを持つため，静的解析の対象からは外さない．
-POWERSHELL_PATTERNS = ("bin/*.ps1", "bin/lib/*.ps1")
+# templates/ は caller へ配る資産である．配りっぱなしにせず同じ検査へ掛ける．
+POWERSHELL_PATTERNS = ("bin/*.ps1", "bin/lib/*.ps1", "templates/*.ps1")
 PESTER_PATTERNS = ("tests/powershell/*.Tests.ps1",)
 
 # 既存スクリプトの整形規則．-i 2 はインデント幅，-ci は case 分岐のインデント．
