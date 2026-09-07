@@ -119,8 +119,10 @@ ShellCheck と shfmt を Windows へ導入せず，CRLF の差異も持ち込ま
 6. PowerShell module は **導入と突き合わせの両方** を更新する．
 7. Draft PR で self-test と caller contract が成功することを確認する．
 
-PowerShell module の版は 3 箇所に書いてある．
+PowerShell module の版は 6 箇所に書いてある．
 1 箇所でも取り残すと，version を上げた PR がそのまま赤くなる．
+導入 step は `verify` と `verify-windows` の 2 job にあり，
+どちらも導入と突き合わせで版を名指しする．片方の job だけ上げる取り残しが起きやすい．
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
@@ -130,13 +132,20 @@ PowerShell module の版は 3 箇所に書いてある．
 
 | 箇所 | 役割 |
 |---|---|
-| `shell-quality.yml` の `Install-Module` | 導入する版の指定 |
+| `shell-quality.yml` `verify` の `Install-Module` | 導入する版の指定 |
+| 同 step の突き合わせ（`$required`） | 導入できたことの確認 |
+| `shell-quality.yml` `verify-windows` の `Install-Module` | 導入する版の指定 |
 | 同 step の突き合わせ（`$required`） | 導入できたことの確認 |
 | `tests/fixtures/shell-quality/probe-modules.ps1` | fixture 側の期待値 |
+| `tests/python/test_shell_quality_bootstrap.py` の `PINNED_VERSIONS` | 検査が見る版 |
 
 同 step の 2 箇所がずれると，導入した版と確かめる版が食い違う．
-`tests/python/test_shell_quality_bootstrap.py` が，
-同じ版が導入と突き合わせの双方に現れることを検査する．
+この突き合わせは `tests/python/test_shell_quality_bootstrap.py` が検査する．
+同じ版が導入と突き合わせの双方に現れることを，2 job の各々で見る．
+検査は `PINNED_VERSIONS` に挙げた版だけを見る．
+ここを取り残すと，古い版を探して落ちる．検査は素通りしない．
+
+本書の表 1 も版を書いているが，これは手順 5 が扱う．
 
 定期的な更新検知の自動化は Phase 2 候補とする．
 更新 PR を自動生成するまでは，release 時の手動確認を必須とする．
