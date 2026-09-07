@@ -32,6 +32,7 @@
 - 権限は composite action ごとに必要最小限とする．拡張が要る場合のみ明示する
   - `markdown-lint`: reviewdog 投稿のため `pull-requests: write`
   - `session-url-check`: API 読み取りのみのため `pull-requests: read`
+  - `workflow-lint`: caller の checkout を読むため `contents: read`．上流突合の読み取りに `github-token` を受け取る
 - `$GITHUB_ACTION_PATH` ベースの自己検出ロジックを破壊しないこと（caller checkout に依存しない設計）
 - inputs の互換性を変える場合は major version cut を伴う
 - third-party action の参照は **full commit SHA でピン**．タグ参照（`@v1`）への書き換えは供給網リスクを上げるため行わない
@@ -106,5 +107,6 @@
 - [docs/fork-usage.md](docs/fork-usage.md) — フォーク利用手順
 - [docs/shell-quality.md](docs/shell-quality.md) — Shell quality workflow の導入と契約
 - [docs/session-url-check.md](docs/session-url-check.md) — セッション URL 検査 action の導入と限界
+- [docs/workflow-lint.md](docs/workflow-lint.md) — Workflow 検査 action の導入と pin 突合の判定
 - [docs/local-lint.md](docs/local-lint.md) — push 前ローカル Markdown lint の使い方
 - [docs/development-notes.md](docs/development-notes.md) — 設計判断とレビュー対応の知見（過去 PR のふりかえり）
