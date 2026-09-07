@@ -1,7 +1,7 @@
 # 🧪 Workflow 検査 composite action
 
 caller の workflow ファイル自身を検査する composite action の導入と契約をまとめる．
-`actionlint` による構文検査と，`uses:` の SHA pin を上流と突き合わせる検査を行う．
+`actionlint` で構文を検査し，`uses:` の SHA pin を上流と突き合わせる．
 pin の突合は 3 段に分かれ，古いだけの pin は警告にとどめる．
 
 ## 目次
@@ -23,11 +23,11 @@ pin の突合は 3 段に分かれ，古いだけの pin は警告にとどめ�
 - SHA ピンの更新で，参照先が実在するか，YAML が壊れていないかすら検査されない．
 - Dependabot の Actions 更新 PR が無検証のままマージ可能になる．
 
-実測では `gh pr checks` が `no checks reported` を返す状態だった
-（`tomio2480/settings` の Issue #304）．
+実測では `gh pr checks` が `no checks reported` を返した．
+経緯は `tomio2480/settings` の Issue #304 にある．
 
-本 action は `paths` へ `.github/workflows/**` と `.github/actions/**` を含む
-caller から呼ばれ，この穴を塞ぐ．
+本 action はこの穴を塞ぐ．caller は `paths` へ
+`.github/workflows/**` と `.github/actions/**` を含める．
 
 ## 🚀 導入
 
@@ -52,7 +52,11 @@ API の読み取りだけでは完結しないためである．
 
 ## ⚙️ 入力
 
-表 1. composite action の入力
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 1: composite action の入力
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 入力 | 既定 | 説明 |
 | --- | --- | --- |
@@ -70,7 +74,7 @@ API の読み取りだけでは完結しないためである．
 .github/actions/**/action.yaml
 ```
 
-拡張子は双方を見る．GitHub は workflow を `.yml` と `.yaml` の双方で認識し，
+拡張子は双方を見る．GitHub は workflow を `.yml` と `.yaml` の双方で認識する．
 composite action の定義も `action.yaml` が有効である．
 composite action は `**` で受ける．`.github/actions/<group>/<name>/action.yml` の
 ような入れ子も有効な構成であり，`*` では漏れる．
@@ -81,7 +85,7 @@ composite action は `**` で受ける．`.github/actions/<group>/<name>/action.
 
 `.github/workflows` 直下の `.yml` と `.yaml` を検査する．
 版を固定し `sha256sum --check --strict` で検証してから使う．
-検査対象の一覧を実行の冒頭でログへ出す．対象 0 件は失敗させる．
+検査対象は実行の冒頭でログへ列挙する．対象 0 件は失敗させる．
 
 `actionlint` は指摘が無いと何も出さないため，対象を出さないと
 走査が空振りした結果と成功が区別できない．
@@ -102,7 +106,11 @@ composite action は `**` で受ける．`.github/actions/<group>/<name>/action.
 
 `verify-upstream` が真のとき，上流へ問い合わせて 3 段に判定する．
 
-表 2. 上流突合の判定と扱い
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 2: 上流突合の判定と扱い
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 判定 | 扱い |
 | --- | --- |
@@ -151,8 +159,8 @@ third-party action は使わない．Dependabot の追随対象は増えない�
 
 ## 🧪 中央自身への自己適用
 
-`test-self-lint.yml` の `integration-workflow-lint` job が，本 action を
-中央自身の workflow・composite action・`templates/` へ当てる．
+`test-self-lint.yml` の `integration-workflow-lint` job が本 action を走らせる．
+対象は中央自身の workflow と composite action，そして `templates/` である．
 
 `templates/` を走査範囲へ含めるのは，そこが Dependabot の走査対象外で
 pin が取り残されやすいためである（Issue #156）．
