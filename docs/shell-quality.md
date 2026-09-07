@@ -53,6 +53,7 @@ workflow の `OWNER` は利用する中央 repo の owner に置換する．
 
 PowerShell 資産を持つ repo は `templates/analyze-powershell.ps1` も置く．
 置き場所は `bin/analyze-powershell.ps1` とする．
+**持たない repo は置かない．** 置くと `pwsh` が必須になる．
 `.ps1` は UTF-8 BOM 付き・LF で保存する．
 BOM が無いと Windows PowerShell 5.1 が cp932 として誤読する．
 
@@ -61,9 +62,20 @@ BOM が無いと Windows PowerShell 5.1 が cp932 として誤読する．
 逆に，どの glob にも 1 件も当たらないときは失敗する．
 書き換え漏れが「指摘 0 件で成功」に化けるのを止めるためである．
 
+**helper 自身は「対象がある」根拠に数えない．**
+helper は既定の `POWERSHELL_PATTERNS` へ自分で当たる．
+数えてしまうと，`.ps1` が `src/` にある repo が glob を書き換え忘れても
+guard を通り抜ける．helper だけを解析して緑で終わる．
+除くのは有無の判定だけであり，解析の対象からは外さない．
+
 `.ps1` が対象にあるのに helper を置いていない場合も失敗する．
 pwsh へ渡してしまうと「ファイルが無い」という pwsh 側の失敗になり，
 何を置き忘れたのかが読み取れないためである．
+
+repo root は git へ問い合わせて決める．
+`verify-script` input は深い場所も指せるため，親の階数では決められない．
+`.github/scripts/` へ置くと `.github` が root になり，別の木を走査する．
+git が使えないときだけ script の 1 つ上へ落とす．
 
 雛形が回すのは ShellCheck・shfmt・PSScriptAnalyzer の 3 つである．
 Bats・Pester・native command の呼び出し検査は含めない．

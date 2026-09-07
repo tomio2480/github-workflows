@@ -87,10 +87,14 @@ curl -fsSL \
   | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/shell-quality.yml
 
+mkdir -p bin
 curl -fsSL \
   "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/verify-shell.py" \
   > bin/verify-shell.py
 ```
+
+PowerShell 資産を持つ repo は `templates/analyze-powershell.ps1` も置く．
+置き場所は `bin/analyze-powershell.ps1` とする．持たない repo は置かない．
 
 雛形の設定節を書き換える手順は
 [Shell / CLI quality reusable workflow](shell-quality.md) を参照する．

@@ -208,11 +208,14 @@ curl -fsSL "${BASE}/templates/.github/workflows/shell-quality.yml" \
 
 mkdir -p bin
 curl -fsSL "${BASE}/templates/verify-shell.py" > bin/verify-shell.py
+```
 
-# PowerShell 資産を持つ repo だけ．UTF-8 BOM 付きのまま保存する
+**PowerShell 資産を持つ repo だけ，helper も置く．**
+持たない repo は置かない．置くと `pwsh` が必須になる．
+
+```bash
+# .ps1 を持つ repo だけ実行する．UTF-8 BOM 付きのまま保存する
 curl -fsSL "${BASE}/templates/analyze-powershell.ps1" > bin/analyze-powershell.ps1
-
-python bin/verify-shell.py --require-all
 ```
 
 雛形を置いたら冒頭の「設定」節を自分の repo に合わせる．
@@ -220,6 +223,10 @@ python bin/verify-shell.py --require-all
 [Shell / CLI 品質ゲート](shell-quality.md) の「雛形から始める」節にある．
 どの glob にも 1 件も当たらないと gate は失敗する．
 書き換え漏れを成功にしないためである．
+
+```bash
+python bin/verify-shell.py --require-all
+```
 
 caller の `verify-script` と `paths` は，同じ検査スクリプトを指すように
 更新する．導入 PR ではローカルの `--require-all` と GitHub Actions の
