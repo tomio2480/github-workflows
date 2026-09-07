@@ -14,6 +14,7 @@
 - 5️⃣ コミットと PR
 - 6️⃣ Shell quality workflow（任意）
 - 7️⃣ セッション URL 検査 workflow（任意）
+- 8️⃣ Workflow 検査 workflow（任意）
 
 ## 🔧 前提条件
 
@@ -230,3 +231,15 @@ Claude Code で commit や PR を作るリポジトリでは，同じ gate を�
 と共通である．検査対象は PR のタイトル・本文と PR に含まれるコミットだけで，既存の履歴は見ない．
 既存リポジトリでは，導入前に commit 検索で過去の混入を別途確認する．
 詳細は [Claude セッション URL 検査 composite action](session-url-check.md) を参照する．
+
+## 8️⃣ Workflow 検査 workflow（任意）
+
+既存リポジトリでも同じ gate を利用できる．導入方法は
+[新規リポジトリ向けの Workflow 検査手順](onboarding-new-repo.md#8️⃣-workflow-検査-workflow任意)
+と共通である．
+
+既存リポジトリでは，導入時に既存の pin が検査に掛かる点へ注意する．
+`uses:` が SHA で pin されていない参照は失敗として報告される．
+版コメントの系譜に属さない SHA も失敗する．
+最新タグより古いだけの pin は警告にとどまり，job は落ちない．
+詳細は [Workflow 検査 composite action](workflow-lint.md) を参照する．

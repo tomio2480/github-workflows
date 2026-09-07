@@ -15,6 +15,7 @@
 - 5️⃣ Claude レビュー workflow（任意）
 - 6️⃣ Shell quality workflow（任意）
 - 7️⃣ セッション URL 検査 workflow（任意）
+- 8️⃣ Workflow 検査 workflow（任意）
 
 ## 🔧 前提条件
 
@@ -227,3 +228,22 @@ curl -fsSL \
 
 発生源を止める設定は Claude Code 側にある．`settings.json` へ
 `attribution.sessionUrl: false` を置き，セッションを再起動する．
+
+## 8️⃣ Workflow 検査 workflow（任意）
+
+workflow ファイル自身を検査する．`.github/workflows/*.yml` だけを変更する PR では，
+他の caller が `paths` に該当せず起動しない．Dependabot の Actions 更新 PR が
+無検証のままマージ可能になるため，本 caller で最低 1 つの check を通す．
+
+検査は 2 つある．`actionlint` による構文検査と，`uses:` の SHA pin を上流と
+突き合わせる検査である．caller 側の checkout が要る．
+必要な権限は `contents: read` である．
+詳細は [Workflow 検査 composite action](workflow-lint.md) を参照する．
+
+```bash
+# 1️⃣ で解決した ${OWNER} / ${SHA} を再利用する
+curl -fsSL   "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/workflow-lint.yml"   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|"   | sed "s|@<SHA>|@${SHA}|"   > .github/workflows/workflow-lint.yml
+```
+
+置換はコメント中の `@<SHA>` にも及ぶ．配置後にヘッダーコメントを読み，
+テンプレ向けの置換手順が残っていれば，自リポジトリ向けの説明へ書き換える．

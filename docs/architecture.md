@@ -373,6 +373,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 | workflow 統合 | Shell quality toolchain と caller contract | local reusable workflow 呼び出し | `tests/fixtures/shell-quality/` + `.github/workflows/test-self-lint.yml` | CI の `shell-quality-reusable` job |
 | 統合 | composite action の step 連携 | `./.github/actions/markdown-lint` の local 参照 | `tests/fixtures/markdown/` + `.github/workflows/test-self-lint.yml` の `integration-action` job | CI で PR 起動時 |
 | 統合 | `session-url-check` の自己検査 | `./.github/actions/session-url-check` の local 参照（本 PR 自身が対象） | `.github/workflows/test-self-lint.yml` の `integration-session-url-check` job | CI で PR 起動時 |
+| 統合 | `workflow-lint` の自己検査 | `./.github/actions/workflow-lint` の local 参照（本リポジトリ自身の workflow・action・templates が対象） | `.github/workflows/test-self-lint.yml` の `integration-workflow-lint` job | CI で PR 起動時 |
 | E2E | composite action から reviewdog 投稿まで | canary repo（picoruby-tea5767 等）からの実 PR | caller 側 | リリース前の手動確認 |
 
 静的解析層と workflow 統合層は対象が異なる．前者は本リポジトリの実資産を検査する．後者は fixture を使って toolchain と caller contract を検証する．詳細は [docs/shell-quality.md](shell-quality.md) を参照．

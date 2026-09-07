@@ -119,6 +119,8 @@ pin の突合は 3 段に分かれる．
 導入時は caller template を caller repo へコピーする．
 対象は `templates/.github/workflows/workflow-lint.yml` である．
 caller 側の checkout が要る．必要な権限は `contents: read` である．
+詳しい入力と判定の契約は
+[Workflow 検査 composite action](docs/workflow-lint.md) を参照する．
 
 ## 🤖 Claude レビュー workflow（任意）
 
@@ -207,6 +209,7 @@ github-workflows/
 │   └── dependabot.yml             # third-party action の自動更新
 ├── scripts/                       # composite action から呼ぶ抽出ロジック（test-first 対象）
 │   ├── add-pr-reaction.sh         # 👀 reaction 付与（fail-open）
+│   ├── check-action-pins.py       # uses: の SHA pin を走査・判定（--verify-upstream で上流突合，v2.20〜）
 │   ├── check-report-paths.py      # 報告の絶対パスが workspace 配下かを検査（v2.19.3〜）
 │   ├── check-session-url.sh       # PR の commit・本文からセッション URL を検出（fail-closed）
 │   ├── count-lint-findings.py     # textlint XML / markdownlint テキストから件数集計
@@ -266,6 +269,7 @@ github-workflows/
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
 │   ├── shell-quality.md           # Shell quality workflow の caller contract
 │   ├── session-url-check.md       # セッション URL 検査 action の導入と限界
+│   ├── workflow-lint.md           # Workflow 検査 action の導入と pin 突合の判定
 │   ├── local-lint.md              # push 前ローカル Markdown lint の使い方
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
 ├── .markdownlint-cli2.yaml        # 自リポジトリ用 override（fixture を lint 対象に含める）
@@ -491,6 +495,7 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/development-notes.md](docs/development-notes.md) | 設計判断とレビュー対応の知見 | メンテナー・AI |
 | [docs/shell-quality.md](docs/shell-quality.md) | Shell quality workflow の導入と契約 | 利用者・AI |
 | [docs/session-url-check.md](docs/session-url-check.md) | セッション URL 検査 action の導入と限界 | 利用者・AI |
+| [docs/workflow-lint.md](docs/workflow-lint.md) | Workflow 検査 action の導入と pin 突合の判定 | 利用者・AI |
 | [docs/local-lint.md](docs/local-lint.md) | push 前ローカル Markdown lint の使い方 | 利用者・AI |
 
 ## 📝 ライセンス
