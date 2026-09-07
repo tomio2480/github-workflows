@@ -28,6 +28,9 @@ STEP_NAME = "Install PowerShell analyzers and tests"
 # `verify` と `verify-windows` の 2 job にある．
 EXPECTED_JOBS = ("verify", "verify-windows")
 
+# 固定している版．導入時と導入後の突き合わせで同じ値を使う．
+PINNED_VERSIONS = ("1.25.0", "6.1.0")
+
 
 def _bootstrap_runs() -> dict[str, str]:
     """`job 名 -> run の中身` を導入 step の分だけ返す．"""
@@ -94,6 +97,46 @@ def test_bootstrap_registers_gallery_when_missing(job_name: str) -> None:
     )
     assert "Register-PSRepository -Default" in run, (
         f"job {job_name}: 未登録の runner で PSGallery を登録していない．"
+    )
+
+
+@pytest.mark.parametrize("job_name", EXPECTED_JOBS)
+def test_bootstrap_asserts_installed_versions(job_name: str) -> None:
+    """導入できたことを版まで突き合わせること．
+
+    pwsh 7 は native command の非 0 終了で停止しない（`docs/shell-quality.md`）．
+    `Install-Module` の内側が native command を呼んで黙って失敗した場合，
+    PowerShell のエラーは飛ばない．**「エラーが飛ばなかった」を成功の根拠に
+    すると，導入できていない状態を成功と読む．**
+
+    後段の `$LASTEXITCODE` の戻しが，その痕跡まで消してしまう．
+    消極的な根拠ではなく，意図した版が実際に入ったことを確かめる．
+    """
+    run = _code_only(_bootstrap_runs()[job_name])
+
+    assert "Get-Module -ListAvailable" in run, (
+        f"job {job_name}: 導入後に module の在否を確かめていない．"
+    )
+    assert "throw" in run, (
+        f"job {job_name}: 導入できていないときに step を落としていない．"
+    )
+    for version in PINNED_VERSIONS:
+        assert run.count(version) >= 2, (
+            f"job {job_name}: {version} を導入時にしか使っていない．"
+            "導入後の突き合わせでも同じ版を名指しすること．"
+        )
+
+
+@pytest.mark.parametrize("job_name", EXPECTED_JOBS)
+def test_version_assertion_precedes_exit_code_reset(job_name: str) -> None:
+    """版の突き合わせを `$LASTEXITCODE` の戻しより前に置くこと．
+
+    戻しが先だと，導入の失敗を消してから確かめることになる．
+    """
+    run = _code_only(_bootstrap_runs()[job_name])
+
+    assert run.index("throw") < run.index("$global:LASTEXITCODE = 0"), (
+        f"job {job_name}: 版の突き合わせが `$LASTEXITCODE` の戻しより後にある．"
     )
 
 
