@@ -395,3 +395,116 @@ def test_cli_names_the_file_it_could_not_read(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "broken.yml" in result.stderr
+
+
+def unpinned_line(action: str, ref: str) -> str:
+    return f"      uses: {action}@{ref}"
+
+
+def test_collect_unpinned_reports_floating_refs(tmp_path: Path) -> None:
+    """SHA で pin されていない remote 参照を拾うこと．
+
+    `AGENTS.md` は「reusable workflow と third-party action は full commit SHA で
+    pin する」と定める．`_USES_PIN` は 40 桁 SHA の行しか収集しないため，
+    `@v7` のような浮動参照は pin としても違反としても現れず，検査を素通りする．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [unpinned_line("actions/checkout", "v7")],
+    )
+
+    unpinned = _MODULE.collect_unpinned(tmp_path)
+
+    assert [(u.action, u.ref) for u in unpinned] == [("actions/checkout", "v7")]
+
+
+def test_collect_unpinned_ignores_sha_pinned_refs(tmp_path: Path) -> None:
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [pin_line("actions/checkout", _SHA_A, "v7.0.1")],
+    )
+
+    assert _MODULE.collect_unpinned(tmp_path) == []
+
+
+def test_collect_unpinned_ignores_local_action_references(tmp_path: Path) -> None:
+    """`./` 始まりのローカル action は pin の対象外であること．"""
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        ["      uses: ./.github/actions/local"],
+    )
+
+    assert _MODULE.collect_unpinned(tmp_path) == []
+
+
+def test_collect_unpinned_ignores_template_placeholders(tmp_path: Path) -> None:
+    """配布テンプレの `@<SHA>` は浮動参照として扱わないこと．
+
+    `templates/` は caller が置換して使う雛形である．山括弧を含む ref は
+    git の参照として成立せず，未置換の目印であることが明らかである．
+    これを違反として数えると，中央自身の自己検査が必ず落ちる．
+    """
+    write_workflow(
+        tmp_path,
+        "templates/.github/workflows/caller.yml",
+        [unpinned_line("OWNER/github-workflows/.github/actions/x", "<SHA>")],
+    )
+
+    assert _MODULE.collect_unpinned(tmp_path) == []
+
+
+def test_cli_fails_on_a_floating_ref_even_with_allow_empty(tmp_path: Path) -> None:
+    """`--allow-empty` は浮動参照の存在を覆い隠さないこと．
+
+    pin が 1 件も無い caller で `--allow-empty` を付けると，`@v7` のような
+    参照だけを持つリポジトリが緑で通ってしまう．対象ファイルも third-party
+    action も存在するのに，SHA pin の規律違反が偽 green になる形である．
+    `--allow-empty` は remote 参照そのものが無い場合にだけ効かせる．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [unpinned_line("actions/checkout", "v7")],
+    )
+
+    result = run_cli(tmp_path, "--allow-empty")
+
+    assert result.returncode != 0
+    assert "actions/checkout" in result.stderr
+
+
+def test_cli_fails_on_a_floating_ref_mixed_with_pinned_ones(tmp_path: Path) -> None:
+    """pin が別にあっても，浮動参照は見逃さないこと．
+
+    収集件数が非ゼロなら通る作りだと，1 件だけ SHA pin しておけば
+    残りを浮動参照にできる．ゼロ件検査では捕まらない抜け道である．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [
+            pin_line("actions/checkout", _SHA_A, "v7.0.1"),
+            unpinned_line("actions/setup-node", "v4"),
+        ],
+    )
+
+    result = run_cli(tmp_path)
+
+    assert result.returncode != 0
+    assert "actions/setup-node" in result.stderr
+
+
+def test_cli_allows_empty_when_no_remote_reference_exists(tmp_path: Path) -> None:
+    """remote 参照が 1 つも無い caller では `--allow-empty` が効くこと．"""
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        ["jobs:", "  a:", "    steps:", "      uses: ./.github/actions/local"],
+    )
+
+    result = run_cli(tmp_path, "--allow-empty")
+
+    assert result.returncode == 0, result.stderr

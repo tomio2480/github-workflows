@@ -74,6 +74,26 @@ DEFAULT_GLOBS: tuple[str, ...] = (
 )
 
 
+# SHA で pin されていない remote 参照を拾う．`_USES_PIN` は 40 桁 SHA の行しか
+# 収集しないため，`@v7` のような浮動参照は pin としても違反としても現れず，
+# 検査を素通りする．`AGENTS.md` は full commit SHA での pin を定めており，
+# 素通りは規律違反を偽 green にする．
+#
+# 先頭 1 文字を `[A-Za-z0-9_-]` に限ることで `./` 始まりのローカル action を外す．
+# ローカル参照は上流を持たないため pin の対象ではない．
+_UNPINNED_USES = re.compile(
+    r"^\s*(?:-\s*)?uses:\s*"
+    r"(?P<action>[A-Za-z0-9_-][\w.-]*/[\w.-]+(?:/[\w.-]+)*)"
+    r"@(?P<ref>\S+)"
+)
+
+# 配布テンプレの `@<SHA>` は未置換の目印である．山括弧を含む ref は git の
+# 参照として成立しないため，浮動参照と区別できる．
+_PLACEHOLDER_REF = re.compile(r"^<.+>$")
+
+_SHA_REF = re.compile(r"^[0-9a-f]{40}$")
+
+
 @dataclass(frozen=True)
 class Pin:
     """1 箇所の SHA pin．`version` は行末コメントが無ければ None."""
@@ -81,6 +101,15 @@ class Pin:
     action: str
     sha: str
     version: str | None
+    location: str
+
+
+@dataclass(frozen=True)
+class UnpinnedRef:
+    """SHA で pin されていない remote 参照 1 箇所．"""
+
+    action: str
+    ref: str
     location: str
 
 
@@ -122,6 +151,39 @@ def collect_pins(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Pin]:
                 )
             )
     return pins
+
+
+def collect_unpinned(
+    root: Path, globs: Sequence[str] = DEFAULT_GLOBS
+) -> list[UnpinnedRef]:
+    """SHA で pin されていない remote 参照を収集する．
+
+    ローカル action（`./` 始まり）と，配布テンプレの未置換プレースホルダ
+    （`@<SHA>`）は対象外とする．前者は上流を持たず，後者は caller が置換して
+    使う雛形であり，どちらも pin の規律の対象ではない．
+    """
+    unpinned: list[UnpinnedRef] = []
+    for path in scan_targets(root, globs):
+        rel = path.relative_to(root).as_posix()
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as error:
+            raise UnreadableTarget(f"{rel}: 読み取りに失敗した（{error}）") from error
+        for lineno, line in enumerate(lines, start=1):
+            matched = _UNPINNED_USES.match(line)
+            if matched is None:
+                continue
+            ref = matched.group("ref")
+            if _SHA_REF.match(ref) or _PLACEHOLDER_REF.match(ref):
+                continue
+            unpinned.append(
+                UnpinnedRef(
+                    action=matched.group("action"),
+                    ref=ref,
+                    location=f"{rel}:{lineno}",
+                )
+            )
+    return unpinned
 
 
 def divergent_shas(pins: Sequence[Pin]) -> dict[str, dict[str, list[str]]]:
@@ -378,6 +440,7 @@ class GitHubUpstream:
         if token:
             self._headers["Authorization"] = f"Bearer {token}"
         self._tag_cache: dict[str, dict[str, str]] = {}
+        self._repo_cache: dict[str, bool] = {}
 
     def _get(self, path: str) -> tuple[int, object]:
         try:
@@ -396,17 +459,36 @@ class GitHubUpstream:
     def commit_exists(self, repo: str, sha: str) -> bool:
         """SHA が上流に実在するかを返す．
 
-        404 だけを「実在しない」と読む．403（レート制限）や 5xx を False へ
-        丸めると，一過性の障害が「pin が壊れている」という誤った error になる．
-        `_tags` と同じく，確かめられなかったことは確かめた結果と区別する．
+        403（レート制限）や 5xx を False へ丸めない．一過性の障害が
+        「pin が壊れている」という誤った error になるためである．
+
+        404 も一律には読まない．GitHub は権限の無い private resource にも 404 を
+        返す．caller が渡す repository-scoped の `GITHUB_TOKEN` では，別
+        repository の private action を読めないことがある．そこで repository 自体を
+        読めるかを確かめ，読めないなら「確かめられなかった」として扱う．
+        読めるなら，commit の 404 は本当に実在しないことを意味する．
         """
         path = f"/repos/{repo}/commits/{sha}"
         status, _ = self._get(path)
         if status == 200:
             return True
         if status == 404:
+            if not self._repo_accessible(repo):
+                raise UpstreamUnavailable(
+                    f"{repo}: repository を読めない．private な参照であれば，"
+                    "その repository を読める token が要る．"
+                )
             return False
         raise UpstreamUnavailable(f"{path}: 実在を確かめられなかった（HTTP {status}）")
+
+    def _repo_accessible(self, repo: str) -> bool:
+        """repository 自体を読めるかを返す．repo ごとに 1 度だけ引く．"""
+        if repo in self._repo_cache:
+            return self._repo_cache[repo]
+        status, _ = self._get(f"/repos/{repo}")
+        accessible = status == 200
+        self._repo_cache[repo] = accessible
+        return accessible
 
     def _tags(self, repo: str) -> dict[str, str]:
         """タグ名から commit SHA への対応を返す．repo ごとに 1 度だけ引く．"""
@@ -553,6 +635,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(str(error), file=sys.stderr)
         return 1
     print(f"collected pins: {len(pins)}", flush=True)
+
+    # 浮動参照は `--allow-empty` によらず落とす．`AGENTS.md` は full commit SHA
+    # での pin を定めており，`@v7` のような参照は規律違反である．
+    # ここを緩めると「pin が 0 件だから空扱いで緑」という抜け道ができ，
+    # 対象ファイルも action も存在するのに違反が偽 green になる．
+    try:
+        unpinned = collect_unpinned(args.root, globs)
+    except UnreadableTarget as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    if unpinned:
+        print(
+            "\n".join(
+                [
+                    "SHA で pin されていない remote 参照がある．"
+                    "full commit SHA で pin すること．",
+                    *[
+                        f"  {ref.location}: {ref.action}@{ref.ref}"
+                        for ref in unpinned
+                    ],
+                ]
+            ),
+            file=sys.stderr,
+        )
+        return 1
 
     if not pins and not args.allow_empty:
         print(

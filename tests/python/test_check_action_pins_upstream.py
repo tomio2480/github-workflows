@@ -268,8 +268,13 @@ class RecordingFetch:
     def __call__(self, url: str, headers: dict[str, str]) -> tuple[int, bytes]:
         self.urls.append(url)
         self.headers.append(headers)
+        # `=` 始まりのキーは末尾一致を要求する．repository 単体の URL は
+        # commits の URL の接頭辞でもあるため，部分一致だけでは区別できない．
         for fragment, response in self.responses.items():
-            if fragment in url:
+            if fragment.startswith("="):
+                if url.endswith(fragment[1:]):
+                    return response
+            elif fragment in url:
                 return response
         return 404, b"{}"
 
@@ -284,7 +289,14 @@ def tags_payload(entries: list[tuple[str, str]]) -> bytes:
 
 def test_client_asks_the_commit_endpoint_and_reads_the_status() -> None:
     """実在確認は commits エンドポイントの status で決めること．"""
-    fetch = RecordingFetch({f"/repos/actions/checkout/commits/{_TIP}": (200, b"{}")})
+    # repository 自体は読める前提を置く．読めない場合の扱いは
+    # test_commit_absence_is_distinguished_from_an_inaccessible_repository が固定する．
+    fetch = RecordingFetch(
+        {
+            f"/repos/actions/checkout/commits/{_TIP}": (200, b"{}"),
+            "=/repos/actions/checkout": (200, b"{}"),
+        }
+    )
     client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
 
     assert client.commit_exists("actions/checkout", _TIP) is True
@@ -417,7 +429,13 @@ def test_commit_existence_does_not_turn_a_failure_into_absence(status: int) -> N
 def test_commit_existence_still_reads_404_as_absence() -> None:
     """404 は本当に実在しない．障害と混同して落とさないこと．"""
     client = _MODULE.GitHubUpstream(
-        token=None, fetch=RecordingFetch({"/commits/": (404, b"{}")})
+        token=None,
+        fetch=RecordingFetch(
+            {
+                "/commits/": (404, b"{}"),
+                "=/repos/actions/checkout": (200, b"{}"),
+            }
+        ),
     )
 
     assert client.commit_exists("actions/checkout", _ALIEN) is False
@@ -465,3 +483,58 @@ def test_transient_failure_does_not_silently_drop_a_stale_warning() -> None:
 
     with pytest.raises(_MODULE.UpstreamUnavailable):
         _MODULE.verify_upstream(pins, client)
+
+
+def test_commit_absence_is_distinguished_from_an_inaccessible_repository() -> None:
+    """到達できない repository の 404 を「commit が無い」と読み替えないこと．
+
+    GitHub は権限の無い private resource にも 404 を返す．caller が渡す
+    repository-scoped の `GITHUB_TOKEN` では，別 repository の private action を
+    読めないことがある．404 を一律に「実在しない」と読むと，正しく pin された
+    private action を壊れていると誤診し，job を必ず落とす．
+
+    `RecordingFetch` は挿入順に部分一致するため，`/commits/` を先に置く．
+    repository 単体の URL は commits の URL の接頭辞でもあるためである．
+    """
+    fetch = RecordingFetch(
+        {
+            "/commits/": (404, b"{}"),
+            "/repos/tomio2480/github-workflows": (404, b"{}"),
+        }
+    )
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    with pytest.raises(_MODULE.UpstreamUnavailable) as caught:
+        client.commit_exists(_REPO, _ALIEN)
+
+    assert _REPO in str(caught.value)
+
+
+def test_commit_absence_is_reported_when_the_repository_is_readable() -> None:
+    """repository を読めるなら，commit の 404 は本当に実在しないこと．"""
+    fetch = RecordingFetch(
+        {
+            "/commits/": (404, b"{}"),
+            "/repos/tomio2480/github-workflows": (200, b"{}"),
+        }
+    )
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    assert client.commit_exists(_REPO, _ALIEN) is False
+
+
+def test_repository_accessibility_is_asked_once_per_repository() -> None:
+    """可視性の確認を pin ごとに繰り返さないこと．"""
+    fetch = RecordingFetch(
+        {
+            "/commits/": (404, b"{}"),
+            "/repos/tomio2480/github-workflows": (200, b"{}"),
+        }
+    )
+    client = _MODULE.GitHubUpstream(token=None, fetch=fetch)
+
+    client.commit_exists(_REPO, _ALIEN)
+    client.commit_exists(_REPO, _OLD)
+
+    repo_calls = [u for u in fetch.urls if u.endswith(f"/repos/{_REPO}")]
+    assert len(repo_calls) == 1
