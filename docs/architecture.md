@@ -343,6 +343,43 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 ただし `permissions` の追加は，どちらの形式でも caller 側の作業を
 避けられない．
 
+### comment 発火の workflow へ `concurrency` を足さない
+
+配布中の caller template のうち `concurrency` を持つのは 4 本である．
+`md-lint`・`session-url-check`・`shell-quality`・`workflow-lint` が当たる．
+いずれも `pull_request` 発火であり，group は `<名前>-${{ github.ref }}` である．
+
+`claude-review` は持たない．中央の self-caller も同じである．
+**他に倣って足す判断が出たときのために，足さない理由を残す．**
+経緯は
+[Issue #196](https://github.com/tomio2480/github-workflows/issues/196) を参照．
+
+`pull_request` 発火の run は `github.ref` が PR の ref を指す．
+group は PR ごとに分かれる．
+一方 comment 発火の 2 つは違う．
+`issue_comment` と `pull_request_review_comment` が当たる．
+どちらも `github.ref` は default ブランチを指す．GitHub の文書に明記がある．
+同じ書き方をすると，すべての PR のコメント run が 1 つの group へ集まる．
+
+集まると害が出る．`cancel-in-progress: true` を添えた場合，
+無関係な PR のコメントが，別の PR で走る `@claude` の応答を打ち切る．
+添えない場合も，1 つの group で保留できる run は既定で 1 件である．
+後から来た run が前の保留を追い出す．
+`queue: max` を書けば 100 件まで積めるが，既定はそうなっていない．
+
+`@claude` を含まないコメントでも run は作られる．
+job が `skipped` で終わるだけであり，group の占有は起きる．
+caller repo の実測では，直近 100 run のうち 97 件が `skipped` であった．
+巻き添えの母数は大きい．
+
+足すなら group キーへ PR を識別する値を入れる．
+`github.event.issue.number` が当たる．
+入れたうえで，group が PR ごとに分かれることを実測で確かめる．
+
+そもそも利得が薄い．
+comment 発火の workflow は，同一 PR で連続実行しても打ち消す必要が乏しい．
+連続 push の旧 run を捨てる `pull_request` 発火とは事情が違う．
+
 ### 運用でのカバー
 
 上記の限界を実装で解消できるまでの当面の運用は，次のとおりである．
