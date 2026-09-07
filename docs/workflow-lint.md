@@ -188,8 +188,13 @@ third-party action は使わない．Dependabot の追随対象は増えない�
 `install` する．検証前に実行しない．
 
 `PyYAML` は runner に導入済みならそれを使い，無いときだけ版を固定して取得する．
-`actionlint` と違い `sha256` の検証は行わない．**この 1 点だけ供給網の面積が広い．**
-取得を避けるには caller 側で先に `PyYAML` を用意する．
+`ubuntu-latest` では導入済みであり，取得の経路は通らない．
+2026-09-07 の実測では `6.0.1` が入っていた．
+
+取得する場合は `actionlint` と違い `sha256` の検証を行わない．
+**この 1 点だけ供給網の面積が広い．**
+self-hosted runner など導入されていない環境で取得を避けるには，
+caller 側で先に `PyYAML` を用意する．
 
 対応する runner は linux/amd64 に限る．他の runner で呼ばれた場合は，
 対応範囲を示して落とす．
