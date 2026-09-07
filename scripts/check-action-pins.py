@@ -62,8 +62,14 @@ _VERSION_COMMENT = re.compile(r"^v\d+(?:\.\d+){0,2}$")
 # `.github/actions/<group>/<name>/action.yml` も有効な構成である．
 # `*` は 1 階層しか一致せず，入れ子の pin が漏れる．`**` は 0 階層にも
 # 一致するため，既存の 1 階層構成も同じパターンで覆える．
-# `.github/dependabot.yml` が `/.github/actions/*` で入れ子を拾う方針
-# （Issue #153）とも範囲が揃う．
+#
+# ここでの走査範囲は `.github/dependabot.yml` の走査範囲と揃っていない
+# （Issue #212）．同 file の `directories` は `/.github/actions/*` であり，
+# Dependabot が使えるワイルドカードは `*` だけである．`*` は 1 階層しか
+# 一致しないため，入れ子へ置いた composite action は **pin 検査には掛かるが
+# 更新 PR は来ない** ．範囲を広く取るのは，検査から漏らさないためである．
+# 追随されない pin を作らないよう，範囲のずれは
+# `tests/python/test_action_pins.py` が検出する．
 DEFAULT_GLOBS: tuple[str, ...] = (
     ".github/workflows/*.yml",
     ".github/workflows/*.yaml",
