@@ -116,6 +116,12 @@ pin の突合は 3 段に分かれる．
 可動タグ（`# v2`）は系譜に属していれば通し，固定タグ（`# v2.19.5`）は
 同じ commit を指していることを求める．
 
+`uses` は `uses: <action>@<SHA> # vX.Y.Z` の 1 行で書く（`v2.21.0`〜）．
+flow mapping や値の次行送りなど，収集できない形は失敗として報告する．
+Dependabot が書き換えるのは 1 行の形だけであり，別の形では版コメントの規律が
+成立しないためである．書き方の一覧は
+[Workflow 検査 composite action](docs/workflow-lint.md) を参照する．
+
 導入時は caller template を caller repo へコピーする．
 対象は `templates/.github/workflows/workflow-lint.yml` である．
 caller 側の checkout が要る．必要な権限は `contents: read` である．
