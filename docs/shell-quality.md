@@ -6,6 +6,7 @@
 中央 workflow は共通 toolchain を配置する．
 対象は ShellCheck，shfmt，Bats，PSScriptAnalyzer，Pester である．
 検証ロジックは caller repo へ残す．
+gate の雛形は `templates/verify-shell.py` として配る．
 本リポジトリ自身の gate は `bin/verify-shell.py` に置く．
 
 ## 🗺 目次
@@ -14,6 +15,7 @@
 - 🚀 導入
 - 🪟 任意の windows job
 - 📌 Tool version
+- 🖥 ローカルでの実行
 - 🔄 更新手順
 - 🏠 中央リポジトリ自身の gate
 - 🧩 native command の呼び出し規律
@@ -31,11 +33,52 @@ lint 対象，除外，test suite，CLI contract は caller repo が決める．
 
 ## 🚀 導入
 
-`templates/.github/workflows/shell-quality.yml` を caller repo へコピーする．
-`OWNER` は利用する中央 repo の owner に置換する．
+caller repo へ次の 2 つを置く．
+
+1. caller workflow: `templates/.github/workflows/shell-quality.yml`
+2. gate 本体: `templates/verify-shell.py` を `bin/verify-shell.py` として配置
+
+workflow の `OWNER` は利用する中央 repo の owner に置換する．
 `<SHA>` は確定 commit SHA に置換する．
 
-caller repo は `bin/verify-shell.py` を用意し，次の契約を満たす必要がある．
+### 雛形から始める
+
+`templates/verify-shell.py` は契約を満たした状態で配る（`v2.22.0`〜）．
+コピーしたら冒頭の「設定」節だけを書き換える．書き換えるのは次の 4 つである．
+
+- `BASH_PATTERNS`: ShellCheck と shfmt に掛ける glob．
+- `POWERSHELL_PATTERNS`: PSScriptAnalyzer に掛ける glob．
+- `SHFMT_OPTIONS`: shfmt の整形規則．
+- `ANALYZER_RELATIVE_PATH`: PSScriptAnalyzer 実行部の置き場所．
+
+PowerShell 資産を持つ repo は `templates/analyze-powershell.ps1` も置く．
+置き場所は `bin/analyze-powershell.ps1` とする．
+`.ps1` は UTF-8 BOM 付き・LF で保存する．
+BOM が無いと Windows PowerShell 5.1 が cp932 として誤読する．
+
+雛形は必須ツールを **実際の検査対象から** 決める．
+`.ps1` を 1 つも持たない repo へ `pwsh` を求めない．
+逆に，どの glob にも 1 件も当たらないときは失敗する．
+書き換え漏れが「指摘 0 件で成功」に化けるのを止めるためである．
+
+`.ps1` が対象にあるのに helper を置いていない場合も失敗する．
+pwsh へ渡してしまうと「ファイルが無い」という pwsh 側の失敗になり，
+何を置き忘れたのかが読み取れないためである．
+
+雛形が回すのは ShellCheck・shfmt・PSScriptAnalyzer の 3 つである．
+Bats・Pester・native command の呼び出し検査は含めない．
+これらは repo ごとに要否が分かれるため，必要な側が足す．
+中央の `bin/verify-shell.py` が実装例になる．
+
+雛形は中央の `bin/verify-shell.py` と同期させない．
+両者は検査対象が違う．回すツールも違う．
+同期を要求すると，守られないまま形だけが残る（Issue #142 と同じ筋）．
+代わりに `tests/python/test_templates_verify_shell.py` が
+雛形の振る舞いそのものを固定する．
+
+### 契約
+
+caller repo の gate は次の契約を満たす必要がある．
 
 ```text
 python bin/verify-shell.py --require-all
@@ -106,9 +149,59 @@ ShellCheck と shfmt を Windows へ導入せず，CRLF の差異も持ち込ま
 | PSScriptAnalyzer | 1.25.0 | PowerShell Gallery の required version |
 | Pester | 6.1.0 | PowerShell Gallery の required version |
 
+## 🖥 ローカルでの実行
+
+push の前に gate を回す．
+整形や BOM の指摘を，CI が落ちてから知るのを避けるためである．
+
+```text
+python bin/verify-shell.py --require-all
+```
+
+**gate をパイプへ繋がない．**
+`--require-all | tail -5 && git push` は必ず push まで進む．
+終了コードが `tail` のものになるためである．
+出力を絞りたいときは，実行と表示を別のコマンドへ分ける．
+
+### Windows へツールを入れる
+
+CI は Linux 向けの release asset を取得する．
+その手順は Windows では使えないため，個別に入れる．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 2. Windows でのツール導入
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
+
+| Tool | 導入 | 実測（2026-09-07） |
+|---|---|---|
+| ShellCheck | `winget install koalaman.shellcheck` | 0.11.0 |
+| shfmt | `winget install mvdan.shfmt` | 3.14.0 |
+| PSScriptAnalyzer | `Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0` | 1.25.0 |
+| Pester | `Install-Module Pester -RequiredVersion 6.1.0` | 6.1.0 |
+
+**winget の版は表 1 の固定版と一致するとはかぎらない．**
+実測では shfmt が 3.14.0 であり，CI の 3.13.1 と違った．
+整形結果が版で変わると，ローカルと CI の判定がずれる．
+**食い違ったら CI を正とする．**
+ローカル実行は早く気づくための手段であり，合否の基準ではない．
+
+Windows には Pester 3.4.0 が同梱されており，6.1.0 を入れても併存する．
+`bin/run-pester.ps1` は `-MinimumVersion 6.0.0` で読み込むため，
+古い方を掴むことはない．
+
+### worktree の行末
+
+シェル資産は `.gitattributes` により LF で checkout する．
+CRLF の worktree では ShellCheck が SC1017 を全行へ出し，ローカル実行が成立しない．
+`.gitattributes` を足す前に checkout した worktree は CRLF のまま残る．
+`git ls-files --eol` で `w/crlf` の残りを探す．
+該当ファイルを消して `git checkout --` で取り直せば，worktree だけが直る．
+
 ## 🔄 更新手順
 
-上表の tool version は Dependabot の監視対象外である．
+表 1 の tool version は Dependabot の監視対象外である．
 更新は maintainer が次の手順で行う．
 
 1. 公式 release または PowerShell Gallery で新しい版を確認する．
@@ -126,7 +219,7 @@ PowerShell module の版は 6 箇所に書いてある．
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 2. PowerShell module の版を書いている箇所
+表 3. PowerShell module の版を書いている箇所
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
@@ -158,19 +251,23 @@ repo-local gate は `bin/verify-shell.py` に置く．
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 3. repo-local gate の検査対象と実行ツール
+表 4. repo-local gate の検査対象と実行ツール
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 | 検査対象 | 実行するツール |
 |---|---|
 | `bin/*.sh`・`scripts/*.sh` | ShellCheck，shfmt（`-d -i 2 -ci`） |
-| `bin/*.ps1`・`bin/lib/*.ps1` | PSScriptAnalyzer（Error と Warning），`bin/check-native-calls.ps1` |
+| `bin/*.ps1`・`bin/lib/*.ps1`・`templates/*.ps1` | PSScriptAnalyzer（Error と Warning），`bin/check-native-calls.ps1` |
 | `tests/powershell/*.Tests.ps1` | Pester（`bin/run-pester.ps1` 経由） |
 
 Bats は `unit-bash` job が同じ suite を実行するため gate へ含めない．
 Pester は bats を持たない PowerShell 版の振る舞いを担保するため gate で実行する．
 対象が 1 つも無ければ実行しない．
+
+`templates/*.ps1` は caller へ配る資産である．
+配りっぱなしにせず，中央の実資産と同じ検査へ掛ける．
+雛形が PSScriptAnalyzer の指摘を含んだまま配られるのを防ぐ．
 
 `tests/powershell/fixtures/` は，どちらの glob にも入らない．
 `bin/run-pester.ps1` の回帰確認に使う資材を置く場所である．

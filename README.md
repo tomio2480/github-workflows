@@ -76,8 +76,13 @@ Markdown lint の非ブロッキング動作とは異なる．
 対象は `templates/.github/workflows/shell-quality.yml` である．
 `OWNER` は中央 repo の owner に置換する．
 `<SHA>` は確定 commit SHA に置換する．
+
+gate 本体は `templates/verify-shell.py` を雛形として配る（`v2.22.0`〜）．
+`bin/verify-shell.py` として置き，冒頭の「設定」節だけを書き換える．
+PowerShell 資産を持つ repo は `templates/analyze-powershell.ps1` も対で置く．
 詳しい caller contract と固定 version は
 [Shell / CLI quality reusable workflow](docs/shell-quality.md) を参照する．
+ローカル実行の手順も同じ文書にある．
 
 ## 🔗 セッション URL 検査 workflow（任意）
 
@@ -262,6 +267,8 @@ github-workflows/
 │   ├── .textlint-allowlist.yml    # caller-side allowlist のサンプル（v2.1〜，optional）
 │   ├── .prh-extra.yml             # caller-side 追加 prh 辞書のサンプル（v2.7〜，optional）
 │   ├── prh.yml                    # 中央辞書＋override 用
+│   ├── verify-shell.py            # Shell quality gate の雛形（v2.22〜，optional）
+│   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部の雛形（v2.22〜，optional）
 │   └── lefthook.yml               # ローカル hook（任意）
 ├── docs/                          # 運用ガイド
 │   ├── setup-guide.md

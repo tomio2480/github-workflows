@@ -195,16 +195,31 @@ CLI ブラックボックステストを含む reusable workflow を導入でき
 必要なツールが欠けた場合や，検査が失敗した場合は非ゼロで終了する．
 中央リポジトリに対象 repo 固有の検査ロジックは置かない．
 
+gate はゼロから書かなくてよい．`templates/verify-shell.py` を雛形として配る．
+
 ```bash
 # 1️⃣ で解決した ${OWNER} / ${SHA} を再利用する
-curl -fsSL \
-  "https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}/templates/.github/workflows/shell-quality.yml" \
+BASE="https://raw.githubusercontent.com/${OWNER}/github-workflows/${SHA}"
+
+curl -fsSL "${BASE}/templates/.github/workflows/shell-quality.yml" \
   | sed "s|OWNER/github-workflows|${OWNER}/github-workflows|" \
   | sed "s|@<SHA>|@${SHA}|" \
   > .github/workflows/shell-quality.yml
 
+mkdir -p bin
+curl -fsSL "${BASE}/templates/verify-shell.py" > bin/verify-shell.py
+
+# PowerShell 資産を持つ repo だけ．UTF-8 BOM 付きのまま保存する
+curl -fsSL "${BASE}/templates/analyze-powershell.ps1" > bin/analyze-powershell.ps1
+
 python bin/verify-shell.py --require-all
 ```
+
+雛形を置いたら冒頭の「設定」節を自分の repo に合わせる．
+書き換える定数の一覧は
+[Shell / CLI 品質ゲート](shell-quality.md) の「雛形から始める」節にある．
+どの glob にも 1 件も当たらないと gate は失敗する．
+書き換え漏れを成功にしないためである．
 
 caller の `verify-script` と `paths` は，同じ検査スクリプトを指すように
 更新する．導入 PR ではローカルの `--require-all` と GitHub Actions の
