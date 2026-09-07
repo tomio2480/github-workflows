@@ -343,6 +343,66 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 ただし `permissions` の追加は，どちらの形式でも caller 側の作業を
 避けられない．
 
+### comment 発火の workflow へ `concurrency` を足さない
+
+配布中の caller template のうち `concurrency` を持つのは 4 本である．
+`md-lint`・`session-url-check`・`shell-quality`・`workflow-lint` が当たる．
+いずれも `pull_request` 発火であり，group は `<名前>-${{ github.ref }}` である．
+
+`claude-review` は持たない．中央の self-caller も同じである．
+**他に倣って足す判断が出たときのために，足さない理由を残す．**
+経緯は
+[Issue #196](https://github.com/tomio2480/github-workflows/issues/196) を参照．
+
+`pull_request` 発火の run は `github.ref` が PR の ref を指す．
+group は PR ごとに分かれる．
+**comment 発火の 2 つは，同じには扱えない．**
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 8: comment 発火の event ごとの ref と PR 識別子
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
+
+| event | `github.ref` | PR を識別する値 |
+|---|---|---|
+| `issue_comment` | default ブランチ | `github.event.issue.number` |
+| `pull_request_review_comment` | `refs/pull/<N>/merge` | `github.event.pull_request.number` |
+
+右列の非対称は実測による．
+`pull_request_review_comment` に `github.event.issue` は存在しない
+（[知見ノート](notes/2026-09-05-issue140-self-caller.md)）．
+`github.ref` の値も Issue #197 で実測した
+（[知見ノート](notes/2026-09-07-issue197-prc-trigger.md)）．
+**GitHub の文書は両方を default ブランチと書いており，観測と食い違う．**
+観測に基づく以上，GitHub 側が文書へ揃えれば変わりうる．
+
+害が出るのは `issue_comment` だけである．
+`github.ref` で group を作ると，すべての PR の run が 1 つへ集まる．
+`pull_request_review_comment` は ref が PR ごとに分かれるため，
+同じ書き方でも group は分かれる．
+
+集まると何が起きるか．`cancel-in-progress: true` を添えた場合，
+無関係な PR のコメントが，別の PR で走る `@claude` の応答を打ち切る．
+添えない場合も，1 つの group で保留できる run は既定で 1 件である．
+後から来た run が前の保留を追い出す．
+`queue: max` を書けば 100 件まで積めるが，既定はそうなっていない．
+
+`@claude` を含まないコメントでも run は作られる．
+job が `skipped` で終わるだけであり，group の占有は起きる．
+caller repo の実測では，直近 100 run のうち 97 件が `skipped` であった．
+巻き添えの母数は大きい．
+
+足すなら group キーは event ごとに選ぶ．表 8 の右列が当たる．
+**1 つの式で両方を賄おうとしない．**
+`github.event.issue.number` だけで書いたとする．
+review comment の run は識別されず，1 つの group へ集まる．
+入れたうえで，group が PR ごとに分かれることを実測で確かめる．
+
+そもそも利得が薄い．
+comment 発火の workflow は，同一 PR で連続実行しても打ち消す必要が乏しい．
+連続 push の旧 run を捨てる `pull_request` 発火とは事情が違う．
+
 ### 運用でのカバー
 
 上記の限界を実装で解消できるまでの当面の運用は，次のとおりである．
@@ -362,7 +422,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 8: テスト 5 層
+表 9: テスト 5 層
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
@@ -384,7 +444,7 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 <!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
 
-表 9: よくある失敗と対処
+表 10: よくある失敗と対処
 
 <!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
