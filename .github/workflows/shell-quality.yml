@@ -71,9 +71,19 @@ jobs:
       - name: Install PowerShell analyzers and tests
         shell: pwsh
         run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          # PSGallery が未登録の runner に当たることがある（Issue #205）．
+          # `Set-PSRepository` は登録済みを前提とするため，そこで落ちていた．
+          # 信頼確認は `Install-Module -Force` が抑えるため，登録だけを補う．
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
           Install-Module Pester -RequiredVersion 6.1.0 -Scope CurrentUser -Force
+          # `Register-PSRepository -Default` は windows runner で内部の
+          # `nuget.exe` が異常終了し `$LASTEXITCODE` へ 1 を残す．登録自体は
+          # 成功しているが，runner の pwsh は最後の `$LASTEXITCODE` を step の
+          # 終了コードへ伝播する．明示的に戻さないと，成功したまま落ちる．
+          $global:LASTEXITCODE = 0
 
       - name: Run repo-local Shell quality gate
         env:
@@ -101,9 +111,19 @@ jobs:
       - name: Install PowerShell analyzers and tests
         shell: pwsh
         run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          # PSGallery が未登録の runner に当たることがある（Issue #205）．
+          # `Set-PSRepository` は登録済みを前提とするため，そこで落ちていた．
+          # 信頼確認は `Install-Module -Force` が抑えるため，登録だけを補う．
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
           Install-Module Pester -RequiredVersion 6.1.0 -Scope CurrentUser -Force
+          # `Register-PSRepository -Default` は windows runner で内部の
+          # `nuget.exe` が異常終了し `$LASTEXITCODE` へ 1 を残す．登録自体は
+          # 成功しているが，runner の pwsh は最後の `$LASTEXITCODE` を step の
+          # 終了コードへ伝播する．明示的に戻さないと，成功したまま落ちる．
+          $global:LASTEXITCODE = 0
 
       - name: Run repo-local Shell quality gate (PowerShell only)
         env:
