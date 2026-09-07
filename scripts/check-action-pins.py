@@ -30,6 +30,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+# 収集できない形の `uses` を見つけるには YAML の解釈が要る（Issue #211）．
+# 「その `uses` は mapping の鍵か，文字列の中身か」は，鍵の引用・値の引用・
+# block scalar の指示子・flow mapping の鍵と値の区別が絡む．行単位の正規表現で
+# 答えようとすると，見逃しと誤検出が交互に出る（PR #214 のレビュー 3 巡で実証）．
+#
+# 取り込めないときは検査を省かず落とす．省くと，収集できない形の `uses` が
+# 黙って通り，検査を持たない状態と検査が通った状態を取り違える．
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - 導入済みの環境では通らない
+    yaml = None
+
 
 # `uses: owner/repo@<40 桁 SHA>` と，あれば行末の版コメントを拾う．
 # ローカル action（`./` 始まり）とタグ参照は対象外．タグ参照の禁止は
@@ -38,9 +50,19 @@ from typing import Sequence
 # コメントは空白を含みうるため残り全体を捕捉する．版だけを `\S+` で拾うと
 # `# actions/checkout v7.0.1` の行がマッチせず，pin ごと収集から漏れる．
 # 漏れた pin はどの検査にも掛からないため，検査が素通りする．
+#
+# 値は引用符で囲まれうる（Issue #211）．YAML も GitHub Actions も
+# `uses: "owner/repo@<SHA>"` を同じ値として解釈する．囲まれた形を収集できないと，
+# SHA の一致検査にも版コメントの検査にも掛からない．開始と終了の引用符が対に
+# なることを後方参照で求める．版コメントは引用符の外に置かれるため，閉じ引用符の
+# 後ろで拾う．対にならない行は `collect_unrecognized` が拾う．YAML の二重引用符
+# スカラーは複数行にまたがれるため，対にならないことを「不正な YAML だから
+# 対象外」とは扱えない．
 _USES_PIN = re.compile(
-    r"^\s*(?:-\s*)?uses:\s*(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)"
+    r"^\s*(?:-\s*)?uses:\s*(?P<quote>[\"']?)"
+    r"(?P<action>[\w.-]+/[\w.-]+(?:/[\w.-]+)*)"
     r"@(?P<sha>[0-9a-f]{40})"
+    r"(?P=quote)"
     r"\s*(?:#\s*(?P<version>.*?))?\s*$"
 )
 
@@ -87,11 +109,21 @@ DEFAULT_GLOBS: tuple[str, ...] = (
 #
 # 先頭 1 文字を `[A-Za-z0-9_-]` に限ることで `./` 始まりのローカル action を外す．
 # ローカル参照は上流を持たないため pin の対象ではない．
+#
+# 引用符は action 名の手前で受ける（Issue #211）．先頭 1 文字の制限だけでは
+# `uses: 'owner/repo@v7'` も同時に外れ，浮動参照が違反として報告されない．
+# ref から引用符を除くのは，閉じ引用符を ref の一部として飲み込ませないためである．
+# 飲み込むと `v7'` が SHA でもプレースホルダでもない別の文字列になり，
+# 報告の中身が実際の ref とずれる．
 _UNPINNED_USES = re.compile(
-    r"^\s*(?:-\s*)?uses:\s*"
+    r"^\s*(?:-\s*)?uses:\s*(?P<quote>[\"']?)"
     r"(?P<action>[A-Za-z0-9_-][\w.-]*/[\w.-]+(?:/[\w.-]+)*)"
-    r"@(?P<ref>\S+)"
+    r"@(?P<ref>[^\s\"']+)"
+    r"(?P=quote)"
 )
+
+# 上流の SHA を持たない参照は pin の規律の対象外である．
+_OUT_OF_SCOPE_PREFIXES = ("./", "docker://")
 
 # 配布テンプレの `@<SHA>` は未置換の目印である．山括弧を含む ref は git の
 # 参照として成立しないため，浮動参照と区別できる．
@@ -119,6 +151,14 @@ class UnpinnedRef:
     location: str
 
 
+@dataclass(frozen=True)
+class UnrecognizedUse:
+    """`uses` の鍵はあるが，収集できる形になっていない行 1 箇所．"""
+
+    text: str
+    location: str
+
+
 def scan_targets(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Path]:
     """走査対象のファイルを重複なく返す．"""
     seen: dict[Path, None] = {}
@@ -131,6 +171,22 @@ def scan_targets(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Path]
 
 class UnreadableTarget(Exception):
     """走査対象を読めなかったことを，原因のファイル名付きで伝える．"""
+
+
+class UnparsableTarget(Exception):
+    """走査対象を YAML として解釈できなかったことを伝える．
+
+    解釈できないファイルを飛ばすと，そこに書かれた `uses` はどの検査にも
+    掛からない．「検査したのに何も検査していない」状態へ戻る．
+    """
+
+
+class MissingYamlSupport(Exception):
+    """PyYAML を取り込めなかったことを伝える．
+
+    検査を省くと，収集できない形の `uses` が黙って通る．
+    検査を持たない状態と，検査が通った状態を取り違えさせない．
+    """
 
 
 def collect_pins(root: Path, globs: Sequence[str] = DEFAULT_GLOBS) -> list[Pin]:
@@ -190,6 +246,84 @@ def collect_unpinned(
                 )
             )
     return unpinned
+
+
+def _uses_entries(node, seen: set[int]):
+    """YAML の節から `uses` の鍵を探し，`(行番号, 値)` を返す．
+
+    解釈は PyYAML に任せる．鍵の引用・値の引用・block scalar の指示子・
+    flow mapping の鍵と値の区別は，いずれも parser がすでに解いている．
+    行番号は鍵の側から取る．値を次行へ置く形でも，直すべき場所は鍵の行である．
+
+    alias は同じ節を指すため，辿った節を覚えて二重に数えない．
+    """
+    if id(node) in seen:
+        return
+    seen.add(id(node))
+    if isinstance(node, yaml.MappingNode):
+        for key_node, value_node in node.value:
+            if isinstance(key_node, yaml.ScalarNode) and key_node.value == "uses":
+                value = (
+                    value_node.value
+                    if isinstance(value_node, yaml.ScalarNode)
+                    else None
+                )
+                yield key_node.start_mark.line + 1, value
+            yield from _uses_entries(value_node, seen)
+    elif isinstance(node, yaml.SequenceNode):
+        for item in node.value:
+            yield from _uses_entries(item, seen)
+
+
+def collect_unrecognized(
+    root: Path, globs: Sequence[str] = DEFAULT_GLOBS
+) -> list[UnrecognizedUse]:
+    """`uses` の鍵はあるが，収集できる形になっていない箇所を集める．
+
+    `collect_pins` と `collect_unpinned` は 1 行のブロック形式しか解さない．
+    YAML はほかの書き方も許すため，そこから外れた `uses` は pin としても
+    違反としても現れず，検査が成功したまま素通りする．
+    YAML として解釈した鍵と，行から収集できた結果を突き合わせて差を出す．
+
+    これらの形は本リポジトリでは書かせない．Dependabot が書き換えるのは
+    `uses: <action>@<SHA> # vX.Y.Z` の 1 行だけであり，別の形へ置くと
+    版コメントの規律（Issue #157）が成立しないためである．
+    """
+    if yaml is None:
+        raise MissingYamlSupport(
+            "PyYAML を取り込めなかった．収集できない形の `uses` を検出できない．"
+            "検査を省くと素通りと区別が付かないため失敗させる．"
+        )
+    unrecognized: list[UnrecognizedUse] = []
+    for path in scan_targets(root, globs):
+        rel = path.relative_to(root).as_posix()
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            raise UnreadableTarget(f"{rel}: 読み取りに失敗した（{error}）") from error
+        try:
+            documents = list(yaml.compose_all(text))
+        except yaml.YAMLError as error:
+            raise UnparsableTarget(
+                f"{rel}: YAML として解釈できなかった（{error}）"
+            ) from error
+        lines = text.splitlines()
+        for document in documents:
+            if document is None:
+                continue
+            for lineno, value in _uses_entries(document, set()):
+                # 上流の SHA を持たない参照は pin の規律の対象外である．
+                if value is not None and value.startswith(_OUT_OF_SCOPE_PREFIXES):
+                    continue
+                line = lines[lineno - 1]
+                if _USES_PIN.match(line) or _UNPINNED_USES.match(line):
+                    continue
+                unrecognized.append(
+                    UnrecognizedUse(
+                        text=line.strip(), location=f"{rel}:{lineno}"
+                    )
+                )
+    return unrecognized
 
 
 def divergent_shas(pins: Sequence[Pin]) -> dict[str, dict[str, list[str]]]:
@@ -671,6 +805,30 @@ def main(argv: Sequence[str] | None = None) -> int:
                     *[
                         f"  {ref.location}: {ref.action}@{ref.ref}"
                         for ref in unpinned
+                    ],
+                ]
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
+    # 認識できない形も `--allow-empty` によらず落とす．収集できないまま通すと，
+    # そこに書かれた pin はどの検査にも掛からない．偽 green の経路である．
+    try:
+        unrecognized = collect_unrecognized(args.root, globs)
+    except (UnreadableTarget, UnparsableTarget, MissingYamlSupport) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    if unrecognized:
+        print(
+            "\n".join(
+                [
+                    "収集できない形で `uses` が書かれている．"
+                    "`uses: <action>@<SHA> # vX.Y.Z` の 1 行へ揃えること．"
+                    "Dependabot が書き換えるのはこの形だけである（Issue #157）．",
+                    *[
+                        f"  {item.location}: {item.text}"
+                        for item in unrecognized
                     ],
                 ]
             ),

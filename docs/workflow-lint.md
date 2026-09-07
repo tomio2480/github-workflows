@@ -102,6 +102,39 @@ composite action は `**` で受ける．`.github/actions/<group>/<name>/action.
 
 加えて，SHA で pin されていない remote 参照を失敗として報告する．
 
+さらに，**収集できる形になっていない `uses` も失敗として報告する** ．
+Issue #211 の対応である．収集は `uses: <action>@<SHA> # vX.Y.Z` の 1 行を対象とする．
+
+表 1 に，YAML としては成立するが収集できない書き方を示す．
+
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
+表 1. 収集できない `uses` の書き方
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
+
+| 書き方 | 例 |
+|---|---|
+| 値を次行へ置く | `uses:` の下の行へ値を書く |
+| flow mapping | `- {uses: owner/repo@<SHA>}` |
+| コロン前に空白 | `uses : owner/repo@<SHA>` |
+| 引用符付きの鍵 | `- "uses": owner/repo@<SHA>` |
+
+収集できないまま通すと，そこに書かれた pin はどの検査にも掛からない．
+**検査は成功したまま素通りする．**
+
+これらの形を許さないのは素通りを避けるためだけではない．
+Dependabot が書き換えるのは 1 行の形だけである．
+別の形へ置くと，版コメントの規律（Issue #157）がそもそも成立しない．
+
+判定には YAML の解釈が要る．
+「その `uses` は mapping の鍵か，文字列の中身か」を決める必要がある．
+鍵の引用・値の引用・block scalar の指示子・flow mapping の構造が絡む．
+行単位の正規表現では答えられない．action は `PyYAML` を用意してから script を呼ぶ．
+
+YAML として解釈できないファイルと，`PyYAML` を用意できない環境は，
+いずれも検査を省かずに失敗させる．省くと素通りと区別が付かないためである．
+
 ## 📐 pin 突合の判定
 
 `verify-upstream` が真のとき，上流へ問い合わせて 3 段に判定する．
@@ -143,7 +176,7 @@ composite action は `**` で受ける．`.github/actions/<group>/<name>/action.
 - ローカル action（`./` 始まり）．上流を持たないため pin の対象ではない．
 - 配布テンプレの未置換プレースホルダ（`@<SHA>`）．
   山括弧を含む ref は git の参照として成立せず，浮動参照と区別できる．
-- `docker://` 形式の参照．`uses:` の形が異なり，収集の対象に入らない．
+- `docker://` 形式の参照．上流の SHA を持たないため pin の対象ではない．
 
 ## 🔒 権限と supply chain
 
@@ -153,6 +186,15 @@ caller へ求める権限は `contents: read` だけである．
 third-party action は使わない．Dependabot の追随対象は増えない．
 `actionlint` はリリース資産を版固定で取得し，`sha256` を検証してから
 `install` する．検証前に実行しない．
+
+`PyYAML` は runner に導入済みならそれを使い，無いときだけ版を固定して取得する．
+`ubuntu-latest` では導入済みであり，取得の経路は通らない．
+2026-09-07 の実測では `6.0.1` が入っていた．
+
+取得する場合は `actionlint` と違い `sha256` を検証しない．
+**この 1 点だけ供給網の面積が広い．**
+導入されていない runner で取得を避けたい場合は，
+caller 側で先に `PyYAML` を用意する．
 
 対応する runner は linux/amd64 に限る．他の runner で呼ばれた場合は，
 対応範囲を示して落とす．

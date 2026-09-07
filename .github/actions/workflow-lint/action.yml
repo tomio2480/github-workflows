@@ -82,6 +82,34 @@ runs:
 
         actionlint -color "${targets[@]}"
 
+    - name: Ensure PyYAML
+      shell: bash
+      env:
+        # 版を固定する．actionlint と同じく，取得物の版を runner 任せにしない．
+        PYYAML_VERSION: "6.0.3"
+      run: |
+        set -euo pipefail
+
+        # pin 検査は「収集できない形の uses」を見つけるため YAML を解釈する
+        # （Issue #211）．鍵か文字列かの区別は行単位の正規表現では付かない．
+        #
+        # 取り込めないまま検査を省くと，収集できない形の uses が黙って通る．
+        # 検査を持たない状態と検査が通った状態を取り違えるため，ここで用意する．
+        if python3 -c 'import yaml' 2>/dev/null; then
+          echo "PyYAML: runner に導入済み（$(python3 -c 'import yaml; print(yaml.__version__)')）"
+          exit 0
+        fi
+
+        echo "PyYAML: 導入されていないため取得する"
+        # PEP 668 の externally-managed な python3 では 1 度目が失敗する．
+        # 失敗の理由がそれかどうかを終了コードから区別できないため，
+        # 2 度目で明示的に上書きする．どちらも失敗すればここで落ちる．
+        python3 -m pip install --quiet --disable-pip-version-check \
+          "pyyaml==${PYYAML_VERSION}" ||
+          python3 -m pip install --quiet --disable-pip-version-check \
+            --break-system-packages "pyyaml==${PYYAML_VERSION}"
+        python3 -c 'import yaml; print("PyYAML:", yaml.__version__)'
+
     - name: Check action pins
       shell: bash
       env:
