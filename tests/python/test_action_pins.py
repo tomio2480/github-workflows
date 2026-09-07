@@ -22,10 +22,13 @@ SHA と同じ行のコメントだけを書き換える．直上行へ置いた�
 
 from __future__ import annotations
 
+import fnmatch
 import importlib
 from pathlib import Path
+from typing import Sequence
 
 import pytest
+import yaml
 
 
 _MODULE = importlib.import_module("check-action-pins")
@@ -136,5 +139,113 @@ def test_same_sha_has_consistent_version_comment(action_pins: list[Pin]) -> None
                 )
                 for sha, versions in sorted(inconsistent.items())
             ],
+        ]
+    )
+
+
+# Dependabot の走査範囲と pin 検査の走査範囲がずれていないかを見る（Issue #212）．
+#
+# `DEFAULT_GLOBS` は `.github/actions/**/action.yml` で入れ子まで pin 検査の
+# 対象にする．一方 `.github/dependabot.yml` の `directories` が使えるワイルドカード
+# は `*` だけである（GitHub の Dependabot options reference）．`*` は 1 階層しか
+# 一致しないため，入れ子へ composite action を置くと **pin 検査は通るのに更新 PR は
+# 来ない** 構成になる．誰も追随させない pin が生まれる．
+#
+# 範囲が揃っていることを規律ではなく機械で確かめる．ずれたら，入れ子をやめるか
+# `dependabot.yml` へ当該ディレクトリを足すかを選ぶことになる．
+_DEPENDABOT_CONFIG = _REPO_ROOT / ".github" / "dependabot.yml"
+
+
+def _directory_matches(directory: str, pattern: str) -> bool:
+    """`*` を 1 階層として扱い，ディレクトリが pattern に一致するかを返す．
+
+    `fnmatch` をパス全体へ当てると `*` が `/` も飲み込み，1 階層しか一致しない
+    という Dependabot の挙動を再現できない．区切りで分けて段ごとに当てる．
+    """
+    dir_parts = [part for part in directory.strip("/").split("/") if part]
+    pattern_parts = [part for part in pattern.strip("/").split("/") if part]
+    if len(dir_parts) != len(pattern_parts):
+        return False
+    return all(
+        fnmatch.fnmatchcase(part, expected)
+        for part, expected in zip(dir_parts, pattern_parts)
+    )
+
+
+def dependabot_action_directories() -> list[str]:
+    """`github-actions` エコシステムの走査対象を先頭 `/` 付きで返す．"""
+    document = yaml.safe_load(_DEPENDABOT_CONFIG.read_text(encoding="utf-8"))
+    directories: list[str] = []
+    for update in document["updates"]:
+        if update["package-ecosystem"] != "github-actions":
+            continue
+        directories.extend(update.get("directories", []))
+        if "directory" in update:
+            directories.append(update["directory"])
+    return directories
+
+
+def composite_action_directories(root: Path) -> list[str]:
+    """`.github/actions/` 配下の composite action を先頭 `/` 付きで返す．"""
+    found: set[str] = set()
+    for suffix in ("yml", "yaml"):
+        for path in (root / ".github" / "actions").glob(f"**/action.{suffix}"):
+            found.add("/" + path.parent.relative_to(root).as_posix())
+    return sorted(found)
+
+
+@pytest.mark.parametrize(
+    ("directory", "covered"),
+    [
+        pytest.param("/.github/actions/markdown-lint", True, id="1 階層"),
+        pytest.param("/.github/actions/group/nested", False, id="2 階層"),
+        pytest.param("/", True, id="リポジトリ直下"),
+    ],
+)
+def test_directory_matching_treats_star_as_one_level(
+    directory: str, covered: bool
+) -> None:
+    """判定側が `*` を 1 階層として扱うこと．
+
+    ここが `*` を貪欲に扱うと，入れ子も「走査対象に入っている」と読んでしまう．
+    ずれの検出そのものが素通りするため，判定の性質を先に固定する．
+    """
+    patterns: Sequence[str] = ("/", "/.github/actions/*")
+
+    assert (
+        any(_directory_matches(directory, pattern) for pattern in patterns) is covered
+    )
+
+
+def test_every_composite_action_is_inside_dependabot_scan_range() -> None:
+    """pin 検査の対象が Dependabot の走査範囲へ収まっていること（Issue #212）．
+
+    外れた composite action の pin は，検査には掛かるが更新 PR が来ない．
+    third-party action の SHA は Dependabot PR を通してのみ更新する運用のため，
+    範囲から外れた時点で，その pin は誰も追随させない．
+    """
+    patterns = dependabot_action_directories()
+    assert patterns, "dependabot.yml の github-actions に走査対象が無い"
+
+    directories = composite_action_directories(_REPO_ROOT)
+    # 収集が空だと「対象が無いので違反も無い」で通ってしまう．走査が壊れた
+    # ときに指摘 0 件の成功へ化けるため，まず拾えていることを確かめる．
+    assert directories, (
+        "`.github/actions/` から composite action を 1 件も拾えなかった．"
+        "収集の側が壊れている可能性がある．偽 green を避けるため fail させる．"
+    )
+
+    uncovered = [
+        directory
+        for directory in directories
+        if not any(_directory_matches(directory, pattern) for pattern in patterns)
+    ]
+
+    assert not uncovered, "\n".join(
+        [
+            "Dependabot の走査範囲の外にある composite action がある．",
+            "pin 検査は通るが更新 PR は来ない．入れ子をやめるか，",
+            "`.github/dependabot.yml` の `directories` へ当該ディレクトリを足す．",
+            *[f"  {directory}" for directory in uncovered],
         ]
     )
