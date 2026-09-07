@@ -157,6 +157,63 @@ def test_run_checks_reports_the_patterns_when_nothing_matches(tmp_path, capsys) 
     assert verify_shell.BASH_PATTERNS[0] in captured.err
 
 
+def test_analyzer_helper_alone_does_not_count_as_a_target(tmp_path) -> None:
+    """helper 自身を「検査対象がある」根拠にしない．
+
+    配布した `bin/analyze-powershell.ps1` は既定の `POWERSHELL_PATTERNS` へ
+    当たる．PowerShell 資産が `src/*.ps1` などにある caller が glob を
+    書き換え忘れると，対象 0 件の guard を通り抜ける．
+    helper だけを解析して緑で終わり，実資産は 1 つも検査されない．
+    """
+    caller = _make_caller_repo(tmp_path)
+    shutil.copy(ANALYZER_TEMPLATE, caller / "bin" / "analyze-powershell.ps1")
+    runner = RecordingRunner()
+
+    returncode = verify_shell.run_checks(
+        runner=runner, root=caller, which=_always_found
+    )
+
+    assert returncode == 1
+    assert runner.calls == []
+
+
+def test_analyzer_helper_is_still_analyzed_alongside_real_targets(tmp_path) -> None:
+    """対象から外すのは「あるかどうか」の判定だけである．解析はする．"""
+    caller = _make_caller_repo(tmp_path, powershell=True)
+    runner = RecordingRunner()
+
+    verify_shell.run_checks(runner=runner, root=caller, which=_always_found)
+
+    assert runner.calls[-1][-2:] == [
+        "bin/analyze-powershell.ps1",
+        "bin/example.ps1",
+    ]
+
+
+# --- repo root は script の置き場所に依存させない ---
+
+
+def test_repo_root_follows_git_toplevel(tmp_path) -> None:
+    """`verify-script` を深い場所へ移しても repo root を見失わない．"""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    script_dir = tmp_path / ".github" / "scripts"
+    script_dir.mkdir(parents=True)
+
+    root = verify_shell.resolve_repo_root(script_dir)
+
+    assert root.resolve() == tmp_path.resolve()
+
+
+def test_repo_root_falls_back_to_the_parent_outside_git(tmp_path) -> None:
+    """git が使えない環境では script の 1 つ上へ落とす．"""
+    script_dir = tmp_path / "bin"
+    script_dir.mkdir()
+
+    root = verify_shell.resolve_repo_root(script_dir)
+
+    assert root.resolve() == tmp_path.resolve()
+
+
 # --- 対象に応じたツールだけを起動する ---
 
 

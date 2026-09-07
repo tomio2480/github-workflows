@@ -47,7 +47,33 @@ ANALYZER_RELATIVE_PATH = "bin/analyze-powershell.ps1"
 # --- 設定ここまで ---
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def resolve_repo_root(script_dir: Path = _SCRIPT_DIR) -> Path:
+    """repo root を決める．script の置き場所へ依存させない．
+
+    `verify-script` input は `.github/scripts/verify-shell.py` のような
+    深い場所も指せる．親の階数で決めると，そこが root になって別の木を走査する．
+    偶然一致するファイルがあれば，一部だけを検査して緑で終わる．
+    git が使えないときだけ script の 1 つ上へ落とす．
+    """
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(script_dir), "rev-parse", "--show-toplevel"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return script_dir.parent
+    if completed.returncode != 0:
+        return script_dir.parent
+    toplevel = completed.stdout.strip()
+    return Path(toplevel) if toplevel else script_dir.parent
+
+
+REPO_ROOT = resolve_repo_root()
 
 BASH_TOOLS = ("shellcheck", "shfmt")
 POWERSHELL_TOOLS = ("pwsh",)
@@ -137,9 +163,16 @@ def run_checks(
     bash_targets = collect_targets(root, BASH_PATTERNS)
     powershell_targets = collect_targets(root, POWERSHELL_PATTERNS)
 
+    # helper は雛形と一緒に配る．既定の POWERSHELL_PATTERNS へ自分で当たるため，
+    # 「対象がある」根拠に数えると glob の書き換え漏れを隠す．解析はするが，
+    # 対象の有無を数えるときだけ除く．
+    caller_powershell_targets = [
+        target for target in powershell_targets if target != ANALYZER_RELATIVE_PATH
+    ]
+
     # 対象 0 件は「検査するものが無い」ではなく「パターンが合っていない」を疑う．
     # 成功にすると，glob の書き換え漏れが緑のまま残る．
-    if not bash_targets and not powershell_targets:
+    if not bash_targets and not caller_powershell_targets:
         patterns = ", ".join((*BASH_PATTERNS, *POWERSHELL_PATTERNS))
         print(f"no target matched: {patterns}", file=sys.stderr, flush=True)
         return 1
