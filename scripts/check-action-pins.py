@@ -119,12 +119,22 @@ _UNPINNED_USES = re.compile(
 # Dependabot が書き換えるのは `uses: <action>@<SHA> # vX.Y.Z` の 1 行だけであり，
 # 別の形へ置くと版コメントの規律（Issue #157）が成立しないためである．
 #
-# 鍵の位置を限る．行頭・リスト要素の先頭・flow mapping の要素境界だけを見る．
+# 鍵の位置を限る．行頭・リスト要素の先頭・flow mapping の内側だけを見る．
 # 位置を限らないと `run: ./uses:x` のような本文まで拾う．
-_USES_KEY = re.compile(r"^\s*(?:-\s*)?(?:\{\s*)?uses\s*:|[{,]\s*uses\s*:")
+#
+# flow mapping の 2 番目以降の鍵（`{name: x, uses: y}`）は `{` から `}` の手前
+# までの範囲で探す．コンマの直後を無条件に見ると，コンマを挟んで `uses:` と
+# 書いただけの説明文が違反になる．本リポジトリは `uses:` の書き方そのものを
+# `description` や `name` で説明するため，実際に踏む．
+_USES_KEY = re.compile(r"^\s*(?:-\s*)?(?:\{\s*)?uses\s*:|\{[^}]*\buses\s*:")
 
 # 上流の SHA を持たない参照は pin の規律の対象外である．
 _OUT_OF_SCOPE_USES = re.compile(r"uses\s*:\s*[\"']?(?:\./|docker://)")
+
+# block scalar の開始行．中身は文字列であり，行頭に `uses:` と書かれていても
+# mapping の鍵ではない．本リポジトリは `uses:` の書き方を説明する文書を持つため，
+# 中身を鍵として拾うと正しいファイルが落ちる．
+_BLOCK_SCALAR_HEADER = re.compile(r"^\s*(?:-\s*)?[^:#]+:\s*[|>][+-]?\d*\s*$")
 
 # 配布テンプレの `@<SHA>` は未置換の目印である．山括弧を含む ref は git の
 # 参照として成立しないため，浮動参照と区別できる．
@@ -273,17 +283,27 @@ def collect_unrecognized(
             lines = path.read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError) as error:
             raise UnreadableTarget(f"{rel}: 読み取りに失敗した（{error}）") from error
+        # block scalar の中身を読み飛ばすため，開始行の字下げを覚えておく．
+        # 抜けを判定できないと，以降のファイル全体が検査から外れる．
+        # 素通りの範囲が 1 行から残り全体へ広がる．
+        block_indent: int | None = None
         for lineno, line in enumerate(lines, start=1):
+            indent = len(line) - len(line.lstrip())
+            if block_indent is not None:
+                if not line.strip() or indent > block_indent:
+                    continue
+                block_indent = None
             code = _strip_comment(line)
-            if not _USES_KEY.search(code):
-                continue
-            if _OUT_OF_SCOPE_USES.search(code):
-                continue
-            if _USES_PIN.match(line) or _UNPINNED_USES.match(line):
-                continue
-            unrecognized.append(
-                UnrecognizedUse(text=code.strip(), location=f"{rel}:{lineno}")
-            )
+            is_block_header = bool(_BLOCK_SCALAR_HEADER.match(code))
+            if _USES_KEY.search(code) and not _OUT_OF_SCOPE_USES.search(code):
+                # 鍵そのものが block scalar で書かれていても見逃さない．
+                # 中身を読み飛ばす扱いを，鍵の見逃しへ広げない．
+                if not (_USES_PIN.match(line) or _UNPINNED_USES.match(line)):
+                    unrecognized.append(
+                        UnrecognizedUse(text=code.strip(), location=f"{rel}:{lineno}")
+                    )
+            if is_block_header:
+                block_indent = indent
     return unrecognized
 
 

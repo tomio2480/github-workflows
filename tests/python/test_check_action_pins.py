@@ -629,6 +629,11 @@ _REMOTE_REFERENCE_FORMS = (
     ("flow-mapping-pin", f"      - {{uses: actions/checkout@{_SHA_A}}}", "unrecognized"),
     ("flow-mapping-float", "      - {uses: actions/checkout@v7}", "unrecognized"),
     ("space-before-colon", f"      uses : actions/checkout@{_SHA_A}", "unrecognized"),
+    (
+        "flow-mapping-second-key",
+        "      - {name: x, uses: actions/checkout@v7}",
+        "unrecognized",
+    ),
 )
 
 
@@ -700,6 +705,97 @@ def test_collect_unrecognized_ignores_out_of_scope_lines(
     write_workflow(tmp_path, ".github/workflows/build.yml", [line])
 
     assert _MODULE.collect_unrecognized(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param(
+            'description: "Checks pins, uses: syntax must match Dependabot"',
+            id="半角コンマの地の文",
+        ),
+        pytest.param(
+            "description: 検査し，uses: の pin を突き合わせる",
+            id="全角コンマの地の文",
+        ),
+        pytest.param('    name: "uses: の検査"', id="引用符の中の説明文"),
+    ],
+)
+def test_collect_unrecognized_ignores_uses_written_in_prose(
+    line: str, tmp_path: Path
+) -> None:
+    """値として書かれた地の文の `uses:` を鍵と読まないこと．
+
+    flow mapping の 2 番目以降の鍵を拾うため，コンマの直後も見ている．
+    範囲を `{}` の内側へ限らないと，コンマを挟んで `uses:` と書いただけの
+    説明文が違反になる．本リポジトリは `uses:` の書き方そのものを
+    `description` や `name` で説明するため，実際に踏む．
+    """
+    write_workflow(tmp_path, ".github/actions/x/action.yml", [line])
+
+    assert _MODULE.collect_unrecognized(tmp_path) == []
+
+
+def test_collect_unrecognized_ignores_block_scalar_content(tmp_path: Path) -> None:
+    """block scalar の中身を鍵と読まないこと．
+
+    `description: >` や `run: |` の中身は文字列であり，行頭に `uses:` と
+    書かれていても mapping の鍵ではない．本リポジトリは `uses:` の書き方を
+    説明する文書を持つため，中身を拾うと正しいファイルが落ちる．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/actions/x/action.yml",
+        [
+            "description: >",
+            "  uses: の SHA pin を検査する",
+            "runs:",
+            "  using: composite",
+        ],
+    )
+
+    assert _MODULE.collect_unrecognized(tmp_path) == []
+
+
+def test_collect_unrecognized_reports_a_uses_block_scalar_header(
+    tmp_path: Path,
+) -> None:
+    """`uses:` 自体を block scalar で書いた行は報告すること．
+
+    中身を読み飛ばす扱いが，鍵そのものの見逃しへ広がってはならない．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        ["      uses: |", "        actions/checkout@v7"],
+    )
+
+    assert len(_MODULE.collect_unrecognized(tmp_path)) == 1
+
+
+def test_collect_unrecognized_resumes_after_a_block_scalar_ends(
+    tmp_path: Path,
+) -> None:
+    """block scalar を抜けたあとの行を，また鍵として見ること．
+
+    抜けを判定できないと，以降のファイル全体が検査から外れる．
+    素通りの範囲が 1 行から残り全体へ広がる．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [
+            "    steps:",
+            "      - name: x",
+            "        run: |",
+            "          echo uses: ダミー",
+            "      - {uses: actions/checkout@v7}",
+        ],
+    )
+
+    found = _MODULE.collect_unrecognized(tmp_path)
+
+    assert [item.location for item in found] == [".github/workflows/build.yml:5"]
 
 
 def test_collect_unrecognized_keeps_the_hash_inside_quotes(tmp_path: Path) -> None:
