@@ -245,6 +245,35 @@ git status
 scriptblock は呼び出しの引数位置へ直接書く．
 変数へ入れてから渡すと，包まれていると判定できない．
 
+### workflow の pwsh step
+
+同じ問題は workflow の `shell: pwsh` step でも起きる．
+ただし現れ方が違う．
+native command を直接呼んでいなくても，
+cmdlet の内側が呼んだ native command の終了コードが残る．
+
+`Register-PSRepository -Default` が当たる．
+windows runner では内部の `nuget.exe` が
+`Missing option value for: '-source'` を出して異常終了する．
+登録そのものは成功し，直後の `Get-PSRepository` は PSGallery を表示する．
+それでも `$LASTEXITCODE` には 1 が残る．
+
+runner の pwsh は script の末尾で `exit $LASTEXITCODE` を実行する．
+残った 1 がそのまま step の終了コードになる．
+**成功しているのに step が落ちる．**
+`Invoke-NativeCommand` では包めない．
+呼び出しが cmdlet の内側にあり，呼び出し側の AST に現れないためである．
+
+対処は step の末尾へ `$global:LASTEXITCODE = 0` を書くことである．
+`shell-quality.yml` の module 導入 step 2 箇所が該当する（Issue #205）．
+退行は `tests/python/test_shell_quality_bootstrap.py` が検出する．
+
+同じ step には別の前提もあった．
+`Set-PSRepository` は PSGallery が登録済みであることを要求する．
+未登録の runner に当たると，検査へ到達する前にここで落ちる．
+信頼確認は `Install-Module -Force` が抑えるため，この呼び出しは要らない．
+未登録のときだけ登録を補う形へ改めた．
+
 ## 🧪 自己テスト
 
 workflow の変更は self-test workflow から local reusable workflow を呼ぶ．
