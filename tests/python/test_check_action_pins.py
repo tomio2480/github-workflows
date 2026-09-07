@@ -508,3 +508,141 @@ def test_cli_allows_empty_when_no_remote_reference_exists(tmp_path: Path) -> Non
     result = run_cli(tmp_path, "--allow-empty")
 
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_collect_pins_captures_quoted_uses(quote: str, tmp_path: Path) -> None:
+    """引用符で囲まれた `uses:` の pin も収集すること（Issue #211）．
+
+    YAML は `uses: "owner/repo@<SHA>"` を同じ値として解釈する．
+    GitHub Actions も同様である．収集から漏れると，同一 action の SHA 一致検査に
+    も版コメントの検査にも掛からない．**検査は成功したまま素通りする．**
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [f"      uses: {quote}actions/checkout@{_SHA_A}{quote}"],
+    )
+
+    pins = _MODULE.collect_pins(tmp_path)
+
+    assert [(p.action, p.sha) for p in pins] == [("actions/checkout", _SHA_A)]
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_collect_pins_captures_version_comment_after_a_quoted_pin(
+    quote: str, tmp_path: Path
+) -> None:
+    """引用符の外に置いた版コメントを版として拾うこと（Issue #211）．
+
+    版コメントは引用符の内側には入らない．閉じ引用符とコメントの境界を
+    取り違えると，版が `None` になり「版コメントの無い pin」として誤って
+    報告される．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [f"      uses: {quote}actions/checkout@{_SHA_A}{quote} # v7.0.1"],
+    )
+
+    pins = _MODULE.collect_pins(tmp_path)
+
+    assert [p.version for p in pins] == ["v7.0.1"]
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_collect_unpinned_reports_quoted_floating_refs(
+    quote: str, tmp_path: Path
+) -> None:
+    """引用符付きの浮動参照も違反として報告すること（Issue #211）．
+
+    `_UNPINNED_USES` は先頭 1 文字を `[A-Za-z0-9_-]` に限る．ローカル action を
+    外す意図だが，引用符も同時に外れる．違反が報告されないまま
+    `AGENTS.md` の「full commit SHA で pin する」が素通りする．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [f"      uses: {quote}actions/checkout@v7{quote}"],
+    )
+
+    unpinned = _MODULE.collect_unpinned(tmp_path)
+
+    assert [(u.action, u.ref) for u in unpinned] == [("actions/checkout", "v7")]
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_collect_unpinned_ignores_quoted_local_action_references(
+    quote: str, tmp_path: Path
+) -> None:
+    """引用符を許しても，ローカル action は対象外のままであること．
+
+    引用符の許容で `./` 始まりまで拾ってしまうと，上流を持たない参照を
+    違反として数える．引用符の追加が別の誤検出を生んでいないことを確かめる．
+    """
+    write_workflow(
+        tmp_path,
+        ".github/workflows/build.yml",
+        [f"      uses: {quote}./.github/actions/local{quote}"],
+    )
+
+    assert _MODULE.collect_unpinned(tmp_path) == []
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_collect_unpinned_ignores_quoted_template_placeholders(
+    quote: str, tmp_path: Path
+) -> None:
+    """引用符付きの未置換プレースホルダも違反として数えないこと．"""
+    write_workflow(
+        tmp_path,
+        "templates/.github/workflows/caller.yml",
+        [f"      uses: {quote}OWNER/github-workflows/.github/actions/x@<SHA>{quote}"],
+    )
+
+    assert _MODULE.collect_unpinned(tmp_path) == []
+
+
+# 走査を素通りしうる `uses:` の書き方を列挙する．remote 参照は pin として
+# 収集されるか，浮動参照として報告されるかの **どちらかに必ず入る** ．
+# どちらにも入らない形が「検査したのに何も検査していない」状態を作る．
+_REMOTE_REFERENCE_FORMS = (
+    ("bare-pin", f"      uses: actions/checkout@{_SHA_A}", True),
+    ("bare-float", "      uses: actions/checkout@v7", False),
+    ("double-quoted-pin", f'      uses: "actions/checkout@{_SHA_A}"', True),
+    ("double-quoted-float", '      uses: "actions/checkout@v7"', False),
+    ("single-quoted-pin", f"      uses: 'actions/checkout@{_SHA_A}'", True),
+    ("single-quoted-float", "      uses: 'actions/checkout@v7'", False),
+    ("list-element-pin", f"      - uses: actions/checkout@{_SHA_A}", True),
+    ("list-element-float", "      - uses: actions/checkout@v7", False),
+    (
+        "quoted-pin-with-comment",
+        f'      uses: "actions/checkout@{_SHA_A}" # v7.0.1',
+        True,
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("label", "line", "is_pinned"),
+    _REMOTE_REFERENCE_FORMS,
+    ids=[form[0] for form in _REMOTE_REFERENCE_FORMS],
+)
+def test_every_remote_reference_form_is_collected_or_reported(
+    label: str, line: str, is_pinned: bool, tmp_path: Path
+) -> None:
+    """どの書き方でも，pin か違反のどちらかとして必ず現れること（Issue #211）．
+
+    正規表現で規律を検査する gate は，通り抜ける書き方を自分で列挙しないと
+    穴に気づけない．本テストは書き方の一覧そのものを固定する．
+    新しい書き方を許すときは，ここへ 1 行足してから実装を触る．
+    """
+    write_workflow(tmp_path, ".github/workflows/build.yml", [line])
+
+    pins = _MODULE.collect_pins(tmp_path)
+    unpinned = _MODULE.collect_unpinned(tmp_path)
+
+    assert len(pins) + len(unpinned) == 1, (
+        f"{label}: pin としても違反としても現れず，検査を素通りした"
+    )
+    assert bool(pins) is is_pinned, f"{label}: pin と違反の判定が入れ替わっている"
