@@ -191,9 +191,9 @@ third-party action は使わない．Dependabot の追随対象は増えない�
 `ubuntu-latest` では導入済みであり，取得の経路は通らない．
 2026-09-07 の実測では `6.0.1` が入っていた．
 
-取得する場合は `actionlint` と違い `sha256` の検証を行わない．
+取得する場合は `actionlint` と違い `sha256` を検証しない．
 **この 1 点だけ供給網の面積が広い．**
-self-hosted runner など導入されていない環境で取得を避けるには，
+導入されていない runner で取得を避けたい場合は，
 caller 側で先に `PyYAML` を用意する．
 
 対応する runner は linux/amd64 に限る．他の runner で呼ばれた場合は，
