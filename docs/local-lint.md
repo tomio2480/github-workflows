@@ -11,6 +11,7 @@ CI と同じ設定・同じ集計を通し，違いは終了コードだけで�
 
 - 🧭 ねらい
 - 🚀 使い方
+- 📦 要約と実行記録
 - 🎯 検査対象の決まり方
 - 🔍 CI との対応
 - ↩ 改行コードの扱い
@@ -49,6 +50,9 @@ bash /path/to/github-workflows/bin/lint-md.sh
 | `--base <ref>` | 差分の基点を明示する |
 | `--glob <pattern>` | lint 対象の glob を変える．既定は `**/*.md` |
 | `--ignore-glob <pattern>` | 報告から除外する path を指定する |
+| `--format full\|summary\|json` | 通常出力・要約・JSON を選ぶ．既定は `full` |
+| `--limit <N>` | 要約・JSON に表示する指摘の上限．既定は 20 件 |
+| `--output-dir <dir>` | 実行記録を保存する親ディレクトリを指定する |
 | `<files...>` | 報告対象を直接指定する |
 
 `--glob` は composite action の `markdown-glob` に当たる．
@@ -74,6 +78,59 @@ glob の解釈を選定側で再実装すると，取りこぼす方向の穴が
 | 0 | 指摘なし．対象 0 件の場合を含む |
 | 1 | 指摘あり |
 | 2 | 実行失敗．設定不正・依存導入失敗・linter 自体の異常終了 |
+
+## 📦 要約と実行記録
+
+AI が繰り返し使う場合は，`--format summary` または `--format json` を指定する．
+件数と保存先を先に読み，個々の判断に必要な指摘だけを全文から確認できる．
+
+```bash
+bash /path/to/github-workflows/bin/lint-md.sh --format summary --limit 10
+bash /path/to/github-workflows/bin/lint-md.sh --format json --output-dir /tmp/lint-runs
+```
+
+要約と JSON は，両 linter を合わせて既定 20 件まで表示する．
+各メッセージは空白をまとめ，240 文字を超える部分を省く．
+表示件数の上限は検査と集計に影響せず，省略件数を `display.omitted` に残す．
+`--limit 0` は件数と保存先だけを読む用途に使える．
+
+実行ごとに専用ディレクトリを作るため，前回の記録を上書きしない．
+保存先の既定は OS の一時ディレクトリである．
+`--output-dir` の相対パスは，呼び出したディレクトリを基準に解決する．
+引数なしの通常出力は従来どおりで，記録を残さない．
+`--format full --output-dir <dir>` では通常出力と全文保存を併用できる．
+
+表 3. 実行記録の内容．
+
+| ファイル | 内容 |
+|---|---|
+| `summary.txt` | 件数・指摘の抜粋・全文への参照 |
+| `report.json` | `schema_version: 1` の実行結果と保存先 |
+| `full.txt` | 通常出力の全文．指摘を省略しない |
+| `diagnostics.log` | 標準エラー出力．選定した基点や実行失敗の原因 |
+| `targets.txt` | 報告対象として選定したパス |
+| `findings.json` | CI と共通の処理で集計した全指摘 |
+| `markdownlint-report.txt` | `markdownlint` の元レポート |
+| `textlint-report.xml`・`textlint-stderr.log` | textlint の元レポートと診断 |
+| `install.log` | 依存導入のログ |
+
+途中で失敗した場合は，その段階までに作ったファイルだけが残る．
+一時複製と runtime config は終了時に回収し，保存記録には含めない．
+保存記録は自動削除しない．不要になったら保存先を削除する．
+
+JSON の `status` は `ok`・`findings`・`not_applicable`・`error` のいずれかである．
+終了コードは出力形式によらず表 2 のままとする．
+実行失敗時の指摘件数は `null` とし，指摘なしの 0 件と区別する．
+対象 0 件は `not_applicable` とし，linter を実行しない．
+`coverage.selected` は報告対象の選定件数，`mirrored` は一時複製の件数である．
+これらは linter が実際に検査した件数を示すものではない．
+caller と中央リポジトリのルート・HEAD SHA も記録する．
+未コミットの変更や設定内容のスナップショットまでは保存しない．
+
+要約・JSON の標準出力に診断ログは混ぜない．失敗時も保存先から読める．
+引数不正，Git 管理外，Python 不在など，記録開始前の失敗は標準エラー出力で報告する．
+この場合や保存先の作成に失敗した場合は，JSON を返せず終了コード 2 となる．
+読み取り側は JSON の有無と終了コードの両方を確認する．
 
 ## 🎯 検査対象の決まり方
 

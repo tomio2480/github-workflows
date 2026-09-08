@@ -60,6 +60,7 @@ bash /path/to/github-workflows/bin/lint-md.sh
 既定では変更した Markdown だけを報告する．
 lint 自体は CI と同じ設定・同じ集計を通し，違いは終了コードだけである．
 CI の reviewdog は非ブロッキングだが，ローカルは指摘ありで非 0 終了する．
+`--format summary` または `--format json` では表示件数を制限し，全文と診断を保存する．
 引数・キャッシュ・Windows での実行は
 [push 前ローカル Markdown lint](docs/local-lint.md) を参照する．
 

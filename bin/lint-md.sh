@@ -17,6 +17,9 @@
 #   --base <ref>         差分の基点を明示する
 #   --glob <pattern>     lint 対象の glob（既定 **/*.md．action の markdown-glob と同じ）
 #   --ignore-glob <pat>  報告から除外する path glob（action の markdown-ignore と同じ）
+#   --format <format>    full（既定）・summary・json．後二者は全文を保存する
+#   --limit <N>          summary・json に表示する指摘の上限（既定 20）
+#   --output-dir <dir>   実行記録の保存先の親ディレクトリ（指定時は full も保存）
 #   <files...>           対象を明示する（指定時は差分選定を行わない）
 #
 # 環境変数:
@@ -57,8 +60,31 @@ die() {
 SELECT_ARGS=()
 IGNORE_ARGS=()
 FILES=()
+FORMAT=full
+LIMIT=20
+OUTPUT_DIR=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --format)
+      [ "$#" -ge 2 ] || die "--format requires full, summary or json"
+      FORMAT="$2"
+      case "${FORMAT}" in full | summary | json) ;; *) die "invalid format: ${FORMAT}" ;; esac
+      shift 2
+      ;;
+    --limit)
+      [ "$#" -ge 2 ] || die "--limit requires a non-negative integer"
+      LIMIT="$2"
+      case "${LIMIT}" in '' | *[!0-9]*) die "--limit requires a non-negative integer" ;; esac
+      shift 2
+      ;;
+    --output-dir)
+      [ "$#" -ge 2 ] && [ -n "$2" ] || die "--output-dir requires a directory"
+      case "$2" in
+        /* | [A-Za-z]:[/\\]*) OUTPUT_DIR="$2" ;;
+        *) OUTPUT_DIR="${PWD}/$2" ;;
+      esac
+      shift 2
+      ;;
     --all)
       SELECT_ARGS+=("--all")
       shift
@@ -146,16 +172,52 @@ done
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-WORKDIR="$(mktemp -d)"
+WORKDIR="$(mktemp -d)" || die "cannot create the lint workspace"
 MDLINT_GENERATED=""
-# runtime config は caller の作業ツリーへ生成されうる（cli2 が相対パスを
-# config のディレクトリ基準で解決するため）．終了経路によらず消す．
-# 単一引用のため MDLINT_GENERATED は trap 発火時の値で評価される．
-# 複製の中で linter を動かすため，消す前にリポジトリルートへ戻る．cwd を
-# 抱えたままの rm -rf は Windows で失敗する．
-trap 'cd "${TOPLEVEL}" 2>/dev/null; rm -rf "${WORKDIR}"; [ -n "${MDLINT_GENERATED}" ] && rm -f "${MDLINT_GENERATED}"; true' EXIT
+REPORT_DIR=""
+LOGDIR="${WORKDIR}"
+SELECTED=-1
+MIRRORED=-1
+WORKSPACE=""
+# EXIT からのみ呼ぶため ShellCheck は通常の呼び出しを検出できない．
+# shellcheck disable=SC2329
+finish() {
+  local code=$?
+  trap - EXIT
+  # Windows では cwd を抱えた複製を消せない．caller 側の runtime config も回収する．
+  cd "${TOPLEVEL}" 2>/dev/null || code=2
+  rm -rf "${WORKDIR}" || code=2
+  if [ -n "${MDLINT_GENERATED}" ]; then rm -f "${MDLINT_GENERATED}" || code=2; fi
+  if [ -n "${REPORT_DIR}" ]; then
+    exec 1>&3 2>&4 3>&- 4>&-
+    case "${code}" in 0 | 1 | 2) ;; *) code=2 ;; esac
+    GITHUB_WORKSPACE="${WORKSPACE}" "${PYTHON}" "${SCRIPTS}/render-local-lint-report.py" \
+      --record-dir "${REPORT_DIR}" --format "${FORMAT}" --limit "${LIMIT}" \
+      --exit-code "${code}" --root "${TOPLEVEL}" --head-sha "${HEAD_SHA}" \
+      --source-root "${CENTRAL_ROOT}" --source-sha "${SOURCE_SHA}" \
+      --selected "${SELECTED}" --mirrored "${MIRRORED}" || code=2
+  fi
+  exit "${code}"
+}
+trap finish EXIT
 
-TARGETS="${WORKDIR}/targets.txt"
+if [ "${FORMAT}" != full ] || [ -n "${OUTPUT_DIR}" ]; then
+  HEAD_SHA="$(git rev-parse HEAD 2>/dev/null)" || HEAD_SHA=""
+  SOURCE_SHA="$(git -C "${CENTRAL_ROOT}" rev-parse HEAD 2>/dev/null)" || SOURCE_SHA=""
+  if [ -n "${OUTPUT_DIR}" ]; then
+    mkdir -p "${OUTPUT_DIR}" || die "cannot create ${OUTPUT_DIR}"
+    OUTPUT_DIR="$(cd "${OUTPUT_DIR}" && pwd)" || die "cannot resolve ${OUTPUT_DIR}"
+    report="$(mktemp -d "${OUTPUT_DIR}/lint-md.XXXXXXXX")" || die "cannot create a run directory"
+  else
+    report="$(mktemp -d "${TMPDIR:-/tmp}/lint-md.XXXXXXXX")" || die "cannot create a run directory"
+  fi
+  exec 3>&1 4>&2
+  exec >"${report}/full.txt" 2>"${report}/diagnostics.log" || die "cannot capture output at ${report}"
+  REPORT_DIR="${report}"
+  LOGDIR="${REPORT_DIR}"
+fi
+
+TARGETS="${LOGDIR}/targets.txt"
 if [ "${#FILES[@]}" -eq 0 ]; then
   # mapfile は process substitution の終了状態を継がない．選定の失敗を
   # 「対象 0 件」と読み替えると，打ち間違いが lint を素通りさせるため，
@@ -171,7 +233,9 @@ if [ "${#FILES[@]}" -eq 0 ]; then
   done <"${TARGETS}"
 fi
 
-if [ "${#FILES[@]}" -eq 0 ]; then
+SELECTED=${#FILES[@]}
+if [ "${SELECTED}" -eq 0 ]; then
+  MIRRORED=0
   echo "lint-md: nothing to check"
   exit 0
 fi
@@ -239,24 +303,13 @@ DEPS_OUT="${WORKDIR}/deps.out"
 : >"${DEPS_OUT}"
 ACTION_PATH="${ACTION_DIR}" RUNNER_TEMP="${WORKDIR}" GITHUB_OUTPUT="${DEPS_OUT}" \
   LINT_DEPS_CACHE_DIR="${CACHE_DIR}" \
-  bash "${SCRIPTS}/install-lint-deps.sh" >"${WORKDIR}/install.log" 2>&1 ||
-  { cat "${WORKDIR}/install.log" >&2 && die "failed to install lint dependencies"; }
+  bash "${SCRIPTS}/install-lint-deps.sh" >"${LOGDIR}/install.log" 2>&1 ||
+  { cat "${LOGDIR}/install.log" >&2 && die "failed to install lint dependencies"; }
 LINT_BIN="$(read_output "${DEPS_OUT}" bin)"
 LINT_MODULES="$(read_output "${DEPS_OUT}" modules)"
 
-# --- LF 正規化した複製の作成（Issue #169）---
-# CRLF の作業ツリーでは textlint が行末の CR を 1 字に数え，80 字ちょうどの文へ
-# sentence-length の指摘が出る．CI は LF checkout のため出ない．作業ツリーの
-# 改行設定は利用者のものなので書き換えず，複製の側で lint する．
-#
-# 複製へ入れるのは対象ファイルだけでよい．報告は count-lint-findings.py が
-# 対象ファイルへ絞るため，対象外のファイルの指摘は元から捨てられている．
-# glob と .textlintignore はパスで効くため，相対構造を保つかぎり
-# 「lint は glob 全体へ掛ける」という CI との対応は崩れない．
-# 変換するのは CRLF の組だけである．単独の CR は改行ではなく，消すと行が
-# 連結されて指摘が消えたり増えたりする．末尾改行も足さない（MD047 が見る）．
-# 複製に失敗したまま進むと，そのファイルの指摘だけが黙って消えるため，
-# 例外は握り潰さず die する．
+# caller の改行を変えず CI の LF checkout に揃える．glob 用の相対構造を保つ．
+# 単独 CR と末尾改行は指摘に影響するため変えない（docs/local-lint.md）．
 LINT_ROOT="${WORKDIR}/src"
 MIRRORED="$("${PYTHON}" "${SCRIPTS}/normalize-lint-targets.py" \
   "${TARGETS}" "${TOPLEVEL}" "${LINT_ROOT}")" ||
@@ -272,7 +325,7 @@ cd "${LINT_ROOT}" || die "cannot enter the lint copy"
 # --- markdownlint ---
 # cli2 は起動に成功すると必ず banner 行を出す．「exit 1 かつ banner あり」
 # だけを指摘ありとして扱い，それ以外の非 0 終了は実行失敗とする（action と同じ）．
-MDLINT_REPORT="${WORKDIR}/markdownlint-report.txt"
+MDLINT_REPORT="${LOGDIR}/markdownlint-report.txt"
 MDLINT_EXIT=0
 "${LINT_BIN}/markdownlint-cli2" --config "${MDLINT_RUNTIME}" \
   "${MARKDOWN_GLOB}" "#node_modules" \
@@ -289,23 +342,23 @@ fi
 # markdownlint に指摘があっても止めない．1 回の実行で両方の指摘を見せ，
 # 修正の往復を減らすためである．
 export NODE_PATH="${LINT_MODULES}:${NODE_PATH:-}"
-TEXTLINT_REPORT="${WORKDIR}/textlint-report.xml"
+TEXTLINT_REPORT="${LOGDIR}/textlint-report.xml"
 TEXTLINT_EXIT=0
 "${LINT_BIN}/textlint" -f checkstyle --config "${TEXTLINT_RUNTIME}" \
   --ignore-path "${TEXTLINT_IGNORE}" "${MARKDOWN_GLOB}" \
-  >"${TEXTLINT_REPORT}" 2>"${WORKDIR}/textlint-stderr.log" || TEXTLINT_EXIT=$?
+  >"${TEXTLINT_REPORT}" 2>"${LOGDIR}/textlint-stderr.log" || TEXTLINT_EXIT=$?
 # 指摘ありなら XML に findings が書かれる．rule 解決失敗等は report が空の
 # まま非 0 終了するため，そこだけを実行失敗として切り分ける（action と同じ）．
 if [ "${TEXTLINT_EXIT}" -ne 0 ] && [ ! -s "${TEXTLINT_REPORT}" ]; then
-  cat "${WORKDIR}/textlint-stderr.log" >&2
+  cat "${LOGDIR}/textlint-stderr.log" >&2
   die "textlint execution failure (exit=${TEXTLINT_EXIT})"
 fi
-[ -s "${WORKDIR}/textlint-stderr.log" ] && cat "${WORKDIR}/textlint-stderr.log" >&2
+[ -s "${LOGDIR}/textlint-stderr.log" ] && cat "${LOGDIR}/textlint-stderr.log" >&2
 
 # --- 対象ファイルへの絞り込みと表示 ---
 # 集計は CI の summary と同じスクリプトへ通す．ローカル専用の集計を書くと
 # 同じレポートから違う件数が出る余地が生まれるため，表示だけを分ける．
-FINDINGS_JSON="${WORKDIR}/findings.json"
+FINDINGS_JSON="${LOGDIR}/findings.json"
 # textlint の checkstyle 出力はファイル名を絶対パスで書く．集計側は
 # GITHUB_WORKSPACE を prefix として剥がして相対化するため，ここで渡す．
 # 剥がす相手は linter を動かした複製のルートである（cwd がそれ）．相対構造は
