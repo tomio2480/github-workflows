@@ -2,29 +2,11 @@
 
 # PR の checks が出そろうまで監視する（Issue #133）．
 #
-# gh pr checks --watch を push 直後に実行すると，checks 未登録の時点で
-# 「no checks reported」を返して即終了する．また gh 側の PR head 情報は
-# push へ数十秒遅れることがあり，1 つ前の commit の run を掴んだまま
-# 「全 pass」を返す（PR #159 の実例）．どちらも「CI green」の誤認を生む．
-#
-# --watch は完了までブロックし，中断の手立てを持たない．タイムアウトを
-# 効かせるため，またワークフローごとに異なる登録の時刻を吸収するため，
-# --watch は使わず自前で状態を polling する．
-#
-# 実行列:
-#   1. head リポジトリの実体（git ls-remote）を監視対象 commit の正とする
-#   2. gh pr view の headRefOid がその commit へ追いつくまで待つ
-#   3. checks の状態を polling し，完了の 4 条件がそろうまで待つ．
-#      1 件以上あること，pending が無いこと，件数が前回の照会から変わって
-#      いないこと，件数が変わらなくなってから --settle 秒が過ぎたこと
-#   4. head が動いていないことを確認する
-#   5. fail・cancel の有無で終了コードを決める
-#
-# 報告では skipping を通過件数へ数えず，(N skipped) として別に示す．
-# すべて skip なら通過は 0 件のため，全 pass ではなく no checks ran と出す．
+# 契約は docs/watch-pr-checks.md，設計判断は
+# docs/notes/2026-09-03-issue133-watch-pr-checks.md を参照する．
 #
 # 終了コード:
-#   0  監視対象 commit で全 checks が pass した（すべて skip の場合を含む）
+#   0  観測した checks に fail・cancel がない（すべて skip の場合を含む）
 #   1  入力エラー・環境エラー
 #   2  タイムアウト，または監視対象 commit の不一致
 #   3  checks が pass しなかった
@@ -35,12 +17,16 @@ usage() {
   cat >&2 <<'USAGE'
 Usage: watch-pr-checks.sh <pr-number> [--timeout SECONDS] [--interval SECONDS]
                           [--settle SECONDS] [--expect-sha SHA]
+                          [--format full|summary|json] [--limit N] [--output-dir DIR]
 
   pr-number      監視する PR の番号
   --timeout      監視全体のタイムアウト秒（既定: 600）．段ごとに取り直さない
   --interval     ポーリング間隔秒（既定: 10）
   --settle       件数が動かなくなってから完了と見なすまでの秒数（既定: 120）
   --expect-sha   監視対象 commit を明示する（40 桁）．origin への問い合わせを省く
+  --format       full（既定）・summary・json．後二者は観測記録を保存する
+  --limit        要約へ載せる check の上限（既定: 20）
+  --output-dir   実行別フォルダの親．full でも保存する．記録には Python 3.9+ が必要
 USAGE
   exit 1
 }
@@ -53,6 +39,13 @@ TIMEOUT=600
 INTERVAL=10
 SETTLE=120
 EXPECT_SHA=""
+FORMAT=full
+LIMIT=20
+OUTPUT_DIR=""
+RUN_DIR=""
+REASON=error
+LAST_ERR=""
+CALL_ERR=""
 
 # 値必須オプションが後続オプションを値として吸うと，指定の欠落が既定値へ
 # 化けて気づけないため，ハイフン始まりと空値を拒否する
@@ -83,6 +76,21 @@ while [ $# -gt 0 ]; do
     --expect-sha)
       require_value --expect-sha "${2:-}"
       EXPECT_SHA="$2"
+      shift 2
+      ;;
+    --format)
+      require_value --format "${2:-}"
+      FORMAT="$2"
+      shift 2
+      ;;
+    --limit)
+      require_value --limit "${2:-}"
+      LIMIT="$2"
+      shift 2
+      ;;
+    --output-dir)
+      require_value --output-dir "${2:-}"
+      OUTPUT_DIR="$2"
       shift 2
       ;;
     *)
@@ -133,15 +141,70 @@ fi
 
 # --- 監視対象 commit の確定 ---
 
+# shellcheck disable=SC2329 # EXIT trap; contract tests exercise success and failure.
+finish_watch() {
+  local code=$?
+  trap - EXIT
+  rm -f "${LAST_ERR}" "${CALL_ERR}"
+  if [ -n "${RUN_DIR}" ]; then
+    exec 1>&3 2>&4
+    if [ "${FORMAT}" = full ]; then
+      cat "${RUN_DIR}/full.txt"
+      cat "${RUN_DIR}/diagnostics.log" >&2
+    fi
+    "${PYTHON}" -X utf8 "${RECORDER}" finish --run-dir "${RUN_DIR}" \
+      --code "${code}" --reason "${REASON}" --expected-sha "${EXPECT_SHA}" \
+      --pr "${PR}" --format "${FORMAT}" --limit "${LIMIT}" || code=$?
+  fi
+  exit "${code}"
+}
+
+if [[ ! "${FORMAT}" =~ ^(full|summary|json)$ ]] || [[ ! "${LIMIT}" =~ ^[0-9]{1,9}$ ]]; then
+  echo "error: --format must be full, summary or json; --limit must be 0..999999999" >&2
+  exit 1
+fi
+if [ "${FORMAT}" != full ] || [ -n "${OUTPUT_DIR}" ]; then
+  PYTHON=""
+  for candidate in python3 python; do
+    if command -v "${candidate}" >/dev/null 2>&1 && "${candidate}" -c 'import sys; sys.exit(sys.version_info < (3, 9))' 2>/dev/null; then
+      PYTHON="${candidate}"
+      break
+    fi
+  done
+  [ -n "${PYTHON}" ] || {
+    echo 'error: record mode requires Python 3.9+' >&2
+    exit 1
+  }
+  RECORDER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)/watch-checks-record.py"
+  RUN_DIR="$("${PYTHON}" -X utf8 "${RECORDER}" init --output-dir "${OUTPUT_DIR}" \
+    --timeout "${TIMEOUT}" --interval "${INTERVAL}" --settle "${SETTLE}")" || exit 1
+  RUN_DIR="${RUN_DIR%$'\r'}"
+  exec 3>&1 4>&2
+  exec >>"${RUN_DIR}/full.txt" 2>>"${RUN_DIR}/diagnostics.log"
+fi
+trap finish_watch EXIT
+LAST_ERR="$(mktemp)"
+CALL_ERR="$(mktemp)"
+
+query_gh() {
+  local kind="$1"
+  shift
+  if [ -n "${RUN_DIR}" ]; then
+    "${PYTHON}" -X utf8 "${RECORDER}" query "${RUN_DIR}" "${kind}" gh "$@"
+  else
+    gh "$@"
+  fi
+}
+
 # gh は push 直後に古い head を返すことがある．遅れない側であるリモートの
 # 実体を正とし，gh の側をそこへ追いつかせる．
 #
 # fork からの PR では head ブランチが origin に無い．同名のブランチが base に
 # あると，無関係な commit を掴んだまま待つ．head の所属先を解決してから引く
 if [ -z "${EXPECT_SHA}" ]; then
-  PR_INFO="$(gh pr view "${PR}" \
+  PR_INFO="$(query_gh resolve pr view "${PR}" \
     --json headRefName,isCrossRepository,headRepositoryOwner,headRepository \
-    --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv')"
+    --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv')" || exit 1
   # IFS のタブは空白類のため read では連続を 1 つに詰め，空欄があると列がずれる．
   # cut は詰めないため列の位置が保たれる
   BRANCH="$(printf '%s' "${PR_INFO}" | cut -f1)"
@@ -185,10 +248,6 @@ fi
 # 単なるタイムアウトに見える．最後の stderr を残してタイムアウト時に示す．
 # 保持するのは「最後に観測した失敗」とする．後続の成功で消さない．
 # 直後の 1 回が成功しただけで原因が消えると，追跡できないためである
-LAST_ERR="$(mktemp)"
-CALL_ERR="$(mktemp)"
-trap 'rm -f "${LAST_ERR}" "${CALL_ERR}"' EXIT
-
 keep_error() {
   if [ -s "${CALL_ERR}" ]; then
     cat "${CALL_ERR}" >"${LAST_ERR}"
@@ -196,7 +255,7 @@ keep_error() {
 }
 
 gh_head_oid() {
-  gh pr view "${PR}" --json headRefOid --jq .headRefOid 2>"${CALL_ERR}" || true
+  query_gh head pr view "${PR}" --json headRefOid --jq .headRefOid 2>"${CALL_ERR}" || true
   keep_error
 }
 
@@ -208,7 +267,11 @@ gh_head_matches() {
 # 終了コードで判定すると検査中の PR を照会失敗と誤読するため，出力だけを見る．
 # 出力が無い状態は「未登録」と「照会失敗」の両方を含み，どちらも待機を続ける
 checks_buckets() {
-  gh pr checks "${PR}" --json name,state,bucket --jq '.[].bucket' 2>"${CALL_ERR}" || true
+  if [ -n "${RUN_DIR}" ]; then
+    query_gh checks pr checks "${PR}" --json name,state,bucket,link 2>"${CALL_ERR}" || true
+  else
+    gh pr checks "${PR}" --json name,state,bucket --jq '.[].bucket' 2>"${CALL_ERR}" || true
+  fi
   keep_error
 }
 
@@ -217,6 +280,7 @@ checks_buckets() {
 DEADLINE=$(($(date +%s) + TIMEOUT))
 
 report_timeout() {
+  REASON=timeout
   echo "error: timed out waiting for $1 (commit ${EXPECT_SHA})" >&2
   if [ -s "${LAST_ERR}" ]; then
     echo "error: last gh error was:" >&2
@@ -239,18 +303,8 @@ done
 
 # --- checks が出そろうのを待つ ---
 
-# 完了の条件は 4 つである．1 件以上あること，pending が無いこと，件数が前回の
-# 照会から変わっていないこと，件数が変わらなくなってから --settle 秒が過ぎたこと．
-# 後ろの 2 つは，登録の時刻が workflow ごとに異なるためである．
-# 先に見えた check だけで「全 pass」と読む余地を消す．
-#
-# 待つ長さが要る．本リポジトリでは CodeRabbit の status が push 直後に付き，
-# workflow の登録は約 1 分後だった．1 間隔だけの据え置きでは，前者だけを見て
-# 「1 件が全 pass」と報告してしまう（2026-09-02 に本スクリプトで実際に発生）．
-# 既定の 120 秒は観測した遅延の 2 倍である．等倍では余裕が無い．
-#
-# それでも --settle より後に現れる check は追えない．そこまで要るなら
-# GitHub 側の required checks 設定で担保する（本リポジトリは未設定）
+# 登録の遅れを吸収するため，件数が一定の時間を要求する．
+# settle 後の未登録 check まで検査したという保証にはならない．
 echo "watch-pr-checks: waiting for checks to settle"
 PREV_TOTAL=-1
 PREV_REPORT=""
@@ -298,6 +352,7 @@ done
 # 監視の間に新しい push があれば，見ていた結果は別 commit のものである
 AFTER_OID="$(gh_head_oid)"
 if [ -z "${AFTER_OID}" ]; then
+  REASON=head_unavailable
   echo "error: could not re-read the head of PR #${PR} after watching ${EXPECT_SHA}" >&2
   if [ -s "${LAST_ERR}" ]; then
     cat "${LAST_ERR}" >&2
@@ -305,12 +360,14 @@ if [ -z "${AFTER_OID}" ]; then
   exit 2
 fi
 if [ "${AFTER_OID}" != "${EXPECT_SHA}" ]; then
+  REASON=head_changed
   echo "error: head moved to ${AFTER_OID} while watching ${EXPECT_SHA}" >&2
   echo "error: rerun to watch the new commit" >&2
   exit 2
 fi
 
 if [ "${FAILED}" -gt 0 ]; then
+  REASON=checks_failed
   echo "error: ${FAILED} of ${TOTAL} checks did not pass on ${EXPECT_SHA}" >&2
   exit 3
 fi
@@ -318,6 +375,7 @@ fi
 # skip した check を通過件数へ数えない．「検査した」と「検査を飛ばした」は別である．
 # すべて skip なら通過は 0 件である．これを「全 pass」と読ませると，
 # path filter の設定ミスが green として沈黙する
+REASON=settled
 PASSED=$((TOTAL - SKIPPED))
 if [ "${SKIPPED}" -eq 0 ]; then
   echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA}"

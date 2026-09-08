@@ -233,7 +233,8 @@ github-workflows/
 │   ├── normalize-lint-targets.py  # lint 対象を LF 正規化した複製として書き出す（v2.19.3〜）
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   ├── render-local-lint-report.py # ローカル lint の集計結果を端末向けに整形
-│   └── resolve-config-path.sh
+│   ├── resolve-config-path.sh
+│   └── watch-checks-record.py     # 監視の照会記録と要約の共通処理
 ├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
 │   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部（verify-shell.py から呼ぶ）
 │   ├── check-native-calls.ps1     # native command の直接呼びを AST で検出（v2.19.1〜）
@@ -285,6 +286,7 @@ github-workflows/
 │   ├── session-url-check.md       # セッション URL 検査 action の導入と限界
 │   ├── workflow-lint.md           # Workflow 検査 action の導入と pin 突合の判定
 │   ├── local-lint.md              # push 前ローカル Markdown lint の使い方
+│   ├── watch-pr-checks.md          # PR checks の監視と実行記録
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
 ├── .markdownlint-cli2.yaml        # 自リポジトリ用 override（fixture を lint 対象に含める）
 ├── .textlintignore                # 同上
@@ -511,6 +513,7 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/session-url-check.md](docs/session-url-check.md) | セッション URL 検査 action の導入と限界 | 利用者・AI |
 | [docs/workflow-lint.md](docs/workflow-lint.md) | Workflow 検査 action の導入と pin 突合の判定 | 利用者・AI |
 | [docs/local-lint.md](docs/local-lint.md) | push 前ローカル Markdown lint の使い方 | 利用者・AI |
+| [docs/watch-pr-checks.md](docs/watch-pr-checks.md) | PR checks の監視・要約・実行記録 | 利用者・AI |
 
 ## 📝 ライセンス
 
