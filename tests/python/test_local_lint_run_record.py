@@ -91,3 +91,15 @@ def test_rejects_success_exit_with_findings(tmp_path):
     directory = make_run(tmp_path, 1)
     with pytest.raises(ValueError, match="exit code"):
         record(directory)
+
+
+@pytest.mark.parametrize("stability", ["captured", "changed"])
+def test_context_without_a_stable_finish_cannot_support_success(tmp_path, stability):
+    directory = make_run(tmp_path)
+    captured = {"stability": stability, "comparison_counts": {"different": 1, "unknown": 0}}
+    (directory / "context.json").write_text(json.dumps(captured), encoding="utf-8")
+    with pytest.raises(ValueError, match="stable"):
+        record(directory)
+    report = record(directory, code=2)
+    assert report["context"] == captured
+    assert "context" in report["artifacts"]

@@ -50,6 +50,9 @@ if [ -n "${FAKE_MDLINT_EXEC_ERROR:-}" ]; then
   exit 1
 fi
 echo "markdownlint-cli2 v0.0.0-fake"
+if [ -n "${FAKE_CONTEXT_MUTATION_FILE:-}" ]; then
+  printf 'rules: []\n# changed during lint\n' > "${FAKE_CONTEXT_MUTATION_FILE}"
+fi
 printf '%s\n' "$@" > "${FAKE_LOG_DIR}/mdlint-args"
 pwd > "${FAKE_LOG_DIR}/mdlint-cwd"
 if [ -n "${FAKE_INSPECT_FILE:-}" ] && [ -f "${FAKE_INSPECT_FILE}" ]; then
@@ -131,7 +134,27 @@ FAKE
 teardown() {
   unset FAKE_MDLINT_FINDINGS FAKE_TEXTLINT_FINDINGS FAKE_TEXTLINT_EXEC_ERROR \
     FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV FAKE_MDLINT_EXEC_ERROR \
-    FAKE_INSPECT_FILE FAKE_TEXTLINT_UNMAPPED
+    FAKE_INSPECT_FILE FAKE_TEXTLINT_UNMAPPED FAKE_CONTEXT_MUTATION_FILE
+}
+
+@test "saved context keeps the resolved config and runtime facts" {
+  echo "# new" > new.md
+  printf 'rules: []\n' > prh.yml
+  run --separate-stderr bash "${SCRIPT}" --format json --output-dir "${BATS_TEST_TMPDIR}/reports"
+  [ "${status}" -eq 0 ]
+  [ -z "${stderr}" ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, pathlib, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); c=json.loads(pathlib.Path(r["artifacts"]["context"]).read_text(encoding="utf-8")); assert c["stability"] == "stable"; assert c["files"]["prh"]["origin"] == "caller"; assert c["runtime"]["node"]["version"]; assert r["context"]["comparison_counts"]["unknown"] > 0' "${BATS_TEST_TMPDIR}/result.json"
+}
+
+@test "saved context detects config mutation during a successful lint" {
+  echo "# new" > new.md
+  printf 'rules: []\n' > prh.yml
+  export FAKE_CONTEXT_MUTATION_FILE="${WORK}/prh.yml"
+  run --separate-stderr bash "${SCRIPT}" --format json --output-dir "${BATS_TEST_TMPDIR}/reports"
+  [ "${status}" -eq 2 ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, pathlib, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); c=json.loads(pathlib.Path(r["artifacts"]["context"]).read_text(encoding="utf-8")); assert r["status"] == "error"; assert c["stability"] == "changed"; assert "prh" in c["changed_files"]' "${BATS_TEST_TMPDIR}/result.json"
 }
 
 @test "saved JSON run preserves findings and removes only the lint copy" {

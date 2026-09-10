@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# push 前に Markdown を CI と同じ設定で lint する（Issue #134）．
+# push 前に Markdown を中央 checkout の設定で lint する（Issue #134）．
 #
 # 中央リポジトリ（本スクリプトを含むチェックアウト）の templates と
 # .github/actions/markdown-lint/package-lock.json をその場で使う．
@@ -40,9 +40,9 @@
 #   ただし linter を掛けるのは作業ツリーそのものではなく，対象ファイルを
 #   LF 正規化した一時複製である．CRLF の作業ツリーでは textlint が行末の CR を
 #   1 字に数え，CI では出ない sentence-length の指摘が出るためである（Issue #169）．
-#   差異は終了コードだけである．CI の reviewdog は非ブロッキングだが，
-#   ローカルは指摘ありで非 0 終了する．push 前に気づくためのゲートであり，
-#   素通ししては用をなさないためである．
+#   caller の pin や runtime が異なれば CI と結果はずれうる．保存時は
+#   context.json に設定 hash と宣言の差を残す（docs/local-lint.md）．
+#   CI の reviewdog と異なり，ローカルは指摘ありで非 0 終了する．
 
 set -uo pipefail
 
@@ -59,6 +59,7 @@ die() {
 
 SELECT_ARGS=()
 IGNORE_ARGS=()
+CONTEXT_IGNORE_ARGS=()
 FILES=()
 FORMAT=full
 LIMIT=20
@@ -102,6 +103,7 @@ while [ "$#" -gt 0 ]; do
     --ignore-glob)
       [ "$#" -ge 2 ] || die "--ignore-glob requires a pattern"
       IGNORE_ARGS+=("--ignore-glob" "$2")
+      CONTEXT_IGNORE_ARGS+=("--ignore=$2")
       shift 2
       ;;
     --help | -h)
@@ -179,6 +181,7 @@ LOGDIR="${WORKDIR}"
 SELECTED=-1
 MIRRORED=-1
 WORKSPACE=""
+CONTEXT_FILE=""
 # EXIT からのみ呼ぶため ShellCheck は通常の呼び出しを検出できない．
 # shellcheck disable=SC2329
 finish() {
@@ -186,6 +189,12 @@ finish() {
   trap - EXIT
   # Windows では cwd を抱えた複製を消せない．caller 側の runtime config も回収する．
   cd "${TOPLEVEL}" 2>/dev/null || code=2
+  if [ -n "${CONTEXT_FILE}" ]; then
+    "${PYTHON}" "${SCRIPTS}/lint-context.py" finish "${CONTEXT_FILE}" || {
+      echo 'lint-md: context changed or could not be verified' >&2
+      code=2
+    }
+  fi
   rm -rf "${WORKDIR}" || code=2
   if [ -n "${MDLINT_GENERATED}" ]; then rm -f "${MDLINT_GENERATED}" || code=2; fi
   if [ -n "${REPORT_DIR}" ]; then
@@ -279,6 +288,17 @@ ALLOWLIST_CFG=""
 [ -f .textlint-allowlist.yml ] && ALLOWLIST_CFG="${TOPLEVEL}/.textlint-allowlist.yml"
 PRH_EXTRA_CFG=""
 [ -f .prh-extra.yml ] && PRH_EXTRA_CFG="${TOPLEVEL}/.prh-extra.yml"
+
+if [ -n "${REPORT_DIR}" ]; then
+  "${PYTHON}" "${SCRIPTS}/lint-context.py" capture \
+    --output "${REPORT_DIR}/context.json" --root "${TOPLEVEL}" --central "${CENTRAL_ROOT}" \
+    --glob="${MARKDOWN_GLOB}" "${CONTEXT_IGNORE_ARGS[@]+"${CONTEXT_IGNORE_ARGS[@]}"}" \
+    --file markdownlint "${MDLINT_CFG}" --file textlint "${TEXTLINT_CFG}" \
+    --file textlint-ignore "${TEXTLINT_IGNORE}" --file prh "${PRH_CFG}" \
+    --file allowlist "${ALLOWLIST_CFG}" --file prh-extra "${PRH_EXTRA_CFG}" ||
+    die "failed to record lint context"
+  CONTEXT_FILE="${REPORT_DIR}/context.json"
+fi
 
 # --- runtime config の生成 ---
 TEXTLINT_RUNTIME="${WORKDIR}/textlintrc.runtime.json"

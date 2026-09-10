@@ -107,6 +107,13 @@ def record_run(
             if (total > 0) != (exit_code == 1):
                 raise ValueError("lint aggregation does not match exit code")
 
+    context = {"stability": "not_captured", "comparison_counts": None}
+    if (directory / "context.json").is_file():
+        captured = json.loads((directory / "context.json").read_text(encoding="utf-8"))
+        context = {key: captured[key] for key in ("stability", "comparison_counts")}
+        if exit_code != 2 and context["stability"] != "stable":
+            raise ValueError("lint context has not been verified as stable")
+
     artifacts = {
         key: str(directory / filename)
         for key, filename in {
@@ -114,6 +121,7 @@ def record_run(
             "targets": "targets.txt", "findings": "findings.json",
             "markdownlint": "markdownlint-report.txt", "textlint": "textlint-report.xml",
             "textlint_stderr": "textlint-stderr.log", "install": "install.log",
+            "context": "context.json",
         }.items() if (directory / filename).is_file()
     }
     artifacts.update(summary=str(directory / "summary.txt"), report=str(directory / "report.json"))
@@ -126,14 +134,18 @@ def record_run(
                      "mirrored": mirrored if mirrored >= 0 else None},
         "display": {"total": total, "returned": returned,
                     "omitted": total - returned if total is not None else None},
-        "findings": findings, "artifacts": artifacts,
+        "findings": findings, "artifacts": artifacts, "context": context,
     }
     lines = [f"lint-md: {status} (exit {exit_code})",
              f"scope: selected={report['coverage']['selected']}, mirrored={report['coverage']['mirrored']}",
              f"findings: total={total}, returned={returned}, omitted={report['display']['omitted']}"]
     for item in findings or []:
         lines.append(f"  {item['file']}:{item['line']} {item['rule']} {item['message']}")
-    lines.extend(f"{key}: {artifacts[key]}" for key in ("full", "diagnostics", "report") if key in artifacts)
+    if context["comparison_counts"] is not None:
+        counts = context["comparison_counts"]
+        lines.append(f"ci-declarations: different={counts['different']}, unknown={counts['unknown']}, "
+                     f"inputs={context['stability']}")
+    lines.extend(f"{key}: {artifacts[key]}" for key in ("full", "diagnostics", "context", "report") if key in artifacts)
     (directory / "summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (directory / "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",

@@ -50,7 +50,7 @@ Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自�
 ## 🖥 push 前ローカル lint（任意）
 
 `bin/lint-md.sh` は，中央リポジトリの設定を使って手元で Markdown を lint する．
-呼び出し元リポジトリには何も置かないため，中央設定との drift が生じない．
+設定は中央 checkout から読み，caller 側の override を優先する．
 軽微な文体指摘のたびに CI を 1 巡させる無駄を減らす（Issue #134）．
 
 ```bash
@@ -58,9 +58,10 @@ bash /path/to/github-workflows/bin/lint-md.sh
 ```
 
 既定では変更した Markdown だけを報告する．
-lint 自体は CI と同じ設定・同じ集計を通し，違いは終了コードだけである．
+設定の解決と指摘の集計は CI と共用する．中央の参照版や runtime が違えば結果はずれうる．
 CI の reviewdog は非ブロッキングだが，ローカルは指摘ありで非 0 終了する．
 `--format summary` または `--format json` では表示件数を制限し，全文と診断を保存する．
+使用した設定 hash・runtime・caller の宣言との差は `context.json` に保存する．
 引数・キャッシュ・Windows での実行は
 [push 前ローカル Markdown lint](docs/local-lint.md) を参照する．
 
@@ -233,6 +234,7 @@ github-workflows/
 │   ├── normalize-lint-targets.py  # lint 対象を LF 正規化した複製として書き出す（v2.19.3〜）
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   ├── render-local-lint-report.py # ローカル lint の集計結果を端末向けに整形
+│   ├── lint-context.py            # 実行条件の記録と caller 宣言の照合
 │   ├── resolve-config-path.sh
 │   └── watch-checks-record.py     # 監視の照会記録と要約の共通処理
 ├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
