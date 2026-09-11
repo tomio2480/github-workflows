@@ -2,7 +2,7 @@
 
 ## 要約
 
-Markdown lint と Shell / CLI quality の共通 GitHub Actions を配布する．
+Markdown lint，Shell / CLI quality，Python lint の共通 GitHub Actions を配布する．
 Markdown lint は v2 以降 composite action として配布する．
 対象 repo は caller workflow 1 枚で導入できる．
 Shell quality は任意の reusable workflow である．
@@ -20,6 +20,7 @@ v2.6 以降は，`@claude` で起動するレビュー用 workflow も配布す�
 - 🎯 このリポジトリでできること
 - 🖥 push 前ローカル lint（任意）
 - 🐚 Shell quality workflow（任意）
+- Python lint workflow（任意）
 - 🔗 セッション URL 検査 workflow（任意）
 - 🧪 Workflow 検査 workflow（任意）
 - 🤖 Claude レビュー workflow（任意）
@@ -85,6 +86,13 @@ PowerShell 資産を持つ repo は `templates/analyze-powershell.ps1` も対で
 詳しい caller contract と固定 version は
 [Shell / CLI quality reusable workflow](docs/shell-quality.md) を参照する．
 ローカル実行の手順も同じ文書にある．
+
+## Python lint workflow（任意）
+
+`.github/workflows/python-lint.yml` は uv project の caller 所有 gate を実行する．
+Ruff lint と整形確認は必須，mypy は project の設定があれば必須となる．
+検査失敗は job を失敗させる．結果の JSON と全文ログは artifact に保存する．
+[導入と契約](docs/python-lint.md) に caller・gate の雛形と対応範囲を示す．
 
 ## 🔗 セッション URL 検査 workflow（任意）
 
@@ -217,6 +225,7 @@ github-workflows/
 │   │   ├── claude-review.yml      # Claude レビュー用 reusable workflow（v2.6〜）
 │   │   ├── claude-review-self.yml # 中央自身の @claude 起動 self-caller
 │   │   ├── md-lint.yml            # 自リポジトリ向けの Markdown lint caller
+│   │   ├── python-lint.yml        # Python lint reusable workflow
 │   │   ├── shell-quality.yml      # Shell / CLI quality reusable workflow
 │   │   └── test-self-lint.yml     # 単体／統合テスト用 CI workflow
 │   └── dependabot.yml             # third-party action の自動更新
@@ -251,10 +260,12 @@ github-workflows/
 │       └── native.ps1             # native command 呼び出しの共通ヘルパー（v2.18〜）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
+│   ├── integration/               # 実 tool を使う Python gate の対照
 │   ├── bash/                      # bats-core
 │   ├── powershell/                # Pester（.ps1 の振る舞い）
 │   └── fixtures/
 │       ├── markdown/              # Markdown lint 統合テスト fixture
+│       ├── python-quality/        # Python lint の設定と lock
 │       ├── release-patch-stubs/   # 5.1 回帰テスト用の git・gh スタブ
 │       └── shell-quality/         # Shell quality toolchain probe
 ├── templates/                     # 各リポジトリにコピーするテンプレート
@@ -262,6 +273,7 @@ github-workflows/
 │   │   └── workflows/
 │   │       ├── claude-review.yml  # Claude レビュー用 caller（任意）
 │   │       ├── md-lint.yml        # 呼び出し側ワークフロー（lint 導入の必須ファイル）
+│   │       ├── python-lint.yml    # Python lint caller（任意）
 │   │       ├── session-url-check.yml # セッション URL 検査 caller（任意）
 │   │       ├── shell-quality.yml  # Shell quality caller（任意）
 │   │       └── workflow-lint.yml  # Workflow 検査 caller（任意）
@@ -272,6 +284,7 @@ github-workflows/
 │   ├── .prh-extra.yml             # caller-side 追加 prh 辞書のサンプル（v2.7〜，optional）
 │   ├── prh.yml                    # 中央辞書＋override 用
 │   ├── verify-shell.py            # Shell quality gate の雛形（v2.22〜，optional）
+│   ├── verify-python.py          # Python lint gate の雛形（任意）
 │   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部の雛形（v2.22〜，optional）
 │   └── lefthook.yml               # ローカル hook（任意）
 ├── docs/                          # 運用ガイド
@@ -285,6 +298,7 @@ github-workflows/
 │   ├── fork-usage.md
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
 │   ├── shell-quality.md           # Shell quality workflow の caller contract
+│   ├── python-lint.md             # Python lint workflow の caller contract
 │   ├── session-url-check.md       # セッション URL 検査 action の導入と限界
 │   ├── workflow-lint.md           # Workflow 検査 action の導入と pin 突合の判定
 │   ├── local-lint.md              # push 前ローカル Markdown lint の使い方
@@ -512,6 +526,7 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/fork-usage.md](docs/fork-usage.md) | フォーク運用 | 他利用者 |
 | [docs/development-notes.md](docs/development-notes.md) | 設計判断とレビュー対応の知見 | メンテナー・AI |
 | [docs/shell-quality.md](docs/shell-quality.md) | Shell quality workflow の導入と契約 | 利用者・AI |
+| [docs/python-lint.md](docs/python-lint.md) | Python lint workflow の導入と契約 | 利用者・AI |
 | [docs/session-url-check.md](docs/session-url-check.md) | セッション URL 検査 action の導入と限界 | 利用者・AI |
 | [docs/workflow-lint.md](docs/workflow-lint.md) | Workflow 検査 action の導入と pin 突合の判定 | 利用者・AI |
 | [docs/local-lint.md](docs/local-lint.md) | push 前ローカル Markdown lint の使い方 | 利用者・AI |

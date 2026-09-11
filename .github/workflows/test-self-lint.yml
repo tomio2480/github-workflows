@@ -1,26 +1,8 @@
-name: Self test (composite action)
+name: Self test
 
-# composite action の TDD 検証用 CI workflow．
-#
-# 7 jobs:
-#   - unit-python: scripts/*.py の pytest
-#   - unit-bash: scripts/*.sh の bats
-#   - shell-quality-reusable: reusable workflow の tool setup と caller contract
-#   - shell-quality-self: 本リポジトリのシェル資産に対する repo-local gate
-#   - integration-action: ./.github/actions/markdown-lint を fixture に対して走らせる
-#   - integration-session-url-check: ./.github/actions/session-url-check を本 PR に対して走らせる
-#   - integration-workflow-lint: ./.github/actions/workflow-lint を本リポジトリへ走らせる
-#
-# shell-quality-reusable と shell-quality-self は役割が異なるため統合しない．
-# 前者は fixture で caller contract を検証し，後者は本リポジトリ自身の
-# scripts/*.sh・bin/*.sh・bin/*.ps1 を実際に検査する．
-#
-# integration-action は reviewdog で PR inline コメントを投稿するため pull_request のみで動く．
-# 「指摘ゼロ」 ケースは scripts/count-lint-findings.py の pytest と
-# scripts/post-lint-summary.sh の bats で網羅し，self-PR では「指摘あり混在」
-# fixture に対する upsert 挙動だけを目視確認する（同一 PR で複数 job が
-# 同じ marker を upsert すると race するため，integration は単一 job に
-# 絞る）．
+# fixture の caller contract と中央自身の資産は別々に検査する．
+# reviewdog の marker 競合を避けるため，投稿する integration-action は 1 job にする．
+# 層ごとの役割と検証対象は docs/architecture.md「テスト戦略」に置く．
 
 on:
   pull_request:
@@ -33,6 +15,60 @@ permissions:
   pull-requests: write
 
 jobs:
+  python-lint-reusable:
+    uses: ./.github/workflows/python-lint.yml
+    with:
+      working-directory: tests/fixtures/python-quality
+      verify-script: ../../../templates/verify-python.py
+
+  python-lint-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.2"
+          enable-cache: false
+      - name: Test real Python gate failures and exclusions
+        working-directory: tests/fixtures/python-quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          quality_files=(
+            ../../../templates/verify-python.py
+            ../../python/test_templates_verify_python.py
+            ../../python/test_python_lint_workflow.py
+            ../../integration/test_python_quality.py
+          )
+          uv run --locked --python 3.13 --no-default-groups --group dev \
+            ruff check --isolated --target-version py311 --select E4,E7,E9,F,I,UP,B "${quality_files[@]}"
+          uv run --locked --python 3.13 --no-default-groups --group dev \
+            ruff format --isolated --target-version py311 --check "${quality_files[@]}"
+          uv run --locked --python 3.13 --no-default-groups --group dev \
+            mypy --strict ../../../templates/verify-python.py
+          uv run --locked --python 3.13 --no-default-groups --group dev \
+            pytest ../../integration/test_python_quality.py -q \
+            --basetemp "${RUNNER_TEMP}/python-lint-controls"
+      - name: Preserve Python control results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-lint-controls
+          path: ${{ runner.temp }}/python-lint-controls/**/reports
+          retention-days: 7
+          if-no-files-found: warn
+
   shell-quality-reusable:
     name: Reusable Shell quality workflow
     uses: ./.github/workflows/shell-quality.yml

@@ -1,0 +1,21 @@
+name: Python Lint
+
+# OWNER と SHA を公開済み中央 repo の owner と full commit SHA に置換する．
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-lint:
+    uses: OWNER/github-workflows/.github/workflows/python-lint.yml@<SHA> # v2
+    with:
+      python-version: "3.13"
+      uv-version: "0.11.2"
