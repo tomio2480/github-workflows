@@ -155,6 +155,29 @@ def node_comparison(expected, actual):
     return item("node", "unknown", expected=expected, actual=actual, reason="expression_or_version_range")
 
 
+def normalized_ignore(value):
+    """Read markdown-ignore as the action does: one pattern per line.
+
+    action.yml (summary step) splits on newlines and drops only empty lines.
+    count-lint-findings.py then strips each pattern and turns backslashes into slashes.
+    It fails on a whitespace-only pattern, so such a value returns None: no local run can match it.
+    A YAML block scalar ends with a newline that must not decide the comparison.
+    """
+    patterns = [line.strip().replace("\\", "/") for line in value.split("\n") if line]
+    return "\n".join(patterns) if all(patterns) else None
+
+
+def declaration_item(field, expected, actual, normalize=lambda value: value):
+    if not isinstance(expected, str) or "${{" in expected:
+        return item(field, "unknown", expected=expected, actual=actual, reason="declaration_only")
+    normalized_expected, normalized_actual = normalize(expected), normalize(actual)
+    if normalized_expected is None or normalized_actual is None:
+        # Keep the raw values so the record shows the pattern the action rejects.
+        return item(field, "different", expected=expected, actual=actual, reason="declaration_only")
+    return item(field, "same" if normalized_expected == normalized_actual else "different",
+                expected=normalized_expected, actual=normalized_actual, reason="declaration_only")
+
+
 def compare_call(call, report, central):
     reference = re.fullmatch(r"([^/]+/[^/]+)/" + re.escape(ACTION) + r"@([0-9a-fA-F]{40})", call["uses"])
     pin, metadata = None, None
@@ -181,12 +204,10 @@ def compare_call(call, report, central):
         comparisons.append(item("node", "unknown", reason="pinned_definition_unavailable"))
     else:
         comparisons.append(node_comparison(effective["node-version"], report["runtime"]["node"]["version"]))
-    for key, actual in (("markdown-glob", report["selection"]["glob"]),
-                        ("markdown-ignore", "\n".join(report["selection"]["ignore"]))):
-        expected = effective[key]
-        state = "unknown" if not isinstance(expected, str) or "${{" in expected else (
-            "same" if expected == actual else "different")
-        comparisons.append(item(key, state, expected=expected, actual=actual, reason="declaration_only"))
+    # The glob reaches the linters verbatim as one argument, so only the ignore list has line semantics.
+    comparisons.append(declaration_item("markdown-glob", effective["markdown-glob"], report["selection"]["glob"]))
+    comparisons.append(declaration_item("markdown-ignore", effective["markdown-ignore"],
+                                        "\n".join(report["selection"]["ignore"]), normalized_ignore))
     for role, file in report["files"].items():
         if role.startswith("workflow:") or role.startswith("runtime:"):
             continue

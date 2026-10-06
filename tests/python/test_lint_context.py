@@ -195,6 +195,87 @@ def test_node_comparison_limits_its_claim_to_major_or_exact_version(expected, ac
     assert module.node_comparison(expected, actual)["state"] == state
 
 
+def declared_ignore(value):
+    """Return a caller step whose markdown-ignore input is the given YAML text."""
+    return f"        with:\n          markdown-ignore: {value}\n"
+
+
+def literal_block(*lines):
+    """Return a literal block scalar with each line placed at the block indentation."""
+    return "|\n" + "\n".join(f"            {line}" for line in lines)
+
+
+def local_ignores(*patterns):
+    return [argument for pattern in patterns for argument in ("--ignore", pattern)]
+
+
+# The action splits markdown-ignore on newlines and drops only empty lines (action.yml, summary step).
+# count-lint-findings.py then strips each pattern, turns backslashes into slashes,
+# and fails on a whitespace-only pattern, so such a declaration can never match a local run.
+# The caller's YAML style must not decide whether the same patterns count as different.
+@pytest.mark.parametrize("declared,local,state", [
+    ('"tests/fixtures/**"', ["tests/fixtures/**"], "same"),
+    (literal_block("tests/fixtures/**"), ["tests/fixtures/**"], "same"),
+    (literal_block("a/**", "b/**"), ["a/**", "b/**"], "same"),
+    (literal_block("a/**", "", "  b/** ", "c\\d/**  "), ["a/**", "b/**", "c/d/**"], "same"),
+    ('""', [], "same"),
+    (literal_block("tests/fixtures/**"), ["docs/**"], "different"),
+    (literal_block("a/**", "b/**"), ["a/**"], "different"),
+    (literal_block("a/**"), ["a/**", "b/**"], "different"),
+    (literal_block("a/**", "  ", "b/**"), ["a/**", "b/**"], "different"),
+    ('"   "', [], "different"),
+    ('"${{ vars.IGNORE }}"', ["a/**"], "unknown"),
+], ids=["flow-scalar", "block-single", "block-multiple", "block-blank-indented-and-padded",
+        "empty-declaration", "block-different-pattern", "block-missing-local-pattern",
+        "block-extra-local-pattern", "block-whitespace-only-line", "whitespace-only-declaration",
+        "expression"])
+def test_ignore_declaration_is_compared_as_the_action_reads_it(workspace, declared, local, state):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=declared_ignore(declared))
+    row = comparison(capture(workspace, *local_ignores(*local)), "markdown-ignore")
+    assert row["state"] == state
+    assert row["reason"] == "declaration_only"
+
+
+def test_ignore_records_the_patterns_both_sides_were_compared_by(workspace):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=declared_ignore(literal_block("a/**", "", "  b/** ")))
+    row = comparison(capture(workspace, *local_ignores("a/**", "b/**")), "markdown-ignore")
+    assert row["expected"] == row["actual"] == "a/**\nb/**"
+
+
+def test_ignore_keeps_the_raw_declaration_when_the_action_would_reject_it(workspace):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=declared_ignore('"   "'))
+    row = comparison(capture(workspace), "markdown-ignore")
+    assert (row["state"], row["expected"], row["actual"]) == ("different", "   ", "")
+
+
+def test_ignore_keeps_the_raw_expression_when_the_value_is_not_comparable(workspace):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=declared_ignore('"${{ vars.IGNORE }}\\\\x "'))
+    row = comparison(capture(workspace, *local_ignores("a/**")), "markdown-ignore")
+    assert (row["state"], row["expected"], row["actual"]) == ("unknown", "${{ vars.IGNORE }}\\x ", "a/**")
+
+
+def test_ignore_default_without_a_declaration_matches_no_local_ignore(workspace):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin)
+    row = comparison(capture(workspace), "markdown-ignore")
+    assert (row["state"], row["expected"], row["actual"]) == ("same", "", "")
+
+
+# markdown-glob is passed to the linters verbatim as one argument (action.yml, markdownlint step),
+# so unlike markdown-ignore it has no line semantics and stays a raw string comparison.
+@pytest.mark.parametrize("declared,state", [
+    ('"**/*.md"', "same"), (literal_block("**/*.md"), "different"), ('"docs/**/*.md"', "different"),
+], ids=["flow-scalar", "block-scalar-keeps-its-newline", "different-pattern"])
+def test_glob_declaration_stays_a_raw_string_comparison(workspace, declared, state):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=f"        with:\n          markdown-glob: {declared}\n")
+    assert comparison(capture(workspace), "markdown-glob")["state"] == state
+
+
 def test_line_endings_do_not_hide_a_config_value_change(workspace):
     central, caller, pin, _ = workspace
     workflow(caller, pin)
