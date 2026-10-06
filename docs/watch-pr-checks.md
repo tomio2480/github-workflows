@@ -10,11 +10,14 @@
 ## 使い方
 
 ```bash
+bash bin/watch-pr-checks.sh 165
 bash bin/watch-pr-checks.sh 165 --format summary
 bash bin/watch-pr-checks.sh 165 --format json --limit 5 --output-dir /tmp/check-records
 ```
 
 ```powershell
+pwsh -File bin/watch-pr-checks.ps1 -Pr 165
+powershell -ExecutionPolicy Bypass -File bin\watch-pr-checks.ps1 -Pr 165
 pwsh -File bin/watch-pr-checks.ps1 -Pr 165 -Format summary
 pwsh -File bin/watch-pr-checks.ps1 -Pr 165 -Format json -Limit 5 -OutputDir C:\Temp\check-records
 ```
@@ -95,6 +98,13 @@ JSON 全体に長い診断本文は埋め込まず，`artifacts` から参照す
 対象 SHA の解決，head の追随待ち，件数が一定になるまでの待機，
 終了時の head 再照合は，Bash と PowerShell の既存処理が担う．
 Python は応答の保存・状態の抽出・表示を担当し，別の監視ループを持たない．
+
+対象 commit は，`--expect-sha` が無ければ head ブランチを `git ls-remote` で引いて決める．
+fork からの PR は `isCrossRepository` で判定し，head リポジトリの URL へ `git ls-remote` を引く．
+`--timeout` は監視全体へ掛かり，待機の段ごとに締切を取り直さない．
+checks の待機は，次の 4 条件がそろうと完了する．
+1 件以上あること，pending が無いこと，件数が前回の照会から変わっていないこと，
+変わらなくなってから `--settle` 秒が過ぎたことである．
 
 `--settle` の既定は 120 秒である．その後に登録される check は観測できない．
 前後の head 確認は，個々の run の SHA を検証することとも異なる．
