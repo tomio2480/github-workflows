@@ -59,6 +59,7 @@ bash /path/to/github-workflows/bin/lint-md.sh
 `--glob` は composite action の `markdown-glob` に当たる．
 `--ignore-glob` は `markdown-ignore` に当たる．
 caller 側で値を変えている場合は，同じ値を渡す．
+複数行の値は，1 行ずつ `--ignore-glob` に分けて渡す．
 
 `--glob` は報告対象の選定にも効く．
 渡されたときは拡張子で絞らず，変更ファイルをすべて選ぶ．
@@ -172,12 +173,14 @@ GitHub Actions の式を独自に評価しない．
 Node は整数の major 指定または major.minor.patch の完全指定だけを比較する．
 major の一致は patch の一致を意味しない．版の範囲や matrix の式は unknown になる．
 glob は action が 1 つの引数としてそのまま渡すため，末尾の改行も含めて比較する．
-ignore は action と同じ読み方に揃えて比較する．
+ignore の宣言は action と同じ読み方に揃えて比較する．
 改行で行に分けて空行だけを捨て，各行の前後の空白を除き，`\` を `/` に揃える．
 ignore では，YAML のブロック形式（`|`）が付ける末尾の改行は一致の判定に影響しない．
 空白だけの行を含む宣言は action が拒否するため，元の値のまま different と記録する．
 どちらも，意味が等価かまでは判定しない．
 比較できた ignore の `expected` と `actual` には，揃えた後の値を記録する．
+ローカルの `--ignore-glob` は引数ごとに 1 つの pattern として読み，行には分けない．
+空の値や内側に改行を含む値は集計の除外と一致しないため，元の値のまま different と記録する．
 caller 側の設定は caller_override と記録する．CI が checkout した設定との一致は保証しない．
 token・env・secret は収集せず，公開 input は Node・glob・ignore の 3 項目に限る．
 

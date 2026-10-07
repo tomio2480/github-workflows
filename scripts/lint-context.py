@@ -167,13 +167,26 @@ def normalized_ignore(value):
     return "\n".join(patterns) if all(patterns) else None
 
 
-def declaration_item(field, expected, actual, normalize=lambda value: value):
+def normalized_local_ignore(arguments):
+    """Read --ignore-glob as lint-md.sh hands it to count-lint-findings.py: one pattern per argument.
+
+    Each argument is stripped and gets slashes, but it is never split into lines.
+    An empty pattern fails the local run, and an inner newline forms a pattern the action never passes.
+    Either case returns None, since the declaration cannot match what the local run applies.
+    """
+    patterns = [argument.strip().replace("\\", "/") for argument in arguments]
+    return "\n".join(patterns) if all(pattern and "\n" not in pattern for pattern in patterns) else None
+
+
+def declaration_item(field, expected, actual, normalize=lambda value: value, normalize_actual=None):
+    # A list holds the local arguments; the record keeps them joined so the field stays a string.
+    recorded = "\n".join(actual) if isinstance(actual, list) else actual
     if not isinstance(expected, str) or "${{" in expected:
-        return item(field, "unknown", expected=expected, actual=actual, reason="declaration_only")
-    normalized_expected, normalized_actual = normalize(expected), normalize(actual)
+        return item(field, "unknown", expected=expected, actual=recorded, reason="declaration_only")
+    normalized_expected, normalized_actual = normalize(expected), (normalize_actual or normalize)(actual)
     if normalized_expected is None or normalized_actual is None:
-        # Keep the raw values so the record shows the pattern the action rejects.
-        return item(field, "different", expected=expected, actual=actual, reason="declaration_only")
+        # Keep the raw values so the record shows the pattern either side cannot apply.
+        return item(field, "different", expected=expected, actual=recorded, reason="declaration_only")
     return item(field, "same" if normalized_expected == normalized_actual else "different",
                 expected=normalized_expected, actual=normalized_actual, reason="declaration_only")
 
@@ -204,10 +217,11 @@ def compare_call(call, report, central):
         comparisons.append(item("node", "unknown", reason="pinned_definition_unavailable"))
     else:
         comparisons.append(node_comparison(effective["node-version"], report["runtime"]["node"]["version"]))
-    # The glob reaches the linters verbatim as one argument, so only the ignore list has line semantics.
+    # The glob reaches the linters verbatim as one argument, so only the declared ignore has line semantics.
+    # Local ignore arguments are one pattern each; see normalized_local_ignore.
     comparisons.append(declaration_item("markdown-glob", effective["markdown-glob"], report["selection"]["glob"]))
     comparisons.append(declaration_item("markdown-ignore", effective["markdown-ignore"],
-                                        "\n".join(report["selection"]["ignore"]), normalized_ignore))
+                                        report["selection"]["ignore"], normalized_ignore, normalized_local_ignore))
     for role, file in report["files"].items():
         if role.startswith("workflow:") or role.startswith("runtime:"):
             continue

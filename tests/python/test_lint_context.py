@@ -265,6 +265,39 @@ def test_ignore_default_without_a_declaration_matches_no_local_ignore(workspace)
     assert (row["state"], row["expected"], row["actual"]) == ("same", "", "")
 
 
+# Locally each --ignore-glob argument reaches count-lint-findings.py as one pattern (bin/lint-md.sh).
+# It is stripped but never split into lines, and an empty pattern fails the run.
+# A multi-line value forwarded verbatim as `--ignore-glob "$value"` therefore is not what the action applies.
+@pytest.mark.parametrize("local,state", [
+    (["a/**\nb/**"], "different"),
+    (["a/**", "b/**", ""], "different"),
+    (["a/**", "  ", "b/**"], "different"),
+    (["a/**\n", " b/**\n "], "same"),
+], ids=["one-argument-with-newline", "extra-empty-argument", "whitespace-only-argument",
+        "edge-newlines-are-stripped"])
+def test_local_ignore_is_read_one_pattern_per_argument(workspace, local, state):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=declared_ignore(literal_block("a/**", "b/**")))
+    row = comparison(capture(workspace, *local_ignores(*local)), "markdown-ignore")
+    assert (row["state"], row["reason"]) == (state, "declaration_only")
+
+
+def test_ignore_keeps_the_raw_arguments_when_the_local_run_cannot_match(workspace):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=declared_ignore(literal_block("a/**", "b/**")))
+    report = capture(workspace, *local_ignores("a/**\nb/**"))
+    row = comparison(report, "markdown-ignore")
+    assert (row["state"], row["expected"], row["actual"]) == ("different", "a/**\nb/**\n", "a/**\nb/**")
+    assert report["selection"]["ignore"] == ["a/**\nb/**"]
+
+
+def test_empty_local_ignore_differs_from_an_empty_declaration(workspace):
+    _, caller, pin, _ = workspace
+    workflow(caller, pin, extra=declared_ignore('""'))
+    row = comparison(capture(workspace, *local_ignores("")), "markdown-ignore")
+    assert (row["state"], row["expected"], row["actual"]) == ("different", "", "")
+
+
 # markdown-glob is passed to the linters verbatim as one argument (action.yml, markdownlint step),
 # so unlike markdown-ignore it has no line semantics and stays a raw string comparison.
 @pytest.mark.parametrize("declared,state", [
