@@ -46,8 +46,9 @@ function Write-WatchOutput {
 }
 
 function Write-Failure {
-  param([string]$Message)
-  if ($Script:RunDir -ne '') {
+  # -Recorded は記録係が diagnostics.log へ書き終えた本文であり，表示だけを足す
+  param([string]$Message, [switch]$Recorded)
+  if ($Script:RunDir -ne '' -and -not $Recorded) {
     [IO.File]::AppendAllText((Join-Path $Script:RunDir 'diagnostics.log'), "$Message`n", $Script:Utf8)
   }
   if ($Script:RunDir -eq '' -or $Format -eq 'full') { [Console]::Error.WriteLine($Message) }
@@ -148,7 +149,7 @@ try {
       '--jq', '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv')
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Fields)) {
       Write-Failure "could not resolve the head branch of PR #${Pr}"
-      if ($Script:RunDir -eq '' -and $Script:LastError -ne '') { Write-Failure $Script:LastError }
+      if ($Script:LastError -ne '') { Write-Failure $Script:LastError -Recorded }
       exit 1
     }
     $Parts = ($Fields | Out-String).Trim() -split "`t"

@@ -35,6 +35,7 @@ pwsh -File bin/watch-pr-checks.ps1 -Pr 165 -Format json -Limit 5 -OutputDir C:\T
 | `--output-dir` / `-OutputDir` | OS の一時フォルダ | 記録先の親フォルダ |
 
 `full` は保存先を指定したときだけ記録する．
+保存先を指定した `full` でも，進捗と診断は記録しない呼び出しと同じく逐次に出す．
 保存先の配下へ実行ごとに一意なフォルダを作り，過去の結果を上書きしない．
 `summary` と `json` の stdout には途中経過や長い診断を混ぜない．
 入力の誤り，依存不足，記録先を作れない場合は stderr と exit 1 を返す．

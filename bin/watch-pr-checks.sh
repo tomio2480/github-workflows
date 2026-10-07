@@ -147,11 +147,6 @@ finish_watch() {
   trap - EXIT
   rm -f "${LAST_ERR}" "${CALL_ERR}"
   if [ -n "${RUN_DIR}" ]; then
-    exec 1>&3 2>&4
-    if [ "${FORMAT}" = full ]; then
-      cat "${RUN_DIR}/full.txt"
-      cat "${RUN_DIR}/diagnostics.log" >&2
-    fi
     "${PYTHON}" -X utf8 "${RECORDER}" finish --run-dir "${RUN_DIR}" \
       --code "${code}" --reason "${REASON}" --expected-sha "${EXPECT_SHA}" \
       --pr "${PR}" --format "${FORMAT}" --limit "${LIMIT}" || code=$?
@@ -179,12 +174,51 @@ if [ "${FORMAT}" != full ] || [ -n "${OUTPUT_DIR}" ]; then
   RUN_DIR="$("${PYTHON}" -X utf8 "${RECORDER}" init --output-dir "${OUTPUT_DIR}" \
     --timeout "${TIMEOUT}" --interval "${INTERVAL}" --settle "${SETTLE}")" || exit 1
   RUN_DIR="${RUN_DIR%$'\r'}"
-  exec 3>&1 4>&2
-  exec >>"${RUN_DIR}/full.txt" 2>>"${RUN_DIR}/diagnostics.log"
 fi
 trap finish_watch EXIT
 LAST_ERR="$(mktemp)"
 CALL_ERR="$(mktemp)"
+
+# 記録は表示の写しであり，full の表示は記録しない呼び出しと同じく逐次に出す．
+# 出力先をファイルへ付け替えると，終了まで何も見えず，記録係が書いた
+# 診断の流し直しで stderr も変わる．付け替えず，表示と記録へ 2 回書く
+shown() {
+  [ -z "${RUN_DIR}" ] || [ "${FORMAT}" = full ]
+}
+
+say() {
+  if [ -n "${RUN_DIR}" ]; then
+    printf '%s\n' "$1" >>"${RUN_DIR}/full.txt"
+  fi
+  if shown; then
+    printf '%s\n' "$1"
+  fi
+}
+
+warn() {
+  if [ -n "${RUN_DIR}" ]; then
+    printf '%s\n' "$1" >>"${RUN_DIR}/diagnostics.log"
+  fi
+  if shown; then
+    printf '%s\n' "$1" >&2
+  fi
+}
+
+warn_file() {
+  if [ -n "${RUN_DIR}" ]; then
+    cat "$1" >>"${RUN_DIR}/diagnostics.log"
+  fi
+  if shown; then
+    cat "$1" >&2
+  fi
+}
+
+# 記録係は gh の stderr を diagnostics.log へ書き終えている．表示だけを足す
+relay_recorded() {
+  if shown; then
+    cat "$1" >&2
+  fi
+}
 
 query_gh() {
   local kind="$1"
@@ -202,9 +236,13 @@ query_gh() {
 # fork からの PR では head ブランチが origin に無い．同名のブランチが base に
 # あると，無関係な commit を掴んだまま待つ．head の所属先を解決してから引く
 if [ -z "${EXPECT_SHA}" ]; then
+  RESOLVE_CODE=0
   PR_INFO="$(query_gh resolve pr view "${PR}" \
     --json headRefName,isCrossRepository,headRepositoryOwner,headRepository \
-    --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv')" || exit 1
+    --jq '[.headRefName, (.isCrossRepository | tostring), .headRepositoryOwner.login, .headRepository.name] | @tsv' \
+    2>"${CALL_ERR}")" || RESOLVE_CODE=$?
+  relay_recorded "${CALL_ERR}"
+  [ "${RESOLVE_CODE}" -eq 0 ] || exit 1
   # IFS のタブは空白類のため read では連続を 1 つに詰め，空欄があると列がずれる．
   # cut は詰めないため列の位置が保たれる
   BRANCH="$(printf '%s' "${PR_INFO}" | cut -f1)"
@@ -212,13 +250,13 @@ if [ -z "${EXPECT_SHA}" ]; then
   HEAD_OWNER="$(printf '%s' "${PR_INFO}" | cut -f3)"
   HEAD_REPO="$(printf '%s' "${PR_INFO}" | cut -f4)"
   if [ -z "${BRANCH}" ]; then
-    echo "error: could not resolve the head branch of PR #${PR}" >&2
+    warn "error: could not resolve the head branch of PR #${PR}"
     exit 1
   fi
 
   if [ "${CROSS_REPO}" = "true" ]; then
     if [ -z "${HEAD_OWNER}" ] || [ -z "${HEAD_REPO}" ]; then
-      echo "error: could not resolve the head repository of PR #${PR}" >&2
+      warn "error: could not resolve the head repository of PR #${PR}"
       exit 1
     fi
     REMOTE="https://github.com/${HEAD_OWNER}/${HEAD_REPO}.git"
@@ -228,18 +266,21 @@ if [ -z "${EXPECT_SHA}" ]; then
 
   # 出力なしには「ブランチが無い」と「照会が失敗した」の 2 つがある．
   # パイプで受けると cut の終了コードに隠れ，認証切れが push 忘れへ化ける
-  REMOTE_LINE="$(git ls-remote "${REMOTE}" "refs/heads/${BRANCH}")" || {
-    echo "error: git ls-remote ${REMOTE} failed while resolving ${BRANCH}" >&2
-    exit 1
-  }
-  EXPECT_SHA="$(printf '%s\n' "${REMOTE_LINE}" | cut -f1)"
-  if [ -z "${EXPECT_SHA}" ]; then
-    echo "error: branch ${BRANCH} not found on ${REMOTE} (push it first)" >&2
+  REMOTE_CODE=0
+  REMOTE_LINE="$(git ls-remote "${REMOTE}" "refs/heads/${BRANCH}" 2>"${CALL_ERR}")" || REMOTE_CODE=$?
+  warn_file "${CALL_ERR}"
+  if [ "${REMOTE_CODE}" -ne 0 ]; then
+    warn "error: git ls-remote ${REMOTE} failed while resolving ${BRANCH}"
     exit 1
   fi
-  echo "watch-pr-checks: target commit ${EXPECT_SHA} (branch ${BRANCH} on ${REMOTE})"
+  EXPECT_SHA="$(printf '%s\n' "${REMOTE_LINE}" | cut -f1)"
+  if [ -z "${EXPECT_SHA}" ]; then
+    warn "error: branch ${BRANCH} not found on ${REMOTE} (push it first)"
+    exit 1
+  fi
+  say "watch-pr-checks: target commit ${EXPECT_SHA} (branch ${BRANCH} on ${REMOTE})"
 else
-  echo "watch-pr-checks: target commit ${EXPECT_SHA}"
+  say "watch-pr-checks: target commit ${EXPECT_SHA}"
 fi
 
 # --- 問い合わせ ---
@@ -281,17 +322,17 @@ DEADLINE=$(($(date +%s) + TIMEOUT))
 
 report_timeout() {
   REASON=timeout
-  echo "error: timed out waiting for $1 (commit ${EXPECT_SHA})" >&2
+  warn "error: timed out waiting for $1 (commit ${EXPECT_SHA})"
   if [ -s "${LAST_ERR}" ]; then
-    echo "error: last gh error was:" >&2
-    cat "${LAST_ERR}" >&2
+    warn "error: last gh error was:"
+    warn_file "${LAST_ERR}"
   fi
   exit 2
 }
 
 # --- gh がリモートへ追いつくのを待つ ---
 
-echo "watch-pr-checks: waiting for gh to catch up with the remote"
+say "watch-pr-checks: waiting for gh to catch up with the remote"
 while ! gh_head_matches; do
   if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
     report_timeout "gh to report the target commit"
@@ -305,7 +346,7 @@ done
 
 # 登録の遅れを吸収するため，件数が一定の時間を要求する．
 # settle 後の未登録 check まで検査したという保証にはならない．
-echo "watch-pr-checks: waiting for checks to settle"
+say "watch-pr-checks: waiting for checks to settle"
 PREV_TOTAL=-1
 PREV_REPORT=""
 STABLE_SINCE="$(date +%s)"
@@ -334,7 +375,7 @@ while :; do
 
   REPORT="${TOTAL} registered, ${PENDING} pending"
   if [ "${REPORT}" != "${PREV_REPORT}" ]; then
-    echo "watch-pr-checks: ${REPORT}"
+    say "watch-pr-checks: ${REPORT}"
     PREV_REPORT="${REPORT}"
   fi
   PREV_TOTAL="${TOTAL}"
@@ -353,22 +394,22 @@ done
 AFTER_OID="$(gh_head_oid)"
 if [ -z "${AFTER_OID}" ]; then
   REASON=head_unavailable
-  echo "error: could not re-read the head of PR #${PR} after watching ${EXPECT_SHA}" >&2
+  warn "error: could not re-read the head of PR #${PR} after watching ${EXPECT_SHA}"
   if [ -s "${LAST_ERR}" ]; then
-    cat "${LAST_ERR}" >&2
+    warn_file "${LAST_ERR}"
   fi
   exit 2
 fi
 if [ "${AFTER_OID}" != "${EXPECT_SHA}" ]; then
   REASON=head_changed
-  echo "error: head moved to ${AFTER_OID} while watching ${EXPECT_SHA}" >&2
-  echo "error: rerun to watch the new commit" >&2
+  warn "error: head moved to ${AFTER_OID} while watching ${EXPECT_SHA}"
+  warn "error: rerun to watch the new commit"
   exit 2
 fi
 
 if [ "${FAILED}" -gt 0 ]; then
   REASON=checks_failed
-  echo "error: ${FAILED} of ${TOTAL} checks did not pass on ${EXPECT_SHA}" >&2
+  warn "error: ${FAILED} of ${TOTAL} checks did not pass on ${EXPECT_SHA}"
   exit 3
 fi
 
@@ -378,9 +419,9 @@ fi
 REASON=settled
 PASSED=$((TOTAL - SKIPPED))
 if [ "${SKIPPED}" -eq 0 ]; then
-  echo "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA}"
+  say "watch-pr-checks: all ${TOTAL} checks passed on ${EXPECT_SHA}"
 elif [ "${PASSED}" -eq 0 ]; then
-  echo "watch-pr-checks: no checks ran on ${EXPECT_SHA} (${SKIPPED} skipped)"
+  say "watch-pr-checks: no checks ran on ${EXPECT_SHA} (${SKIPPED} skipped)"
 else
-  echo "watch-pr-checks: all ${PASSED} checks passed on ${EXPECT_SHA} (${SKIPPED} skipped)"
+  say "watch-pr-checks: all ${PASSED} checks passed on ${EXPECT_SHA} (${SKIPPED} skipped)"
 fi
