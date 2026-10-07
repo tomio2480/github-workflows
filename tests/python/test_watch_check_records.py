@@ -294,3 +294,45 @@ def test_python_is_required_only_for_records(cli):
     assert result.returncode == 1 and b"Python" in result.stderr
     assert not (tmp / "calls.jsonl").exists()
     assert run(no_python=True, record=False).returncode == 0
+
+
+def fake_gh(directory, marker):
+    """Place a gh that only leaves a marker, in the form the platform would execute."""
+    directory.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        (directory / "gh.cmd").write_text(f'@echo off\r\necho ran> "{marker}"\r\n', encoding="utf-8")
+    else:
+        script = directory / "gh"
+        script.write_text(f'#!/bin/sh\necho ran > "{marker}"\n', encoding="utf-8")
+        script.chmod(0o755)
+
+
+def recorder_query(tmp_path, checkout, path):
+    run_dir = tmp_path / "run"
+    (run_dir / "queries").mkdir(parents=True, exist_ok=True)
+    # A user's shell normally lacks NoDefaultCurrentDirectoryInExePath, which hides the lookup.
+    hidden = ("PATH", "NODEFAULTCURRENTDIRECTORYINEXEPATH")
+    env = {k: v for k, v in os.environ.items() if k.upper() not in hidden}
+    env["PATH"] = str(path)
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "watch-checks-record.py"), "query", str(run_dir), "resolve",
+         "gh", "pr", "view", "165"],
+        cwd=checkout, env=env, capture_output=True, timeout=45)
+
+
+# The watcher runs inside the checkout it watches, which may hold a fork PR's files.
+# On Windows a lookup that tries the current directory first would run a gh planted there.
+def test_query_prefers_gh_on_path_over_the_current_directory(tmp_path):
+    checkout, planted, trusted = tmp_path / "checkout", tmp_path / "planted-ran", tmp_path / "path-ran"
+    fake_gh(checkout, planted)
+    fake_gh(tmp_path / "bin", trusted)
+    result = recorder_query(tmp_path, checkout, tmp_path / "bin")
+    assert (planted.exists(), trusted.exists()) == (False, True), result.stderr
+
+
+def test_query_does_not_fall_back_to_the_current_directory(tmp_path):
+    checkout, planted = tmp_path / "checkout", tmp_path / "planted-ran"
+    fake_gh(checkout, planted)
+    result = recorder_query(tmp_path, checkout, tmp_path / "empty")
+    assert not planted.exists()
+    assert result.returncode == 1 and b"gh: not found on PATH" in result.stderr

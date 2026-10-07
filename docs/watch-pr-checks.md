@@ -25,6 +25,8 @@ pwsh -File bin/watch-pr-checks.ps1 -Pr 165 -Format json -Limit 5 -OutputDir C:\T
 記録モードは Python 3.9 以降の標準ライブラリを使う．
 追加 package は不要である．`scripts/watch-checks-record.py` を隣接して配置する．
 記録しない既定の呼び出しには Python を要求しない．
+記録モードは `gh` を PATH の各項目からだけ探し，作業中のフォルダは探さない．
+監視対象の checkout に置かれた `gh` を実行しないためである．
 
 表 1 に追加 option を示す．監視の時間と SHA の option は従来どおりである．
 

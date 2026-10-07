@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,12 +31,35 @@ def parse_checks(raw):
     return data
 
 
+def on_path(name):
+    """Find an executable in the PATH entries alone and return its absolute path.
+
+    On Windows, shutil.which and CreateProcess both try the current directory first.
+    The watcher runs inside the checkout it watches, which may hold a fork PR's files,
+    so a gh placed there must never run. Empty PATH entries are skipped for the same reason.
+    """
+    extensions = [""]
+    if os.name == "nt":
+        extensions = [ext for ext in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if ext]
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        for extension in extensions:
+            candidate = os.path.join(entry, name + extension)
+            if os.path.isfile(candidate) and (os.name == "nt" or os.access(candidate, os.X_OK)):
+                return os.path.abspath(candidate)
+    return None
+
+
 def query(directory, kind, command):
     prefix = f"{len(list((directory / 'queries').glob('*.json'))) + 1:06d}-{kind}"
     base = directory / "queries" / prefix
     started = timestamp()
     try:
-        command = [shutil.which(command[0]) or command[0], *command[1:]]
+        executable = on_path(command[0])
+        if executable is None:
+            raise FileNotFoundError(f"{command[0]}: not found on PATH")
+        command = [executable, *command[1:]]
         result = subprocess.run(command, capture_output=True, check=False)
         code, raw, diagnostic = result.returncode, result.stdout, result.stderr
     except OSError as error:
