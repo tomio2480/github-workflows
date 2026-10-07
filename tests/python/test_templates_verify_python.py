@@ -39,6 +39,15 @@ if name == "ruff" and "--show-files" in args:
         for path in paths:
             print(path.resolve())
     sys.exit(2 if mode == "discover" else 0)
+if name == "mypy" and mode.startswith("mypy-"):
+    config = args[args.index("--config-file") + 1]
+    if mode == "mypy-stderr":
+        print("plugin: informational note", file=sys.stderr)
+        print("note: not a diagnostic of " + config + ": x", file=sys.stderr)
+    else:
+        print(config + ": [mypy]: Unrecognized option: bogus = True", file=sys.stderr)
+    print("mypy passed")
+    sys.exit(1 if mode == "mypy-config-types" else 0)
 kind = "mypy" if name == "mypy" else ("format" if args[0] == "format" else "lint")
 if mode == kind:
     print("diagnostic " * 10000)
@@ -77,6 +86,10 @@ def invoke(caller, tmp_path, mode=""):
 def calls(tmp_path):
     path = tmp_path / "calls.jsonl"
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def statuses(report):
+    return {name: check["status"] for name, check in report["checks"].items()}
 
 
 def test_all_checks_run_against_declared_project(caller, tmp_path):
@@ -143,6 +156,7 @@ def test_invalid_targets_fail_before_tools(caller, tmp_path, targets):
     result, report, _ = invoke(caller, tmp_path)
     assert result.returncode == 2
     assert "target" in report["error"].lower()
+    assert set(statuses(report).values()) == {"planned"}
     assert not (tmp_path / "calls.jsonl").exists()
 
 
@@ -159,6 +173,7 @@ def test_missing_or_invalid_config_is_error(caller, tmp_path, content):
     result, report, _ = invoke(caller, tmp_path)
     assert result.returncode == 2
     assert report["status"] == "error"
+    assert set(statuses(report).values()) == {"planned"}
     assert not (tmp_path / "calls.jsonl").exists()
 
 
@@ -185,12 +200,62 @@ def test_local_mypy_config_enables_check(caller, tmp_path, filename):
     assert report["checks"]["mypy"]["status"] == "passed"
 
 
-def test_mypy_config_without_targets_is_not_silently_skipped(caller, tmp_path):
+@pytest.mark.parametrize(
+    "content", ["[mypy]\nstrict = True\n", "[other]\nkey = 1\n", "files = src\n"]
+)
+def test_mypy_config_without_targets_is_not_silently_skipped(caller, tmp_path, content):
     project, _ = caller
-    (project / "mypy.ini").write_text("[mypy]\nstrict = True\n", encoding="utf-8")
+    (project / "mypy.ini").write_text(content, encoding="utf-8")
     result, report, _ = invoke(caller, tmp_path)
     assert result.returncode == 2
-    assert "mypy" in report["error"]
+    assert "mypy.ini" in report["error"]
+    # The failure is in mypy's own configuration; Ruff discovery never ran.
+    assert statuses(report) == {
+        "discovery": "planned",
+        "lint": "planned",
+        "format": "planned",
+        "mypy": "error",
+    }
+    assert not (tmp_path / "calls.jsonl").exists()
+
+
+@pytest.mark.parametrize("filename", ["pyproject.toml", "mypy.ini"])
+@pytest.mark.parametrize(
+    ("mode", "mypy_exit"), [("mypy-config", 0), ("mypy-config-types", 1)]
+)
+def test_mypy_config_diagnostic_is_error_regardless_of_exit_code(
+    caller, tmp_path, filename, mode, mypy_exit
+):
+    project, _ = caller
+    if filename == "mypy.ini":
+        config = project / "pyproject.toml"
+        config.write_text(config.read_text().split("[tool.mypy]")[0], encoding="utf-8")
+        (project / filename).write_text("[mypy]\nfiles = src\n", encoding="utf-8")
+    result, report, directory = invoke(caller, tmp_path, mode)
+    assert result.returncode == 2
+    assert report["status"] == "error"
+    assert statuses(report) == {
+        "discovery": "passed",
+        "lint": "passed",
+        "format": "passed",
+        "mypy": "error",
+    }
+    call = report["checks"]["mypy"]["calls"][-1]
+    assert call["argv"][-2:] == ["--config-file", filename]
+    assert call["exit_code"] == mypy_exit
+    assert filename in report["error"]
+    assert call["stderr"] in report["error"]
+    stderr = (directory / call["stderr"]).read_text(encoding="utf-8")
+    assert "Unrecognized option" in stderr
+
+
+def test_unrelated_mypy_stderr_is_not_a_config_error(caller, tmp_path):
+    result, report, directory = invoke(caller, tmp_path, "mypy-stderr")
+    assert result.returncode == 0, result.stderr
+    assert report["checks"]["mypy"]["status"] == "passed"
+    call = report["checks"]["mypy"]["calls"][-1]
+    stderr = (directory / call["stderr"]).read_text(encoding="utf-8")
+    assert "informational note" in stderr
 
 
 def test_unknown_cli_option_is_rejected(caller):

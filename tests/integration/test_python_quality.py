@@ -26,6 +26,7 @@ GATE = ROOT / "templates/verify-python.py"
         ("excluded", 2, "discovery", "error"),
         ("format-excluded", 1, "format", "failed"),
         ("mypy-no-target", 1, "mypy", "failed"),
+        ("mypy-config", 2, "mypy", "error"),
     ],
 )
 def test_real_tools(tmp_path, case, exit_code, check, status):
@@ -62,6 +63,12 @@ def test_real_tools(tmp_path, case, exit_code, check, status):
             config.read_text().replace(
                 'files = ["src", "tests"]', 'files = ["missing/**/*.py"]'
             ),
+            encoding="utf-8",
+        )
+    elif case == "mypy-config":
+        # mypy reports an unknown option on stderr but still exits 0.
+        config.write_text(
+            config.read_text().replace("strict = true", "strict = true\nbogus = true"),
             encoding="utf-8",
         )
     if case == "format-excluded":

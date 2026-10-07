@@ -16,6 +16,7 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib import metadata
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict
@@ -60,7 +61,7 @@ def mypy_config(project: Path, tool: dict[str, Any]) -> str | None:
             section = tool.get("mypy")
         else:
             config = configparser.ConfigParser(interpolation=None)
-            config.read_string(path.read_text(encoding="utf-8"))
+            config.read_string(path.read_text(encoding="utf-8"), source=name)
             section = dict(config["mypy"]) if config.has_section("mypy") else None
             if section is None and name != "setup.cfg":
                 raise ValueError(f"{name}: [mypy] section is required")
@@ -110,6 +111,24 @@ def batches(paths: list[str]) -> Iterator[list[str]]:
         yield batch
 
 
+@contextmanager
+def attributed(check: Check) -> Iterator[None]:
+    """Record an error on the check whose own step could not complete."""
+    try:
+        yield
+    except (OSError, ValueError, configparser.Error):
+        check["status"] = "error"
+        raise
+
+
+def reject_config_diagnostics(stderr: Path, config: str) -> None:
+    # mypy prints "<config>: ..." for configuration problems but does not fail on them.
+    prefix = f"{config}: "
+    lines = stderr.read_text(encoding="utf-8", errors="replace").splitlines()
+    if any(line.startswith(prefix) for line in lines):
+        raise ValueError(f"mypy reported problems in {config}; see {stderr.name}")
+
+
 def execute(argv: list[str], project: Path, directory: Path, check: Check) -> Path:
     index = len(list(directory.glob("*.stdout")))
     stdout = directory / f"{index:04}.stdout"
@@ -140,7 +159,8 @@ def run(project: Path, directory: Path, report: Report) -> int:
         raise ValueError("pyproject.toml requires [tool.ruff]")
     declared = target_paths(project, tool)
     report["declared_targets"] = declared
-    selected_mypy = mypy_config(project, tool)
+    with attributed(checks["mypy"]):
+        selected_mypy = mypy_config(project, tool)
     report["mypy_config"] = selected_mypy
     report["config_sha256"] = {
         name: hashlib.sha256((project / name).read_bytes()).hexdigest()
@@ -149,36 +169,37 @@ def run(project: Path, directory: Path, report: Report) -> int:
     }
     targets = set()
     discovery = checks["discovery"]
-    for target in declared:
-        output = execute(
-            [
-                sys.executable,
-                "-m",
-                "ruff",
-                "check",
-                "--config",
-                "pyproject.toml",
-                "--no-fix",
-                "--show-files",
-                "--",
-                target,
-            ],
-            project,
-            directory,
-            discovery,
-        )
-        if discovery["status"] == "failed":
-            raise ValueError("Ruff target discovery failed; see its stdout/stderr")
-        found = []
-        for line in output.read_text(encoding="utf-8").splitlines():
-            path = Path(line).resolve()
-            if not path.is_relative_to(project) or not path.is_file():
-                raise ValueError(f"invalid discovered target: {line!r}")
-            if path.suffix in (".py", ".pyi") and path != Path(__file__).resolve():
-                found.append(path.relative_to(project).as_posix())
-        if not found:
-            raise ValueError(f"no Python targets after Ruff exclusions: {target!r}")
-        targets.update(found)
+    with attributed(discovery):
+        for target in declared:
+            output = execute(
+                [
+                    sys.executable,
+                    "-m",
+                    "ruff",
+                    "check",
+                    "--config",
+                    "pyproject.toml",
+                    "--no-fix",
+                    "--show-files",
+                    "--",
+                    target,
+                ],
+                project,
+                directory,
+                discovery,
+            )
+            if discovery["status"] == "failed":
+                raise ValueError("Ruff target discovery failed; see its stdout/stderr")
+            found = []
+            for line in output.read_text(encoding="utf-8").splitlines():
+                path = Path(line).resolve()
+                if not path.is_relative_to(project) or not path.is_file():
+                    raise ValueError(f"invalid discovered target: {line!r}")
+                if path.suffix in (".py", ".pyi") and path != Path(__file__).resolve():
+                    found.append(path.relative_to(project).as_posix())
+            if not found:
+                raise ValueError(f"no Python targets after Ruff exclusions: {target!r}")
+            targets.update(found)
     report["targets"] = sorted(targets)
     # Explicit files keep lint and format on the same discovered set, even with force-exclude.
     for name, options in (
@@ -203,12 +224,17 @@ def run(project: Path, directory: Path, report: Report) -> int:
                 checks[name],
             )
     if selected_mypy:
-        execute(
-            [sys.executable, "-m", "mypy", "--config-file", selected_mypy],
-            project,
-            directory,
-            checks["mypy"],
-        )
+        mypy = checks["mypy"]
+        with attributed(mypy):
+            execute(
+                [sys.executable, "-m", "mypy", "--config-file", selected_mypy],
+                project,
+                directory,
+                mypy,
+            )
+            reject_config_diagnostics(
+                directory / mypy["calls"][-1]["stderr"], selected_mypy
+            )
     else:
         checks["mypy"].update(
             {
@@ -257,8 +283,6 @@ def main() -> int:
     except (OSError, ValueError, configparser.Error) as exc:
         code = 2
         report.update({"status": "error", "error": str(exc)})
-        if report["checks"]["lint"]["status"] == "planned":
-            report["checks"]["discovery"]["status"] = "error"
     path = directory / "report.json"
     path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
