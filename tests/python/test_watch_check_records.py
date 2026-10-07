@@ -95,7 +95,7 @@ def cli(request, tmp_path):
     env = {k: v for k, v in os.environ.items() if k.upper() != "PATH"}
     env.update(PATH=str(stub) + os.pathsep + os.environ.get("PATH", ""),
                WATCH_STUB=str(tmp_path), PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
-               TMP=str(tmp_path), TEMP=str(tmp_path))
+               TMP=str(tmp_path), TEMP=str(tmp_path), TMPDIR=str(tmp_path))
     output = tmp_path / "記録 with spaces 'quote' $value"
 
     def run(mode="many", format="json", limit=2, timeout=30, record=True, destination=None, expect=True,
