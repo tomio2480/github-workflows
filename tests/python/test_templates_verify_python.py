@@ -44,10 +44,12 @@ if name == "mypy" and mode.startswith("mypy-"):
     if mode == "mypy-stderr":
         print("plugin: informational note", file=sys.stderr)
         print("note: not a diagnostic of " + config + ": x", file=sys.stderr)
+    elif mode == "mypy-config-line":
+        print(config + ':3: error: Error importing plugin x: No module named x  [misc]', file=sys.stderr)
     else:
         print(config + ": [mypy]: Unrecognized option: bogus = True", file=sys.stderr)
     print("mypy passed")
-    sys.exit(1 if mode == "mypy-config-types" else 0)
+    sys.exit({"mypy-config-types": 1, "mypy-config-line": 2}.get(mode, 0))
 kind = "mypy" if name == "mypy" else ("format" if args[0] == "format" else "lint")
 if mode == kind:
     print("diagnostic " * 10000)
@@ -220,11 +222,17 @@ def test_mypy_config_without_targets_is_not_silently_skipped(caller, tmp_path, c
 
 
 @pytest.mark.parametrize("filename", ["pyproject.toml", "mypy.ini"])
+# mypy writes "<config>: ..." for unknown options and "<config>:<line>: error: ..." for plugin failures.
 @pytest.mark.parametrize(
-    ("mode", "mypy_exit"), [("mypy-config", 0), ("mypy-config-types", 1)]
+    ("mode", "mypy_exit", "message"),
+    [
+        ("mypy-config", 0, "Unrecognized option"),
+        ("mypy-config-types", 1, "Unrecognized option"),
+        ("mypy-config-line", 2, "Error importing plugin"),
+    ],
 )
 def test_mypy_config_diagnostic_is_error_regardless_of_exit_code(
-    caller, tmp_path, filename, mode, mypy_exit
+    caller, tmp_path, filename, mode, mypy_exit, message
 ):
     project, _ = caller
     if filename == "mypy.ini":
@@ -246,7 +254,7 @@ def test_mypy_config_diagnostic_is_error_regardless_of_exit_code(
     assert filename in report["error"]
     assert call["stderr"] in report["error"]
     stderr = (directory / call["stderr"]).read_text(encoding="utf-8")
-    assert "Unrecognized option" in stderr
+    assert message in stderr
 
 
 def test_unrelated_mypy_stderr_is_not_a_config_error(caller, tmp_path):

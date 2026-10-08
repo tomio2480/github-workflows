@@ -11,6 +11,7 @@ import configparser
 import hashlib
 import json
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -122,10 +123,11 @@ def attributed(check: Check) -> Iterator[None]:
 
 
 def reject_config_diagnostics(stderr: Path, config: str) -> None:
-    # mypy prints "<config>: ..." for configuration problems but does not fail on them.
-    prefix = f"{config}: "
+    # mypy prints "<config>: ..." or "<config>:<line>: ..." for configuration problems.
+    # Some of them, such as unknown options, do not make it fail.
+    diagnostic = re.compile(re.escape(config) + r":(\d+:)*\s")
     lines = stderr.read_text(encoding="utf-8", errors="replace").splitlines()
-    if any(line.startswith(prefix) for line in lines):
+    if any(diagnostic.match(line) for line in lines):
         raise ValueError(f"mypy reported problems in {config}; see {stderr.name}")
 
 
