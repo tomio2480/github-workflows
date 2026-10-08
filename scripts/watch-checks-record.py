@@ -36,13 +36,14 @@ def on_path(name):
 
     On Windows, shutil.which and CreateProcess both try the current directory first.
     The watcher runs inside the checkout it watches, which may hold a fork PR's files,
-    so a gh placed there must never run. Empty PATH entries are skipped for the same reason.
+    so a gh placed there must never run. Empty and relative PATH entries, "." included,
+    resolve inside that checkout and are skipped for the same reason.
     """
     extensions = [""]
     if os.name == "nt":
         extensions = [ext for ext in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if ext]
     for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if not entry:
+        if not os.path.isabs(entry):
             continue
         for extension in extensions:
             candidate = os.path.join(entry, name + extension)

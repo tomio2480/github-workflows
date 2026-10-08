@@ -330,6 +330,17 @@ def test_query_prefers_gh_on_path_over_the_current_directory(tmp_path):
     assert (planted.exists(), trusted.exists()) == (False, True), result.stderr
 
 
+def test_query_ignores_relative_path_entries(tmp_path):
+    # "." and "tools" would resolve inside the checkout, so only absolute entries may supply gh.
+    checkout = tmp_path / "checkout"
+    planted, nested, trusted = tmp_path / "planted-ran", tmp_path / "nested-ran", tmp_path / "path-ran"
+    fake_gh(checkout, planted)
+    fake_gh(checkout / "tools", nested)
+    fake_gh(tmp_path / "bin", trusted)
+    result = recorder_query(tmp_path, checkout, os.pathsep.join([".", "tools", str(tmp_path / "bin")]))
+    assert (planted.exists(), nested.exists(), trusted.exists()) == (False, False, True), result.stderr
+
+
 def test_query_does_not_fall_back_to_the_current_directory(tmp_path):
     checkout, planted = tmp_path / "checkout", tmp_path / "planted-ran"
     fake_gh(checkout, planted)
