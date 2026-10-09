@@ -79,7 +79,8 @@ def test_real_tools(tmp_path, case, exit_code, check, status):
         extra = "show_absolute_path = true\n" if case == "mypy-plugin-absolute" else ""
         config.write_text(
             config.read_text().replace(
-                "strict = true", f'strict = true\n{extra}plugins = ["nonexistent_plugin_xyz"]'
+                "strict = true",
+                f'strict = true\n{extra}plugins = ["nonexistent_plugin_xyz"]',
             ),
             encoding="utf-8",
         )
