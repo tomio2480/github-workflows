@@ -1,8 +1,11 @@
 """Exercise both public shells with real native processes and saved observations."""
 
+import importlib.util
 import json
+import ntpath
 import os
 from pathlib import Path
+import posixpath
 import queue
 import shutil
 import subprocess
@@ -339,6 +342,42 @@ def test_query_ignores_relative_path_entries(tmp_path):
     fake_gh(tmp_path / "bin", trusted)
     result = recorder_query(tmp_path, checkout, os.pathsep.join([".", "tools", str(tmp_path / "bin")]))
     assert (planted.exists(), nested.exists(), trusted.exists()) == (False, False, True), result.stderr
+
+
+def load_recorder():
+    spec = importlib.util.spec_from_file_location("watch_checks_record", ROOT / "scripts" / "watch-checks-record.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# Windows resolves "\work\repo" against the current drive and "C:tools" against that drive's folder.
+# Python before 3.13 calls the former absolute, so the rule must not rest on os.path.isabs.
+@pytest.mark.parametrize("flavour,entry,searched", [
+    (ntpath, "C:\\tools", True),
+    (ntpath, "C:/tools", True),
+    (ntpath, "\\\\srv\\share\\bin", True),
+    (ntpath, "\\\\srv\\share", True),
+    (ntpath, "\\work\\repo", False),
+    (ntpath, "/work/repo", False),
+    (ntpath, "C:tools", False),
+    (ntpath, "tools", False),
+    (ntpath, ".", False),
+    (ntpath, "", False),
+    (posixpath, "/usr/bin", True),
+    (posixpath, "tools", False),
+    (posixpath, "", False),
+])
+def test_only_fully_qualified_path_entries_are_searched(flavour, entry, searched):
+    assert load_recorder().qualified(entry, flavour) is searched
+
+
+@pytest.mark.skipif(os.name != "nt", reason="root-relative PATH entries exist only on Windows")
+def test_query_ignores_root_relative_path_entries(tmp_path):
+    checkout, planted = tmp_path / "checkout", tmp_path / "planted-ran"
+    fake_gh(checkout, planted)
+    result = recorder_query(tmp_path, checkout, str(checkout)[len(checkout.drive):])
+    assert not planted.exists(), result.stderr
 
 
 def test_query_does_not_fall_back_to_the_current_directory(tmp_path):

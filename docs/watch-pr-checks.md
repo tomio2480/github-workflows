@@ -26,7 +26,11 @@ pwsh -File bin/watch-pr-checks.ps1 -Pr 165 -Format json -Limit 5 -OutputDir C:\T
 追加 package は不要である．`scripts/watch-checks-record.py` を隣接して配置する．
 記録しない既定の呼び出しには Python を要求しない．
 記録モードは `gh` を PATH のうち絶対パスの項目からだけ探し，作業中のフォルダは探さない．
+Windows では，ドライブ名とルートを持つ項目と UNC の項目だけを絶対パスとみなす．
 監視対象の checkout に置かれた `gh` を実行しないためである．
+PATH の項目は書かれたとおりに読み，前後の空白や `~` は展開しない．見つからなければ失敗する．
+Python 本体と，記録しない呼び出しの `gh` は，シェルの探索に従う．
+PATH に `.` や相対の項目を置くと，checkout 内のファイルを実行しうる．
 
 表 1 に追加 option を示す．監視の時間と SHA の option は従来どおりである．
 

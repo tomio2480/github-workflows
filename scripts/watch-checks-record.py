@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import ntpath
 import os
 from pathlib import Path
 import subprocess
@@ -31,19 +32,31 @@ def parse_checks(raw):
     return data
 
 
+def qualified(entry, flavour=os.path):
+    """Tell whether a PATH entry names one folder whatever the current folder and drive are.
+
+    Windows resolves "\\tools" against the current drive and "C:tools" against that drive's
+    current folder. Python before 3.13 calls the former absolute, so check drive and root here.
+    """
+    if flavour is ntpath:
+        drive, rest = ntpath.splitdrive(entry)
+        return bool(drive) and (drive[:2] in ("\\\\", "//") or rest[:1] in ("\\", "/"))
+    return flavour.isabs(entry)
+
+
 def on_path(name):
     """Find an executable in the PATH entries alone and return its absolute path.
 
     On Windows, shutil.which and CreateProcess both try the current directory first.
     The watcher runs inside the checkout it watches, which may hold a fork PR's files,
-    so a gh placed there must never run. Empty and relative PATH entries, "." included,
-    resolve inside that checkout and are skipped for the same reason.
+    so a gh placed there must never run. PATH entries that are not fully qualified,
+    "." included, may resolve inside that checkout and are skipped for the same reason.
     """
     extensions = [""]
     if os.name == "nt":
         extensions = [ext for ext in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if ext]
     for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if not os.path.isabs(entry):
+        if not qualified(entry):
             continue
         for extension in extensions:
             candidate = os.path.join(entry, name + extension)
