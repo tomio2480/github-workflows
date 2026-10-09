@@ -28,6 +28,7 @@ GATE = ROOT / "templates/verify-python.py"
         ("mypy-no-target", 1, "mypy", "failed"),
         ("mypy-config", 2, "mypy", "error"),
         ("mypy-plugin", 2, "mypy", "error"),
+        ("mypy-plugin-absolute", 2, "mypy", "error"),
     ],
 )
 def test_real_tools(tmp_path, case, exit_code, check, status):
@@ -72,11 +73,13 @@ def test_real_tools(tmp_path, case, exit_code, check, status):
             config.read_text().replace("strict = true", "strict = true\nbogus = true"),
             encoding="utf-8",
         )
-    elif case == "mypy-plugin":
+    elif case in ("mypy-plugin", "mypy-plugin-absolute"):
         # A plugin that cannot be imported is reported as "<config>:<line>: error: ...".
+        # show_absolute_path makes mypy print the absolute path of the config file there.
+        extra = "show_absolute_path = true\n" if case == "mypy-plugin-absolute" else ""
         config.write_text(
             config.read_text().replace(
-                "strict = true", 'strict = true\nplugins = ["nonexistent_plugin_xyz"]'
+                "strict = true", f'strict = true\n{extra}plugins = ["nonexistent_plugin_xyz"]'
             ),
             encoding="utf-8",
         )

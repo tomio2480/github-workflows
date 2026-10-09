@@ -46,10 +46,13 @@ if name == "mypy" and mode.startswith("mypy-"):
         print("note: not a diagnostic of " + config + ": x", file=sys.stderr)
     elif mode == "mypy-config-line":
         print(config + ':3: error: Error importing plugin x: No module named x  [misc]', file=sys.stderr)
+    elif mode == "mypy-config-abs":
+        absolute = str(pathlib.Path(config).resolve())
+        print(absolute + ':1: error: Error importing plugin x: No module named x  [misc]', file=sys.stderr)
     else:
         print(config + ": [mypy]: Unrecognized option: bogus = True", file=sys.stderr)
     print("mypy passed")
-    sys.exit({"mypy-config-types": 1, "mypy-config-line": 2}.get(mode, 0))
+    sys.exit({"mypy-config-types": 1, "mypy-config-line": 2, "mypy-config-abs": 2}.get(mode, 0))
 kind = "mypy" if name == "mypy" else ("format" if args[0] == "format" else "lint")
 if mode == kind:
     print("diagnostic " * 10000)
@@ -223,12 +226,14 @@ def test_mypy_config_without_targets_is_not_silently_skipped(caller, tmp_path, c
 
 @pytest.mark.parametrize("filename", ["pyproject.toml", "mypy.ini"])
 # mypy writes "<config>: ..." for unknown options and "<config>:<line>: error: ..." for plugin failures.
+# With show_absolute_path the latter starts with the absolute path of the config file instead.
 @pytest.mark.parametrize(
     ("mode", "mypy_exit", "message"),
     [
         ("mypy-config", 0, "Unrecognized option"),
         ("mypy-config-types", 1, "Unrecognized option"),
         ("mypy-config-line", 2, "Error importing plugin"),
+        ("mypy-config-abs", 2, "Error importing plugin"),
     ],
 )
 def test_mypy_config_diagnostic_is_error_regardless_of_exit_code(

@@ -122,10 +122,13 @@ def attributed(check: Check) -> Iterator[None]:
         raise
 
 
-def reject_config_diagnostics(stderr: Path, config: str) -> None:
-    # mypy prints "<config>: ..." or "<config>:<line>: ..." for configuration problems.
+def reject_config_diagnostics(stderr: Path, project: Path, config: str) -> None:
+    # mypy prints "<config>: ..." or "<config>:<line>: ..." for configuration problems,
+    # with the absolute path of the file when show_absolute_path is set.
     # Some of them, such as unknown options, do not make it fail.
-    diagnostic = re.compile(re.escape(config) + r":(\d+:)*\s")
+    names = "|".join(re.escape(name) for name in (config, str(project / config)))
+    flags = re.IGNORECASE if sys.platform == "win32" else 0
+    diagnostic = re.compile(rf"(?:{names}):(\d+:)*\s", flags)
     lines = stderr.read_text(encoding="utf-8", errors="replace").splitlines()
     if any(diagnostic.match(line) for line in lines):
         raise ValueError(f"mypy reported problems in {config}; see {stderr.name}")
@@ -235,7 +238,7 @@ def run(project: Path, directory: Path, report: Report) -> int:
                 mypy,
             )
             reject_config_diagnostics(
-                directory / mypy["calls"][-1]["stderr"], selected_mypy
+                directory / mypy["calls"][-1]["stderr"], project, selected_mypy
             )
     else:
         checks["mypy"].update(
