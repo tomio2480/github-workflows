@@ -27,6 +27,7 @@
 #   中央設定の解決・runtime 生成・集計・絞り込みは実物を動かす．
 
 setup() {
+  bats_require_minimum_version 1.5.0
   CENTRAL_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
   SCRIPT="${CENTRAL_ROOT}/bin/lint-md.sh"
 
@@ -49,6 +50,9 @@ if [ -n "${FAKE_MDLINT_EXEC_ERROR:-}" ]; then
   exit 1
 fi
 echo "markdownlint-cli2 v0.0.0-fake"
+if [ -n "${FAKE_CONTEXT_MUTATION_FILE:-}" ]; then
+  printf 'rules: []\n# changed during lint\n' > "${FAKE_CONTEXT_MUTATION_FILE}"
+fi
 printf '%s\n' "$@" > "${FAKE_LOG_DIR}/mdlint-args"
 pwd > "${FAKE_LOG_DIR}/mdlint-cwd"
 if [ -n "${FAKE_INSPECT_FILE:-}" ] && [ -f "${FAKE_INSPECT_FILE}" ]; then
@@ -130,7 +134,105 @@ FAKE
 teardown() {
   unset FAKE_MDLINT_FINDINGS FAKE_TEXTLINT_FINDINGS FAKE_TEXTLINT_EXEC_ERROR \
     FAKE_FINDING_PATH FAKE_TEXTLINT_ABSOLUTE BASH_ENV FAKE_MDLINT_EXEC_ERROR \
-    FAKE_INSPECT_FILE FAKE_TEXTLINT_UNMAPPED
+    FAKE_INSPECT_FILE FAKE_TEXTLINT_UNMAPPED FAKE_CONTEXT_MUTATION_FILE
+}
+
+@test "saved context keeps the resolved config and runtime facts" {
+  echo "# new" > new.md
+  printf 'rules: []\n' > prh.yml
+  run --separate-stderr bash "${SCRIPT}" --format json --output-dir "${BATS_TEST_TMPDIR}/reports"
+  [ "${status}" -eq 0 ]
+  [ -z "${stderr}" ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, pathlib, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); c=json.loads(pathlib.Path(r["artifacts"]["context"]).read_text(encoding="utf-8")); assert c["stability"] == "stable"; assert c["files"]["prh"]["origin"] == "caller"; assert c["runtime"]["node"]["version"]; assert r["context"]["comparison_counts"]["unknown"] > 0' "${BATS_TEST_TMPDIR}/result.json"
+}
+
+@test "saved context detects config mutation during a successful lint" {
+  echo "# new" > new.md
+  printf 'rules: []\n' > prh.yml
+  export FAKE_CONTEXT_MUTATION_FILE="${WORK}/prh.yml"
+  run --separate-stderr bash "${SCRIPT}" --format json --output-dir "${BATS_TEST_TMPDIR}/reports"
+  [ "${status}" -eq 2 ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, pathlib, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); c=json.loads(pathlib.Path(r["artifacts"]["context"]).read_text(encoding="utf-8")); assert r["status"] == "error"; assert c["stability"] == "changed"; assert "prh" in c["changed_files"]' "${BATS_TEST_TMPDIR}/result.json"
+}
+
+@test "saved JSON run preserves findings and removes only the lint copy" {
+  echo "# new" > new.md
+  export FAKE_MDLINT_FINDINGS=1
+
+  run --separate-stderr bash "${SCRIPT}" --format json --output-dir "${BATS_TEST_TMPDIR}/記録 with spaces"
+
+  [ "${status}" -eq 1 ]
+  [ -z "${stderr}" ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, pathlib, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); assert r["status"] == "findings"; assert r["exit_code"] == 1; assert r["display"]["total"] == 1; assert pathlib.Path(r["artifacts"]["full"]).is_file(); assert pathlib.Path(r["artifacts"]["markdownlint"]).is_file()' "${BATS_TEST_TMPDIR}/result.json"
+  [ ! -d "$(cat "${FAKE_LOG_DIR}/mdlint-cwd")" ]
+}
+
+@test "saved failure retains original diagnostics and exit 2" {
+  echo "# new" > new.md
+  export FAKE_TEXTLINT_EXEC_ERROR=1
+
+  run --separate-stderr bash "${SCRIPT}" --format json --output-dir "${BATS_TEST_TMPDIR}/reports"
+
+  [ "${status}" -eq 2 ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, pathlib, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); assert r["status"] == "error"; assert r["display"]["total"] is None; assert "cannot resolve rule" in pathlib.Path(r["artifacts"]["diagnostics"]).read_text(encoding="utf-8")' "${BATS_TEST_TMPDIR}/result.json"
+}
+
+@test "saved empty scope is not applicable and never starts a linter" {
+  run --separate-stderr bash "${SCRIPT}" --format json --output-dir "${BATS_TEST_TMPDIR}/reports"
+
+  [ "${status}" -eq 0 ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); assert r["status"] == "not_applicable"; assert r["coverage"]["selected"] == 0' "${BATS_TEST_TMPDIR}/result.json"
+  [ ! -f "${FAKE_LOG_DIR}/mdlint-args" ]
+}
+
+@test "saved summary limits display and resolves output relative to the invocation" {
+  mkdir docs
+  echo "# new" > docs/new.md
+  export FAKE_MDLINT_FINDINGS=1 FAKE_FINDING_PATH=docs/new.md
+  cd docs
+
+  run --separate-stderr bash "${SCRIPT}" --format summary --limit 0 --output-dir reports new.md
+
+  [ "${status}" -eq 1 ]
+  [ -z "${stderr}" ]
+  [[ "${output}" == *"omitted=1"* ]]
+  [[ "${output}" != *"fake mdlint finding"* ]]
+  grep -q 'fake mdlint finding' reports/lint-md.*/full.txt
+  [ ! -d ../reports ]
+}
+
+@test "saved full mode preserves stdout stderr and the findings exit code" {
+  echo "# new" > new.md
+  export FAKE_MDLINT_FINDINGS=1
+
+  run --separate-stderr bash "${SCRIPT}" --output-dir "${BATS_TEST_TMPDIR}/reports"
+
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"fake mdlint finding"* ]]
+  [[ "${stderr}" == *"must be fixed before push"* ]]
+  [[ "${stderr}" == *"saved run:"* ]]
+}
+
+@test "saved selection failure records unknown scope instead of zero" {
+  run --separate-stderr bash "${SCRIPT}" --format json --base missing-ref --output-dir "${BATS_TEST_TMPDIR}/reports"
+
+  [ "${status}" -eq 2 ]
+  printf '%s' "${output}" > "${BATS_TEST_TMPDIR}/result.json"
+  python -c 'import json, sys; r=json.load(open(sys.argv[1], encoding="utf-8")); assert r["status"] == "error"; assert r["coverage"]["selected"] is None; assert r["display"]["total"] is None' "${BATS_TEST_TMPDIR}/result.json"
+}
+
+@test "rejects an existing file as a saved output directory before running lint" {
+  echo "keep" > existing.txt
+  run bash "${SCRIPT}" --format json --output-dir existing.txt
+
+  [ "${status}" -eq 2 ]
+  [ "$(cat existing.txt)" = keep ]
+  [ ! -f "${FAKE_LOG_DIR}/mdlint-args" ]
 }
 
 @test "exits 0 without running lint when nothing changed" {
