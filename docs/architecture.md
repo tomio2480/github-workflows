@@ -301,7 +301,7 @@ composite action は，caller の job 内の 1 ステップとして実行され
 対象は `concurrency`/`timeout-minutes`/`permissions` などである．
 中央から効かせるには，caller のファイルを書き換える以外に方法がない．
 
-一方 `claude-review`（v2.6〜）と `shell-quality` は reusable workflow 形式である．
+一方 `claude-review`（v2.6〜），`shell-quality`，`python-lint` は reusable workflow 形式である．
 job の `timeout-minutes` は中央 workflow だけで完結する．
 `concurrency` は caller ごとの grouping を明示するため caller template に置く．
 `templates/.github/workflows/shell-quality.yml` も連続 push の旧 run を cancel する．
@@ -345,8 +345,8 @@ job・workflow レベルの設定が要る新機能では，reusable workflow �
 
 ### comment 発火の workflow へ `concurrency` を足さない
 
-配布中の caller template のうち `concurrency` を持つのは 4 本である．
-`md-lint`・`session-url-check`・`shell-quality`・`workflow-lint` が当たる．
+配布中の caller template のうち `concurrency` を持つのは 5 本である．
+`md-lint`・`session-url-check`・`shell-quality`・`workflow-lint`・`python-lint` が当たる．
 いずれも `pull_request` 発火であり，group は `<名前>-${{ github.ref }}` である．
 
 `claude-review` は持たない．中央の self-caller も同じである．
@@ -431,6 +431,7 @@ comment 発火の workflow は，同一 PR で連続実行しても打ち消す�
 | 単体 | `scripts/`・`bin/` のロジックと，`templates/`・設定ファイルの回帰検査 | pytest / bats-core | `tests/python/` / `tests/bash/` | ローカル `pytest` / `bats`，CI の `unit-python` / `unit-bash` job |
 | 静的解析 | 本リポジトリ自身のシェル資産 | ShellCheck / shfmt / PSScriptAnalyzer | `bin/verify-shell.py` | CI の `shell-quality-self` job |
 | workflow 統合 | Shell quality toolchain と caller contract | local reusable workflow 呼び出し | `tests/fixtures/shell-quality/` + `.github/workflows/test-self-lint.yml` | CI の `shell-quality-reusable` job |
+| workflow 統合 | Python lint の caller contract と実 tool の対照 | local reusable workflow と pytest | `tests/fixtures/python-quality/` + `tests/integration/test_python_quality.py` | CI の `python-lint-reusable`・`python-lint-controls` jobs |
 | 統合 | composite action の step 連携 | `./.github/actions/markdown-lint` の local 参照 | `tests/fixtures/markdown/` + `.github/workflows/test-self-lint.yml` の `integration-action` job | CI で PR 起動時 |
 | 統合 | `session-url-check` の自己検査 | `./.github/actions/session-url-check` の local 参照（本 PR 自身が対象） | `.github/workflows/test-self-lint.yml` の `integration-session-url-check` job | CI で PR 起動時 |
 | 統合 | `workflow-lint` の自己検査 | `./.github/actions/workflow-lint` の local 参照（本リポジトリ自身の workflow・action・templates が対象） | `.github/workflows/test-self-lint.yml` の `integration-workflow-lint` job | CI で PR 起動時 |

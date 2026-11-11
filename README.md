@@ -2,7 +2,7 @@
 
 ## 要約
 
-Markdown lint と Shell / CLI quality の共通 GitHub Actions を配布する．
+Markdown lint，Shell / CLI quality，Python lint の共通 GitHub Actions を配布する．
 Markdown lint は v2 以降 composite action として配布する．
 対象 repo は caller workflow 1 枚で導入できる．
 Shell quality は任意の reusable workflow である．
@@ -20,6 +20,7 @@ v2.6 以降は，`@claude` で起動するレビュー用 workflow も配布す�
 - 🎯 このリポジトリでできること
 - 🖥 push 前ローカル lint（任意）
 - 🐚 Shell quality workflow（任意）
+- Python lint workflow（任意）
 - 🔗 セッション URL 検査 workflow（任意）
 - 🧪 Workflow 検査 workflow（任意）
 - 🤖 Claude レビュー workflow（任意）
@@ -50,7 +51,7 @@ Gemini Code Assist や CodeRabbit の Bot 的な使い勝手を，無料で自�
 ## 🖥 push 前ローカル lint（任意）
 
 `bin/lint-md.sh` は，中央リポジトリの設定を使って手元で Markdown を lint する．
-呼び出し元リポジトリには何も置かないため，中央設定との drift が生じない．
+設定は中央 checkout から読み，caller 側の override を優先する．
 軽微な文体指摘のたびに CI を 1 巡させる無駄を減らす（Issue #134）．
 
 ```bash
@@ -58,8 +59,10 @@ bash /path/to/github-workflows/bin/lint-md.sh
 ```
 
 既定では変更した Markdown だけを報告する．
-lint 自体は CI と同じ設定・同じ集計を通し，違いは終了コードだけである．
+設定の解決と指摘の集計は CI と共用する．中央の参照版や runtime が違えば結果はずれうる．
 CI の reviewdog は非ブロッキングだが，ローカルは指摘ありで非 0 終了する．
+`--format summary` または `--format json` では表示件数を制限し，全文と診断を保存する．
+使用した設定 hash・runtime・caller の宣言との差は `context.json` に保存する．
 引数・キャッシュ・Windows での実行は
 [push 前ローカル Markdown lint](docs/local-lint.md) を参照する．
 
@@ -83,6 +86,13 @@ PowerShell 資産を持つ repo は `templates/analyze-powershell.ps1` も対で
 詳しい caller contract と固定 version は
 [Shell / CLI quality reusable workflow](docs/shell-quality.md) を参照する．
 ローカル実行の手順も同じ文書にある．
+
+## Python lint workflow（任意）
+
+`.github/workflows/python-lint.yml` は uv project の caller 所有 gate を実行する．
+Ruff lint と整形確認は必須，mypy は project の設定があれば必須となる．
+検査失敗は job を失敗させる．結果の JSON と全文ログは artifact に保存する．
+[導入と契約](docs/python-lint.md) に caller・gate の雛形と対応範囲を示す．
 
 ## 🔗 セッション URL 検査 workflow（任意）
 
@@ -215,6 +225,7 @@ github-workflows/
 │   │   ├── claude-review.yml      # Claude レビュー用 reusable workflow（v2.6〜）
 │   │   ├── claude-review-self.yml # 中央自身の @claude 起動 self-caller
 │   │   ├── md-lint.yml            # 自リポジトリ向けの Markdown lint caller
+│   │   ├── python-lint.yml        # Python lint reusable workflow
 │   │   ├── shell-quality.yml      # Shell / CLI quality reusable workflow
 │   │   └── test-self-lint.yml     # 単体／統合テスト用 CI workflow
 │   └── dependabot.yml             # third-party action の自動更新
@@ -232,7 +243,9 @@ github-workflows/
 │   ├── normalize-lint-targets.py  # lint 対象を LF 正規化した複製として書き出す（v2.19.3〜）
 │   ├── post-lint-summary.sh       # PR に summary コメントを upsert（hidden marker / fail-open）
 │   ├── render-local-lint-report.py # ローカル lint の集計結果を端末向けに整形
-│   └── resolve-config-path.sh
+│   ├── lint-context.py            # 実行条件の記録と caller 宣言の照合
+│   ├── resolve-config-path.sh
+│   └── watch-checks-record.py     # 監視の照会記録と要約の共通処理
 ├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
 │   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部（verify-shell.py から呼ぶ）
 │   ├── check-native-calls.ps1     # native command の直接呼びを AST で検出（v2.19.1〜）
@@ -247,10 +260,12 @@ github-workflows/
 │       └── native.ps1             # native command 呼び出しの共通ヘルパー（v2.18〜）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
+│   ├── integration/               # 実 tool を使う Python gate の対照
 │   ├── bash/                      # bats-core
 │   ├── powershell/                # Pester（.ps1 の振る舞い）
 │   └── fixtures/
 │       ├── markdown/              # Markdown lint 統合テスト fixture
+│       ├── python-quality/        # Python lint の設定と lock
 │       ├── release-patch-stubs/   # 5.1 回帰テスト用の git・gh スタブ
 │       └── shell-quality/         # Shell quality toolchain probe
 ├── templates/                     # 各リポジトリにコピーするテンプレート
@@ -258,6 +273,7 @@ github-workflows/
 │   │   └── workflows/
 │   │       ├── claude-review.yml  # Claude レビュー用 caller（任意）
 │   │       ├── md-lint.yml        # 呼び出し側ワークフロー（lint 導入の必須ファイル）
+│   │       ├── python-lint.yml    # Python lint caller（任意）
 │   │       ├── session-url-check.yml # セッション URL 検査 caller（任意）
 │   │       ├── shell-quality.yml  # Shell quality caller（任意）
 │   │       └── workflow-lint.yml  # Workflow 検査 caller（任意）
@@ -268,6 +284,7 @@ github-workflows/
 │   ├── .prh-extra.yml             # caller-side 追加 prh 辞書のサンプル（v2.7〜，optional）
 │   ├── prh.yml                    # 中央辞書＋override 用
 │   ├── verify-shell.py            # Shell quality gate の雛形（v2.22〜，optional）
+│   ├── verify-python.py          # Python lint gate の雛形（任意）
 │   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部の雛形（v2.22〜，optional）
 │   └── lefthook.yml               # ローカル hook（任意）
 ├── docs/                          # 運用ガイド
@@ -281,9 +298,11 @@ github-workflows/
 │   ├── fork-usage.md
 │   ├── development-notes.md       # 設計判断とレビュー対応の知見
 │   ├── shell-quality.md           # Shell quality workflow の caller contract
+│   ├── python-lint.md             # Python lint workflow の caller contract
 │   ├── session-url-check.md       # セッション URL 検査 action の導入と限界
 │   ├── workflow-lint.md           # Workflow 検査 action の導入と pin 突合の判定
 │   ├── local-lint.md              # push 前ローカル Markdown lint の使い方
+│   ├── watch-pr-checks.md          # PR checks の監視と実行記録
 │   └── notes/                     # 日付つき設計判断・実装知見メモ
 ├── .markdownlint-cli2.yaml        # 自リポジトリ用 override（fixture を lint 対象に含める）
 ├── .textlintignore                # 同上
@@ -507,9 +526,11 @@ caller 固有の例外は per-repo override で吸収する前提とし，中央
 | [docs/fork-usage.md](docs/fork-usage.md) | フォーク運用 | 他利用者 |
 | [docs/development-notes.md](docs/development-notes.md) | 設計判断とレビュー対応の知見 | メンテナー・AI |
 | [docs/shell-quality.md](docs/shell-quality.md) | Shell quality workflow の導入と契約 | 利用者・AI |
+| [docs/python-lint.md](docs/python-lint.md) | Python lint workflow の導入と契約 | 利用者・AI |
 | [docs/session-url-check.md](docs/session-url-check.md) | セッション URL 検査 action の導入と限界 | 利用者・AI |
 | [docs/workflow-lint.md](docs/workflow-lint.md) | Workflow 検査 action の導入と pin 突合の判定 | 利用者・AI |
 | [docs/local-lint.md](docs/local-lint.md) | push 前ローカル Markdown lint の使い方 | 利用者・AI |
+| [docs/watch-pr-checks.md](docs/watch-pr-checks.md) | PR checks の監視・要約・実行記録 | 利用者・AI |
 
 ## 📝 ライセンス
 

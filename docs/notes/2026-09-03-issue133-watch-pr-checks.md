@@ -8,6 +8,7 @@ PR #166（v2.16.0）で `bin/watch-pr-checks.{sh,ps1}` を追加した．
 もう 1 つは，その対処を守るテストが仕様を守れていなかったことである．
 どちらも「pass した」という報告だけでは気づけない種類の失敗であった．
 あわせて `--watch` を捨てた設計判断と，PowerShell 版のテスト方法も記す．
+監視対象 commit の決め方や締切など，設計の経緯は「設計判断の記録」に集約した．
 
 ## 目次
 
@@ -16,6 +17,7 @@ PR #166（v2.16.0）で `bin/watch-pr-checks.{sh,ps1}` を追加した．
 - 知見 3: ブロックする外部コマンドには締切を掛けられない
 - 知見 4: PowerShell 版は関数で外部コマンドを覆ってテストする
 - 知見 5: レビューのティアと，判断が割れたときの残し方
+- 設計判断の記録
 - 参照
 
 ## 知見 1: 監視ツールが自ら false green を出した
@@ -41,6 +43,8 @@ workflow の登録は約 1 分後であった．
 `--settle` 秒のあいだ件数が動かないことを要求する形へ変えた．
 既定は観測した遅延の 2 倍である 120 秒とした．
 等倍にしなかったのは，手前の待機が短い日ほど余裕が消えるためである．
+現在の完了条件 4 つは [PR checks の監視](../watch-pr-checks.md) に記した．
+件数の不変と `--settle` 秒の経過を求めるのは，登録の時刻が workflow ごとに異なるためである．
 
 **教訓は「静かであること」と「出そろったこと」は別だという点にある．**
 観測の間隔が短いと，前者を後者と読み違える．
@@ -58,6 +62,7 @@ path filter で飛ばした check を通過件数へ数えず，`(N skipped)` �
 なお残余は消えていない．`--settle` より後に現れる check は追えない．
 本来これは GitHub 側の required checks で担保する筋である．
 本リポジトリの `main` に required checks は設定していない．
+逃げ道は現状 `--settle` を伸ばすことだけである．
 
 ## 知見 2: テストが仕様を守れていなかった
 
@@ -114,6 +119,7 @@ bash と PowerShell で挙動をそろえにくい．
 受け皿は用意されていた．
 そこで `tests/powershell/` を作り，`bin/verify-shell.py` から
 `bin/run-pester.ps1` 経由で実行する形にした．
+PowerShell 版は bats の対象にできないため，Pester で同じ観点をなぞる．
 
 スタブの置き方には工夫が要る．
 PATH へ実行ファイルを置く方法は，拡張子と実行権限の扱いが
@@ -154,16 +160,65 @@ Fable は設計意図との突き合わせと，機構の削減を見る．
 今回は 3 巡目でも 2 件出た．
 
 2 者の判断が割れた箇所もある．fork からの PR への対応である．
-Codex は追加を求め，Fable は削除を求めた．
+Codex は「解決しないと無関係な commit を掴む」として追加を求めた．
+Fable は削除を求めた．理由は 3 つである．
+本リポジトリが fork PR をマージしないこと．`--expect-sha` で代替できること．
+private fork の認証という失敗面を持ち込むこと．
 残す判断を採った．理由は失敗の出方である．
 削除した場合の失敗は「静かに待ち続ける」であり，
 本スクリプトが防ごうとしている誤認そのものになる．
-両論と採った理由は `docs/development-notes.md` に残した．
+スクリプト自体も特定リポジトリ専用ではない．
+分岐の中身は「設計判断の記録」に記した．
+
+## 設計判断の記録
+
+### `gh pr checks --watch` では監視にならない
+
+`gh pr checks <n> --watch` を push 直後に実行しても監視にならない．
+checks が未登録の時点では「no checks reported」を返して即座に終わる．
+さらに `gh` 側の PR head は push へ数十秒遅れる場合がある．
+1 つ前の commit の run を掴んだまま全 pass を返した実例が PR #159 にある．
+いずれも「CI green」の誤認を生む（Issue #133）．
+同じ追随遅れは [pin 整合の記録](2026-09-02-issue156-157-pin-consistency.md) の知見 3 にもある．
+
+### 監視対象 commit は `git ls-remote` の実体を正とする
+
+監視対象 commit の正は `git ls-remote` が返す実体とする．
+`gh` の `headRefOid` がそこへ追いつくまで待つ．
+問い合わせ先は head の所属先である．fork からの PR では head ブランチが
+`origin` に無く，同名のブランチが base にあると無関係な commit を掴む．
+`isCrossRepository` で判定し，fork なら head リポジトリの URL へ引く．
+この分岐を残した経緯は知見 5 に記した．
+
+### 締切は監視全体で 1 度だけ決める
+
+`--timeout` は監視全体に掛かる．段ごとに締切を取り直すと合計が 2 倍に
+なりうるため，締切は 1 度だけ決めて両方の待機で使い回す．
+両方とは，`gh` の追随待ちと checks の据え置き待ちである．
+
+### 監視の前後で head を照合する
+
+Issue #133 は「掴んだ run の `headSha` を照合する」と書いている．
+本実装は監視の前後で `headRefOid` が変わらないことの確認で代えた．
+監視対象の commit は 1 つに固定してあり，
+その間に head が動かなければ，見ていた結果はその commit のものだからである．
+個々の run の SHA 検証とは異なる点を含め，現在の保証範囲は
+[PR checks の監視](../watch-pr-checks.md) にある．
+
+### タイムアウトを成功へ落とさない
+
+待っても成立しない状態を成功へ落とさない設計とした．
+タイムアウトは非 0 で終え，直前の `gh` の stderr を添える．
+認証切れが単なるタイムアウトに見える経路を残さないためである．
+
+報告には必ず検査した commit を書く．
+「全 pass」だけでは，どの commit を検査したのか読み取れない．
 
 ## 参照
 
 - Issue #133・PR #166．リリースは v2.16.0．
-- 設計の説明は [docs/development-notes.md](../development-notes.md) にある．
+- 使い方と出力契約は [docs/watch-pr-checks.md](../watch-pr-checks.md) にある．
+- [docs/development-notes.md](../development-notes.md) の節は要約と本記録への参照だけを持つ．
   節の見出しは「CI checks の監視は `bin/watch-pr-checks.{sh,ps1}` に任せる」．
 - Pester の実行対象は [docs/shell-quality.md](../shell-quality.md) の表にある．
 - 先行する知見は [2026-09-02-issue134-local-md-lint.md](2026-09-02-issue134-local-md-lint.md)．

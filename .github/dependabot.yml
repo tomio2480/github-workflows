@@ -17,6 +17,11 @@ version: 2
 # 更新 PR は手動レビューのうえマージする．第三者アクションの挙動変化に注意．
 
 updates:
+  - package-ecosystem: uv
+    directory: /tests/fixtures/python-quality
+    schedule:
+      interval: weekly
+
   - package-ecosystem: github-actions
     directories:
       - /

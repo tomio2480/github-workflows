@@ -3,14 +3,16 @@
 ## 🎯 要約
 
 `bin/lint-md.sh` は，中央リポジトリの設定を使って手元で Markdown を lint する．
-各リポジトリへ linter を置かないため，中央の辞書やルールとずれない．
-CI と同じ設定・同じ集計を通し，違いは終了コードだけである．
+caller 側の override を優先し，設定の解決と指摘の集計を CI と共用する．
+中央 checkout と caller の pin，runtime の違いによる結果の差は残る．
 軽微な文体指摘のために CI を 1 巡させる無駄を減らす目的で用意した（Issue #134）．
 
 ## 🗺 目次
 
 - 🧭 ねらい
 - 🚀 使い方
+- 📦 要約と実行記録
+- 🔬 実行条件と caller 宣言の照合
 - 🎯 検査対象の決まり方
 - 🔍 CI との対応
 - ↩ 改行コードの扱い
@@ -49,11 +51,15 @@ bash /path/to/github-workflows/bin/lint-md.sh
 | `--base <ref>` | 差分の基点を明示する |
 | `--glob <pattern>` | lint 対象の glob を変える．既定は `**/*.md` |
 | `--ignore-glob <pattern>` | 報告から除外する path を指定する |
+| `--format full\|summary\|json` | 通常出力・要約・JSON を選ぶ．既定は `full` |
+| `--limit <N>` | 要約・JSON に表示する指摘の上限．既定は 20 件 |
+| `--output-dir <dir>` | 実行記録を保存する親ディレクトリを指定する |
 | `<files...>` | 報告対象を直接指定する |
 
 `--glob` は composite action の `markdown-glob` に当たる．
 `--ignore-glob` は `markdown-ignore` に当たる．
 caller 側で値を変えている場合は，同じ値を渡す．
+複数行の値は，1 行ずつ `--ignore-glob` に分けて渡す．
 
 `--glob` は報告対象の選定にも効く．
 渡されたときは拡張子で絞らず，変更ファイルをすべて選ぶ．
@@ -74,6 +80,115 @@ glob の解釈を選定側で再実装すると，取りこぼす方向の穴が
 | 0 | 指摘なし．対象 0 件の場合を含む |
 | 1 | 指摘あり |
 | 2 | 実行失敗．設定不正・依存導入失敗・linter 自体の異常終了 |
+
+## 📦 要約と実行記録
+
+AI が繰り返し使う場合は，`--format summary` または `--format json` を指定する．
+件数と保存先を先に読み，個々の判断に必要な指摘だけを全文から確認できる．
+
+```bash
+bash /path/to/github-workflows/bin/lint-md.sh --format summary --limit 10
+bash /path/to/github-workflows/bin/lint-md.sh --format json --output-dir /tmp/lint-runs
+```
+
+要約と JSON は，両 linter を合わせて既定 20 件まで表示する．
+各メッセージは空白をまとめ，240 文字を超える部分を省く．
+表示件数の上限は検査と集計に影響せず，省略件数を `display.omitted` に残す．
+`--limit 0` は件数と保存先だけを読む用途に使える．
+
+実行ごとに専用ディレクトリを作るため，前回の記録を上書きしない．
+保存先の既定は OS の一時ディレクトリである．
+`--output-dir` の相対パスは，呼び出したディレクトリを基準に解決する．
+引数なしの通常出力は従来どおりで，記録を残さない．
+`--format full --output-dir <dir>` では通常出力と全文保存を併用できる．
+
+表 3. 実行記録の内容．
+
+| ファイル | 内容 |
+|---|---|
+| `summary.txt` | 件数・指摘の抜粋・全文への参照 |
+| `report.json` | `schema_version: 1` の実行結果と保存先 |
+| `full.txt` | 通常出力の全文．指摘を省略しない |
+| `diagnostics.log` | 標準エラー出力．選定した基点や実行失敗の原因 |
+| `targets.txt` | 報告対象として選定したパス |
+| `findings.json` | CI と共通の処理で集計した全指摘 |
+| `markdownlint-report.txt` | `markdownlint` の元レポート |
+| `textlint-report.xml`・`textlint-stderr.log` | textlint の元レポートと診断 |
+| `install.log` | 依存導入のログ |
+| `context.json` | 解決した設定の hash，runtime，caller の宣言との比較 |
+
+途中で失敗した場合は，その段階までに作ったファイルだけが残る．
+一時複製と runtime config は終了時に回収し，保存記録には含めない．
+保存記録は自動削除しない．不要になったら保存先を削除する．
+
+JSON の `status` は `ok`・`findings`・`not_applicable`・`error` のいずれかである．
+終了コードは出力形式によらず表 2 のままとする．
+実行失敗時の指摘件数は `null` とし，指摘なしの 0 件と区別する．
+対象 0 件は `not_applicable` とし，linter を実行しない．
+`coverage.selected` は報告対象の選定件数，`mirrored` は一時複製の件数である．
+これらは linter が実際に検査した件数を示すものではない．
+caller と中央リポジトリのルート・HEAD SHA も記録する．
+設定の内容そのものは保存せず，`context.json` にパスと hash を残す．
+
+要約・JSON の標準出力に診断ログは混ぜない．失敗時も保存先から読める．
+引数不正，Git 管理外，Python 不在など，記録開始前の失敗は標準エラー出力で報告する．
+この場合や保存先の作成に失敗した場合は，JSON を返せず終了コード 2 となる．
+読み取り側は JSON の有無と終了コードの両方を確認する．
+
+## 🔬 実行条件と caller 宣言の照合
+
+記録を保存する実行では，設定の解決後，runtime config の生成前に条件を記録する．
+終了時に読み直し，途中で変わった設定や依存 manifest があれば exit 2 にする．
+選定段階の失敗や対象 0 件では，実行条件の収集へ進まない．
+
+表 4. `context.json` の記録範囲．
+
+| 項目 | 記録する事実 |
+|---|---|
+| `files` | resolver が選んだ設定，workflow，依存 manifest のパスと SHA-256 |
+| `source` | 中央の HEAD・GitHub 上の repo 名・未コミット変更の有無 |
+| `runtime` | PATH 上の Node の版と実行ファイル，実際の Python と PyYAML の版 |
+| `selection` | ローカルへ渡した glob と ignore |
+| `calls` | Markdown lint action の直接呼び出し，条件，公開 input と項目別の比較 |
+| `unresolved_calls`・`workflow_errors` | 追跡していない呼び出しと解析できない workflow |
+| `stability` | 収集直後の captured，終了確認後の stable，途中変更時の changed |
+
+設定の選択は既存 resolver が担い，記録側では選び直さない．
+raw byte の hash は途中変更の確認に使う．pin との内容比較では CRLF を LF に揃えた hash を使う．
+未コミット変更は中央 checkout 全体の有無を示す．変更された内容は収集しない．
+設定が外部ファイルや custom rule を参照していても，再帰的には追跡しない．
+開始・終了間に変更して元へ戻した場合も検出対象外であり，file のロックは行わない．
+
+caller の `.github/workflows/*.yml` と `.yaml` は PyYAML で読む．
+YAML の `on` や版番号を真偽値・数値へ変換しない．
+重複 key，merge key，複数 document，解析失敗は unknown として残す．
+文字列内の `uses:` は呼び出しへ数えない．
+
+中央の GitHub repo 名と一致する，40 桁 SHA の Markdown lint action 参照を照合する．
+Node の既定 input と中央の設定・依存 manifest は，その pin の Git object から読む．
+ネットワーク取得，checkout，pin 内のコード実行は行わない．
+未取得 object，浮動 ref，式，reusable workflow の先，local action は unknown とする．
+GitHub Actions の式を独自に評価しない．
+
+Node は整数の major 指定または major.minor.patch の完全指定だけを比較する．
+major の一致は patch の一致を意味しない．版の範囲や matrix の式は unknown になる．
+glob は action が 1 つの引数としてそのまま渡すため，末尾の改行も含めて比較する．
+ignore の宣言は action と同じ読み方に揃えて比較する．
+改行で行に分けて空行だけを捨て，各行の前後の空白を除き，`\` を `/` に揃える．
+ignore では，YAML のブロック形式（`|`）が付ける末尾の改行は一致の判定に影響しない．
+空白だけの行を含む宣言は action が拒否するため，元の値のまま different と記録する．
+どちらも，意味が等価かまでは判定しない．
+比較できた ignore の `expected` と `actual` には，揃えた後の値を記録する．
+ローカルの `--ignore-glob` は引数ごとに 1 つの pattern として読み，行には分けない．
+空の値や内側に改行を含む値は集計の除外と一致しないため，元の値のまま different と記録する．
+caller 側の設定は caller_override と記録する．CI が checkout した設定との一致は保証しない．
+token・env・secret は収集せず，公開 input は Node・glob・ignore の 3 項目に限る．
+
+違いと unknown は lint 指摘から独立した情報であり，それだけでは lint の終了コードを変えない．
+要約は比較件数と `context.json` のパスを示し，詳細を端末へ展開しない．
+`report.json` の `context` は安定性と比較件数，`artifacts.context` は詳細の保存先を持つ．
+各項目の same は，その項目の比較が一致したという意味に限る．
+すべての CI 条件，検査対象，実行結果が一致したという証拠ではない．
 
 ## 🎯 検査対象の決まり方
 

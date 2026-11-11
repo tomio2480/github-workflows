@@ -1,0 +1,66 @@
+name: Reusable Python Lint
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: pyproject.toml と uv.lock を持つ caller のディレクトリ
+        type: string
+        default: .
+      verify-script:
+        description: working-directory からの caller 所有 gate の相対 path
+        type: string
+        default: bin/verify-python.py
+      python-version:
+        type: string
+        default: "3.13"
+      uv-version:
+        type: string
+        default: "0.11.2"
+      artifact-name:
+        description: 同じ workflow run の呼び出しごとに異なる名前を指定する
+        type: string
+        default: python-lint
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ inputs.uv-version }}
+          enable-cache: false
+      - name: Run caller Python gate with locked development dependencies
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          VERIFY_SCRIPT: ${{ inputs.verify-script }}
+          PYTHON_VERSION: ${{ inputs.python-version }}
+          REPORT_DIR: ${{ runner.temp }}/python-lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f pyproject.toml
+          test -f uv.lock
+          uv run --locked --python "${PYTHON_VERSION}" --no-default-groups --group dev \
+            python "${VERIFY_SCRIPT}" --report-dir "${REPORT_DIR}"
+      - name: Preserve Python gate results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/python-lint
+          retention-days: 7
+          if-no-files-found: warn

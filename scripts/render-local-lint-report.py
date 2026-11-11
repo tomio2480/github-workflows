@@ -1,32 +1,19 @@
 #!/usr/bin/env python3
-"""count-lint-findings.py の JSON を push 前ローカル lint 用の表示へ整える．
+"""共通の集計結果をローカル lint 用に表示する（docs/local-lint.md）．
 
-bin/lint-md.sh から呼ばれる（Issue #134）．CI は同じ JSON を PR コメントの
-summary へ流す．ローカルは端末で読むため，件数と findings 一覧だけを出す．
-
-集計そのものは count-lint-findings.py が担う．そちらは CI の summary でも
-使われており，差分ファイルへの絞り込み（--diff-files-from）も含めて検証済み
-である．ローカル専用の集計を別に書くと CI と結果がずれるため，表示だけを
-本スクリプトへ分ける．
-
-usage:
-    count-lint-findings.py ... | render-local-lint-report.py
-
-入力（stdin，JSON）:
-    count-lint-findings.py の出力
-
-出力（stdout）:
-    linter ごとの件数と `path:line rule message` 形式の findings
-
-終了コード:
-    0  指摘なし
-    1  指摘あり
+引数なしでは count-lint-findings.py の JSON を stdin から受け，全文を表示する．
+指摘なしは exit 0，指摘ありは exit 1．--record-dir 指定時は保存済み集計から
+要約と JSON を生成する．記録成功は exit 0，失敗は exit 2 とし，元の lint の
+終了コードは呼び出し元の bin/lint-md.sh が保持する．
 """
 
 from __future__ import annotations
 
+import argparse
+from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import sys
 from typing import Any, TextIO
 
@@ -79,5 +66,127 @@ def main(stream: TextIO, out: TextIO) -> int:
     return 1
 
 
+def record_run(
+    directory: Path, *, exit_code: int, root: str, head_sha: str,
+    source_root: str, source_sha: str, selected: int, mirrored: int, limit: int,
+) -> dict[str, Any]:
+    """集計済みの全文を残し，表示する指摘だけを制限する．"""
+    if limit < 0 or exit_code not in (0, 1, 2):
+        raise ValueError("invalid limit or exit code")
+    directory = Path(directory).resolve()
+    status = "error" if exit_code == 2 else "findings" if exit_code == 1 else "ok"
+    findings = None
+    total = None
+    if exit_code != 2:
+        findings = []
+        total = 0
+        if selected == 0 or mirrored == 0:
+            if exit_code != 0:
+                raise ValueError("findings without lint targets")
+            status = "not_applicable"
+        else:
+            try:
+                payload = json.loads((directory / "findings.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValueError("missing or invalid lint aggregation") from exc
+            for name in ("markdownlint", "textlint"):
+                section = payload[name]
+                items = section["findings"]
+                if section["total"] != len(items):
+                    raise ValueError("inconsistent lint aggregation")
+                total += len(items)
+                for item in items[:max(0, limit - len(findings))]:
+                    message = " ".join(str(item.get("message", "")).split())
+                    findings.append({
+                        "linter": name, "file": _shorten(item.get("file", "")),
+                        "line": item.get("line"), "rule": item.get("rule"),
+                        "severity": item.get("severity"),
+                        "message": message[:240] + ("…" if len(message) > 240 else ""),
+                        "message_truncated": len(message) > 240,
+                    })
+            if (total > 0) != (exit_code == 1):
+                raise ValueError("lint aggregation does not match exit code")
+
+    context = {"stability": "not_captured", "comparison_counts": None}
+    if (directory / "context.json").is_file():
+        captured = json.loads((directory / "context.json").read_text(encoding="utf-8"))
+        context = {key: captured[key] for key in ("stability", "comparison_counts")}
+        if exit_code != 2 and context["stability"] != "stable":
+            raise ValueError("lint context has not been verified as stable")
+
+    artifacts = {
+        key: str(directory / filename)
+        for key, filename in {
+            "full": "full.txt", "diagnostics": "diagnostics.log",
+            "targets": "targets.txt", "findings": "findings.json",
+            "markdownlint": "markdownlint-report.txt", "textlint": "textlint-report.xml",
+            "textlint_stderr": "textlint-stderr.log", "install": "install.log",
+            "context": "context.json",
+        }.items() if (directory / filename).is_file()
+    }
+    artifacts.update(summary=str(directory / "summary.txt"), report=str(directory / "report.json"))
+    returned = len(findings) if findings is not None else None
+    report = {
+        "schema_version": 1, "tool": "lint-md", "status": status, "exit_code": exit_code,
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "root": root, "head_sha": head_sha, "source_root": source_root, "source_sha": source_sha,
+        "coverage": {"selected": selected if selected >= 0 else None,
+                     "mirrored": mirrored if mirrored >= 0 else None},
+        "display": {"total": total, "returned": returned,
+                    "omitted": total - returned if total is not None else None},
+        "findings": findings, "artifacts": artifacts, "context": context,
+    }
+    lines = [f"lint-md: {status} (exit {exit_code})",
+             f"scope: selected={report['coverage']['selected']}, mirrored={report['coverage']['mirrored']}",
+             f"findings: total={total}, returned={returned}, omitted={report['display']['omitted']}"]
+    for item in findings or []:
+        lines.append(f"  {item['file']}:{item['line']} {item['rule']} {item['message']}")
+    if context["comparison_counts"] is not None:
+        counts = context["comparison_counts"]
+        lines.append(f"ci-declarations: different={counts['different']}, unknown={counts['unknown']}, "
+                     f"inputs={context['stability']}")
+    lines.extend(f"{key}: {artifacts[key]}" for key in ("full", "diagnostics", "context", "report") if key in artifacts)
+    (directory / "summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (directory / "report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+    )
+    return report
+
+
+def cli() -> int:
+    if len(sys.argv) == 1:
+        return main(sys.stdin, sys.stdout)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--record-dir", type=Path, required=True)
+    parser.add_argument("--format", choices=("full", "summary", "json"), required=True)
+    parser.add_argument("--exit-code", type=int, required=True)
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--head-sha", required=True)
+    parser.add_argument("--source-root", required=True)
+    parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--selected", type=int, required=True)
+    parser.add_argument("--mirrored", type=int, required=True)
+    parser.add_argument("--limit", type=int, required=True)
+    args = vars(parser.parse_args())
+    directory = args.pop("record_dir")
+    output_format = args.pop("format")
+    try:
+        record_run(directory, **args)
+        filename = {"full": "full.txt", "summary": "summary.txt", "json": "report.json"}[output_format]
+        # 全文も一括でメモリへ載せず，保存した順序のまま再生する．
+        with (directory / filename).open(encoding="utf-8", errors="replace") as stream:
+            for line in stream:
+                sys.stdout.write(line)
+        if output_format == "full":
+            with (directory / "diagnostics.log").open(encoding="utf-8", errors="replace") as stream:
+                for line in stream:
+                    sys.stderr.write(line)
+            print(f"lint-md: saved run: {directory}", file=sys.stderr)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"lint-md: cannot record run at {directory}: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.stdin, sys.stdout))
+    sys.exit(cli())
