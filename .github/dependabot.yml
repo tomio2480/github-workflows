@@ -9,10 +9,13 @@ version: 2
 # ワイルドカードを使うため `directories`（複数形）で宣言する．`directory`（単数形）は
 # glob に対応しない．composite action を増やしても追随する．
 #
-# npm エコシステム: .github/actions/markdown-lint/ の package-lock.json を追跡する．
+# npm エコシステム: tools/markdown-lint/ の package-lock.json を追跡する．
 # markdownlint-cli2・textlint 等の npm パッケージバージョンを固定し，
 # Dependabot で更新 PR を自動起票する．group は lint 系統ごとに分け，
 # 片系統の挙動変化をもう片方の更新と切り離してレビューできるようにする．
+# github-actions 以外のエコシステムは .github/ の外を指す．GitHub は .github/ 配下を
+# 変える npm 等の更新 PR を受け付けず，PR 作成が 400 で失敗する
+# （dependabot/dependabot-core#15721）．tests/python/test_lint_dependency_manifest.py が検査する．
 #
 # 更新 PR は手動レビューのうえマージする．第三者アクションの挙動変化に注意．
 
@@ -34,7 +37,7 @@ updates:
           - "*"
 
   - package-ecosystem: npm
-    directory: /.github/actions/markdown-lint
+    directory: /tools/markdown-lint
     schedule:
       interval: weekly
     groups:
