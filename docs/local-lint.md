@@ -166,6 +166,7 @@ YAML の `on` や版番号を真偽値・数値へ変換しない．
 
 中央の GitHub repo 名と一致する，40 桁 SHA の Markdown lint action 参照を照合する．
 Node の既定 input と中央の設定・依存 manifest は，その pin の Git object から読む．
+manifest が `tools/markdown-lint/` へ移る前の pin では，action.yml の隣の manifest を読む．
 ネットワーク取得，checkout，pin 内のコード実行は行わない．
 未取得 object，浮動 ref，式，reusable workflow の先，local action は unknown とする．
 GitHub Actions の式を独自に評価しない．
@@ -281,7 +282,7 @@ Windows では，大小文字・8.3 名・ジャンクションの解決有無�
 
 ## ⚡ 依存キャッシュ
 
-lint 依存は `.github/actions/markdown-lint/package-lock.json` から導入する．
+lint 依存は `tools/markdown-lint/package-lock.json` から導入する．
 毎回 `npm ci` を走らせると，待ち時間が CI と変わらなくなる．
 そのため `install-lint-deps.sh` の `LINT_DEPS_CACHE_DIR` で再利用する．
 

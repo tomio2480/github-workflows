@@ -35,7 +35,7 @@
 | 4 | third-party action が侵害される | 実在 | full commit SHA でピン．Dependabot で更新追跡 |
 | 5 | Secrets 漏洩 | 不成立 | `secrets: inherit` 不使用．caller から `inputs.github-token` で `GITHUB_TOKEN` を明示渡し |
 | 6 | 共有タグ（`v2` など）の改竄 | 低（オーナーのみ書き込み可） | アカウントの 2FA と保護 |
-| 7 | npm 供給網汚染（`markdownlint-cli2` 等） | 残存リスク | action 内部で管理．個別対策困難．受容 |
+| 7 | npm 供給網汚染（`markdownlint-cli2` 等） | 残存リスク | 中央の lockfile（`tools/markdown-lint/`）で固定．個別対策困難．受容 |
 | 8 | 社会工学攻撃（typo 修正を装う） | 低〜中 | 外部 PR は原則マージしない |
 | 9 | caller 側から見た破壊的変更 | 運用ミス | タグ運用（[CLAUDE.md](../CLAUDE.md)） |
 | 10 | claude-review（`issue_comment` 発火）で cache 書き込み拒否警告 | 影響なし・受容 | `actions: write` 付与は見送り．最小権限を優先し警告を受容（Issue [#76](https://github.com/tomio2480/github-workflows/issues/76)） |
@@ -101,7 +101,9 @@
 
 ## 🧪 運用ルール
 
-- 外部からの PR は **原則マージしない**．typo 修正の名目でも `.github/workflows/`・`.github/actions/`・`dependabot.yml` が変わっていないか確認
+- 外部からの PR は **原則マージしない**．typo 修正の名目でも，次のパスが変わっていないか確認
+  - `.github/workflows/`・`.github/actions/`・`dependabot.yml`
+  - `tools/markdown-lint/` の `package.json`・`package-lock.json`．caller の CI で導入する lint 依存を，この 2 ファイルが決める．`.github/` の外にあるため，前の項目には含まれない
 - third-party action の SHA は Dependabot PR を通してのみ更新．手動書き換えは避ける
   - 走査対象は `.github/dependabot.yml` の `github-actions` に列挙した `/` と `/.github/actions/*` である．前者が `.github/workflows/` を拾う．後者が `.github/actions/<name>/` を拾う（Issue #153）
   - `*` は 1 階層しか一致しない．`.github/actions/<group>/<name>/` のような入れ子は走査対象から外れ，pin 検査は通るのに更新 PR が来ない状態になる．範囲のずれは `tests/python/test_action_pins.py` が検出する（Issue #212）

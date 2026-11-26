@@ -38,6 +38,7 @@ public ライセンスを明示する．非公開運用したい場合は `--pri
 配置対象は次のとおり．
 
 - `.github/actions/markdown-lint/action.yml`（composite action 本体）
+- `tools/markdown-lint/` の `package.json`・`package-lock.json`（lint 依存）
 - `.github/workflows/test-self-lint.yml`（単体／統合テスト CI）
 - `.github/dependabot.yml`
 - `scripts/` 配下のスクリプト一式（composite action が呼ぶ抽出ロジック）

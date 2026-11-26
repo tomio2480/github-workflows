@@ -214,9 +214,7 @@ github-workflows/
 ├── .github/
 │   ├── actions/
 │   │   ├── markdown-lint/
-│   │   │   ├── action.yml         # composite action 本体（v2）
-│   │   │   ├── package.json       # lint 依存の宣言
-│   │   │   └── package-lock.json  # lint 依存の固定（install-lint-deps.sh が使う）
+│   │   │   └── action.yml         # composite action 本体（v2）
 │   │   ├── session-url-check/
 │   │   │   └── action.yml         # Claude セッション URL 検査（v2.17〜）
 │   │   └── workflow-lint/
@@ -258,6 +256,10 @@ github-workflows/
 │   ├── verify-shell.py            # repo-local Shell quality gate（v2.13.7〜）
 │   └── lib/
 │       └── native.ps1             # native command 呼び出しの共通ヘルパー（v2.18〜）
+├── tools/
+│   └── markdown-lint/             # lint 依存の manifest（Dependabot の npm 走査対象）
+│       ├── package.json           # lint 依存の宣言
+│       └── package-lock.json      # lint 依存の固定（install-lint-deps.sh が使う）
 ├── tests/                         # スクリプト単体テスト + 統合テスト fixture
 │   ├── python/                    # pytest
 │   ├── integration/               # 実 tool を使う Python gate の対照
