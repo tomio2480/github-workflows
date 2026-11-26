@@ -26,6 +26,12 @@
 - gemini-code-assist から install step の inline bash を `scripts/` に外出しする提案があった．
 - 本リポジトリでは `scripts/` 追加に `tests/` での test-first が必須である．そのため今回の PR スコープから切り離し，Issue #38 で扱う．
 
+## 追記（2026-11-27）
+
+- 置き場所は後に `tools/markdown-lint/` へ移した．lockfile と Dependabot を両立する判断は変わらない．
+- GitHub が，一部の Dependabot PR を受け付けなくなったためである．`github-actions` 以外のエコシステムが `.github/` 配下を変える PR である．
+- 経緯は `.github/dependabot.yml` の npm 節のコメントに置く．
+
 ## 参照
 
 - Issue #7: <https://github.com/tomio2480/github-workflows/issues/7>

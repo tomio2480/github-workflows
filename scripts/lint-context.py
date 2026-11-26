@@ -19,6 +19,8 @@ import yaml
 
 
 ACTION = ".github/actions/markdown-lint"
+# Kept outside .github/ because Dependabot cannot open npm updates there; older pins hold it in ACTION.
+DEPENDENCIES = "tools/markdown-lint"
 PUBLIC_INPUTS = ("node-version", "markdown-glob", "markdown-ignore")
 
 
@@ -232,6 +234,8 @@ def compare_call(call, report, central):
             state = "caller_override"
         elif file["origin"] == "central":
             data = git(central, "show", f"{pin}:{file['relative']}")
+            if data is None and role.startswith("dependency:"):
+                data = git(central, "show", f"{pin}:{ACTION}/{role.split(':', 1)[1]}")
             expected = normalized_hash(data) if data is not None else None
             state = "unknown" if expected is None else (
                 "same" if expected == file["normalized_sha256"] else "different")
@@ -263,7 +267,7 @@ def capture(args):
     files = dict(args.file or [])
     files.update({"workflow:" + path.relative_to(caller).as_posix(): str(path) for path in workflows})
     for name in ("package.json", "package-lock.json"):
-        files["dependency:" + name] = str(central / ACTION / name)
+        files["dependency:" + name] = str(central / DEPENDENCIES / name)
     report = {
         "schema_version": 1, "captured_at": datetime.now(timezone.utc).isoformat(),
         "stability": "captured", "root": str(caller),

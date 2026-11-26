@@ -4,13 +4,13 @@
 #
 # Spec:
 #   Input (environment variables):
-#     ACTION_PATH   - absolute path to the action dir (holds package.json / package-lock.json) [required]
+#     MANIFEST_DIR  - absolute path to the dir holding package.json / package-lock.json [required]
 #     RUNNER_TEMP   - base dir for tmpdir creation [required]
 #     GITHUB_OUTPUT - GitHub Actions output file path [required]
 #     LINT_DEPS_CACHE_DIR - reusable cache root for local runs [optional]
 #   Behavior:
 #     - Creates a tmpdir under RUNNER_TEMP
-#     - Copies package.json / package-lock.json from ACTION_PATH to the tmpdir
+#     - Copies package.json / package-lock.json from MANIFEST_DIR to the tmpdir
 #     - Runs "npm ci" inside the tmpdir
 #     - Writes "bin=<tmpdir>/node_modules/.bin" to GITHUB_OUTPUT
 #     - Writes "modules=<tmpdir>/node_modules" to GITHUB_OUTPUT
@@ -26,8 +26,8 @@ setup() {
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
   SCRIPT="${REPO_ROOT}/scripts/install-lint-deps.sh"
   FAKE_BIN="${BATS_TEST_TMPDIR}/bin"
-  ACTION_STUB="${BATS_TEST_TMPDIR}/action"
-  mkdir -p "${FAKE_BIN}" "${ACTION_STUB}"
+  MANIFEST_STUB="${BATS_TEST_TMPDIR}/manifest"
+  mkdir -p "${FAKE_BIN}" "${MANIFEST_STUB}"
 
   export NPM_CWD_LOG="${BATS_TEST_TMPDIR}/npm-cwd"
   cat > "${FAKE_BIN}/npm" <<'FAKE'
@@ -51,24 +51,24 @@ FAKE
   PATH="${FAKE_BIN}:${PATH}"
   export PATH
 
-  echo '{"name":"stub","dependencies":{}}' > "${ACTION_STUB}/package.json"
-  echo '{"lockfileVersion":3,"packages":{}}' > "${ACTION_STUB}/package-lock.json"
+  echo '{"name":"stub","dependencies":{}}' > "${MANIFEST_STUB}/package.json"
+  echo '{"lockfileVersion":3,"packages":{}}' > "${MANIFEST_STUB}/package-lock.json"
 
   export GITHUB_OUTPUT="${BATS_TEST_TMPDIR}/github_output"
   touch "${GITHUB_OUTPUT}"
 
-  export ACTION_PATH="${ACTION_STUB}"
+  export MANIFEST_DIR="${MANIFEST_STUB}"
   export RUNNER_TEMP="${BATS_TEST_TMPDIR}"
 }
 
 # スクリプトと同じ規則で鍵を組み立てる．テストから公開先を先回りして作る．
 cache_key() {
-  cat "${ACTION_STUB}/package.json" "${ACTION_STUB}/package-lock.json" |
+  cat "${MANIFEST_STUB}/package.json" "${MANIFEST_STUB}/package-lock.json" |
     sha256sum | cut -d' ' -f1
 }
 
 teardown() {
-  unset ACTION_PATH RUNNER_TEMP GITHUB_OUTPUT NPM_CI_EXIT LINT_DEPS_CACHE_DIR \
+  unset MANIFEST_DIR RUNNER_TEMP GITHUB_OUTPUT NPM_CI_EXIT LINT_DEPS_CACHE_DIR \
     NPM_CWD_LOG RIVAL_PUBLISH_DIR
 }
 
@@ -104,8 +104,8 @@ teardown() {
   [ "${status}" -ne 0 ]
 }
 
-@test "exits non-zero when ACTION_PATH is unset" {
-  unset ACTION_PATH
+@test "exits non-zero when MANIFEST_DIR is unset" {
+  unset MANIFEST_DIR
 
   run bash "${SCRIPT}"
 
@@ -177,7 +177,7 @@ FAKE
   FIRST_DIR="${output##*Installed under: }"
 
   echo '{"lockfileVersion":3,"packages":{"":{"name":"changed"}}}' \
-    > "${ACTION_STUB}/package-lock.json"
+    > "${MANIFEST_STUB}/package-lock.json"
 
   run bash "${SCRIPT}"
 

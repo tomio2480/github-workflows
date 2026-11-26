@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# package.json と package-lock.json を ACTION_PATH から tmpdir にコピーし
+# package.json と package-lock.json を MANIFEST_DIR から tmpdir にコピーし
 # npm ci で lint 依存パッケージ（markdownlint-cli2・textlint 一式）を
 # インストールする．composite action の Install lint dependencies step から呼ばれる．
 #
 # 入力（環境変数）:
-#   ACTION_PATH   - package.json / package-lock.json が置かれた action ディレクトリ（必須）
+#   MANIFEST_DIR  - package.json / package-lock.json が置かれたディレクトリ（必須）
+#                   中央リポジトリの tools/markdown-lint を渡す
 #   RUNNER_TEMP   - tmpdir 作成先のベースディレクトリ（必須）
 #   GITHUB_OUTPUT - GitHub Actions output ファイルのパス（必須）
 #   LINT_DEPS_CACHE_DIR - 再利用キャッシュの置き場所（任意．Issue #134）
@@ -26,7 +27,7 @@
 
 set -euo pipefail
 
-: "${ACTION_PATH:?ACTION_PATH is required}"
+: "${MANIFEST_DIR:?MANIFEST_DIR is required}"
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
@@ -36,10 +37,10 @@ CACHE_DIR="${LINT_DEPS_CACHE_DIR:-}"
 # 環境で割れる（GNU は sha256sum，macOS は shasum）ため両方を見る．
 hash_manifest() {
   if command -v sha256sum >/dev/null 2>&1; then
-    cat "${ACTION_PATH}/package.json" "${ACTION_PATH}/package-lock.json" |
+    cat "${MANIFEST_DIR}/package.json" "${MANIFEST_DIR}/package-lock.json" |
       sha256sum | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then
-    cat "${ACTION_PATH}/package.json" "${ACTION_PATH}/package-lock.json" |
+    cat "${MANIFEST_DIR}/package.json" "${MANIFEST_DIR}/package-lock.json" |
       shasum -a 256 | cut -d' ' -f1
   else
     echo "neither sha256sum nor shasum is available" >&2
@@ -80,8 +81,8 @@ fi
 # mkdir に失敗し，二度と公開されない鍵になる（.staging.* を見る掃除も届かない）．
 CLAIMED_KEY_DIR=""
 trap 'rm -rf "${TMP}"; [ -n "${CLAIMED_KEY_DIR}" ] && rm -rf "${CLAIMED_KEY_DIR}"; true' ERR
-cp "${ACTION_PATH}/package.json" "${TMP}/"
-cp "${ACTION_PATH}/package-lock.json" "${TMP}/"
+cp "${MANIFEST_DIR}/package.json" "${TMP}/"
+cp "${MANIFEST_DIR}/package-lock.json" "${TMP}/"
 (cd "${TMP}" && npm ci)
 
 if [ -n "${CACHE_KEY_DIR}" ]; then

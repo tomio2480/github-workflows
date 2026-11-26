@@ -38,7 +38,8 @@ composite action（本リポジトリ）
   │    .textlintrc.runtime.json を生成
   │ 5. config に outputFormatters があれば除去した markdownlint runtime config を生成
   │ 6. Node.js setup
-  │ 7. lint 依存（markdownlint-cli2・textlint 一式）を lockfile から tmpdir へ install
+  │ 7. lint 依存（markdownlint-cli2・textlint 一式）を tools/markdown-lint の
+  │    lockfile から tmpdir へ install
   │ 8. markdownlint-cli2 を実行（markdownlint-report.txt．summary 集計と共用）
   │ 9. レポートを errorformat で reviewdog へ渡す → PR レビューコメント
   │ 10. textlint を実行 → reviewdog で PR レビューコメント
@@ -88,6 +89,7 @@ action.yml は `.github/actions/markdown-lint/` に置かれている．この�
 | `$GITHUB_ACTION_PATH` | `/.../tomio2480/github-workflows/<sha>/.github/actions/markdown-lint` | リポジトリルート起点 |
 | `${GITHUB_ACTION_PATH}/../../../templates` | 同上 + `templates/` | 中央 templates 絶対パス |
 | `${GITHUB_ACTION_PATH}/../../../scripts` | 同上 + `scripts/` | 抽出済みスクリプトの絶対パス |
+| `${GITHUB_ACTION_PATH}/../../../tools/markdown-lint` | 同上 + `tools/markdown-lint/` | lint 依存の manifest と lockfile |
 
 `actions/checkout` での中央 repo の二重取得は不要．caller workflow 側で caller repo を 1 度だけ checkout すればよい．composite action は，GitHub Actions が自動展開した自リポジトリ全体にアクセスできる．
 

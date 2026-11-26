@@ -193,13 +193,19 @@ runs:
       # ReferenceError が発生し，TextlintrcLoader.js が ok:false を受けて空 rule で fallback する．
       # 結果として rules セクションも含めて全 rule が silent に破棄され "No rules found" になる．
       #
-      # package.json / package-lock.json を action ディレクトリから tmpdir にコピーして npm ci を
+      # package.json / package-lock.json を tools/markdown-lint から tmpdir にコピーして npm ci を
       # 実行する．これにより registry の状態に依存しない再現可能なインストールを保証する．
       # バージョン更新は Dependabot（.github/dependabot.yml の npm エコシステム設定）が追跡する．
+      #
+      # manifest を .github/ の外に置くのは Dependabot のためである．GitHub は
+      # github-actions 以外のエコシステムが .github/ 配下を変える更新 PR を受け付けない．
+      # action 実行時は中央リポジトリ全体が展開されるため，scripts/ と同じく
+      # ACTION_PATH からの相対で届く．
       id: lint_install
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
+        MANIFEST_DIR: ${{ github.action_path }}/../../../tools/markdown-lint
       run: bash "${ACTION_PATH}/../../../scripts/install-lint-deps.sh"
 
     - name: Run markdownlint (markdownlint-cli2)

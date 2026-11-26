@@ -13,6 +13,7 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/lint-context.py"
 ACTION = ".github/actions/markdown-lint"
+DEPENDENCIES = "tools/markdown-lint"
 
 
 def git(root, *args):
@@ -39,8 +40,10 @@ def workspace(tmp_path):
         '  markdown-ignore:\n    default: ""\nruns:\n  using: composite\n  steps: []\n',
         encoding="utf-8",
     )
+    dependencies = central / DEPENDENCIES
+    dependencies.mkdir(parents=True)
     for name in ("package.json", "package-lock.json"):
-        (action / name).write_text("{}\n", encoding="utf-8")
+        (dependencies / name).write_text("{}\n", encoding="utf-8")
     (central / "templates").mkdir()
     (central / "templates/prh.yml").write_text("rules: []\n", encoding="utf-8")
     git(central, "add", ".")
@@ -328,6 +331,24 @@ def test_central_as_caller_keeps_its_root_override_separate_from_templates(works
     report = capture(workspace, "--root", str(central), "--file", "prh", str(override))
     assert comparison(report, "file:prh")["state"] == "caller_override"
     assert comparison(report, "file:dependency:package.json")["state"] == "same"
+
+
+def test_pin_before_the_manifest_move_reads_the_manifest_beside_the_action(workspace):
+    # Pins from before the manifest left .github/ keep it beside action.yml; callers stay on them until updated.
+    central, caller, _, _ = workspace
+    names = ("package.json", "package-lock.json")
+    for name in names:
+        git(central, "mv", f"{DEPENDENCIES}/{name}", f"{ACTION}/{name}")
+    git(central, "commit", "-qm", "manifest beside the action")
+    legacy_pin = git(central, "rev-parse", "HEAD")
+    for name in names:
+        git(central, "mv", f"{ACTION}/{name}", f"{DEPENDENCIES}/{name}")
+    (central / DEPENDENCIES / "package-lock.json").write_text('{"changed": true}\n', encoding="utf-8")
+    git(central, "commit", "-qam", "manifest outside .github")
+    workflow(caller, legacy_pin)
+    report = capture(workspace)
+    assert comparison(report, "file:dependency:package.json")["state"] == "same"
+    assert comparison(report, "file:dependency:package-lock.json")["state"] == "different"
 
 
 def test_finish_follows_the_original_config_path_after_symlink_retarget(workspace):

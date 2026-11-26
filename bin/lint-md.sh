@@ -2,7 +2,7 @@
 # push 前に Markdown を中央 checkout の設定で lint する（Issue #134）．
 #
 # 中央リポジトリ（本スクリプトを含むチェックアウト）の templates と
-# .github/actions/markdown-lint/package-lock.json をその場で使う．
+# tools/markdown-lint/package-lock.json をその場で使う．
 # 呼び出し元リポジトリには何も置かない．中央の辞書・ルール更新は
 # 次回の実行から全リポジトリのローカル検査へ反映される．
 #
@@ -49,7 +49,7 @@ set -uo pipefail
 CENTRAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATES="${CENTRAL_ROOT}/templates"
 SCRIPTS="${CENTRAL_ROOT}/scripts"
-ACTION_DIR="${CENTRAL_ROOT}/.github/actions/markdown-lint"
+MANIFEST_DIR="${CENTRAL_ROOT}/tools/markdown-lint"
 MARKDOWN_GLOB="**/*.md"
 
 die() {
@@ -321,7 +321,7 @@ CACHE_DIR="${LINT_MD_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/github-workflo
 mkdir -p "${CACHE_DIR}" || die "cannot create ${CACHE_DIR}"
 DEPS_OUT="${WORKDIR}/deps.out"
 : >"${DEPS_OUT}"
-ACTION_PATH="${ACTION_DIR}" RUNNER_TEMP="${WORKDIR}" GITHUB_OUTPUT="${DEPS_OUT}" \
+MANIFEST_DIR="${MANIFEST_DIR}" RUNNER_TEMP="${WORKDIR}" GITHUB_OUTPUT="${DEPS_OUT}" \
   LINT_DEPS_CACHE_DIR="${CACHE_DIR}" \
   bash "${SCRIPTS}/install-lint-deps.sh" >"${LOGDIR}/install.log" 2>&1 ||
   { cat "${LOGDIR}/install.log" >&2 && die "failed to install lint dependencies"; }
