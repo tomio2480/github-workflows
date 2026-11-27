@@ -150,14 +150,42 @@ jobs:
       - name: Assert lint reports are retrievable
         # 内訳が取れることまで見る．fixture には意図的な違反があるため，
         # markdownlint のレポートは必ず 1 件以上の指摘行を含む．
+        # cli2 0.24 系の指摘行は位置と rule の間に重大度（error / warning）を挟む．
+        # 中央設定で止めた規則（MD060・ja-no-space-around-slash）は
+        # tests/fixtures/markdown/disabled-rules.md に違反を置いてあり，出たら失敗とする．
         shell: bash
         run: |
           set -euo pipefail
           ls -l downloaded-reports
           test -s downloaded-reports/markdownlint-report.txt
           test -s downloaded-reports/textlint-report.xml
-          grep -qE ':[0-9]+ MD[0-9]{3}' downloaded-reports/markdownlint-report.txt
+          grep -qE ':[0-9]+(:[0-9]+)? (error|warning) MD[0-9]{3}/' downloaded-reports/markdownlint-report.txt
           grep -q '<checkstyle' downloaded-reports/textlint-report.xml
+          if grep -q ' MD060/' downloaded-reports/markdownlint-report.txt; then
+            echo "::error::MD060 is disabled in the central config but was reported"
+            exit 1
+          fi
+          if grep -q 'ja-no-space-around-slash' downloaded-reports/textlint-report.xml; then
+            echo "::error::ja-no-space-around-slash is disabled in the central config but was reported"
+            exit 1
+          fi
+
+      - name: Assert reviewdog parses markdownlint findings
+        # composite action と同じ errorformat（scripts/reviewdog-markdownlint.sh）で
+        # レポートを読み，指摘を取りこぼさないことと，重大度の語が message へ
+        # 混ざらないことを確かめる．reviewdog は前段の composite action が
+        # PATH へ入れたものを使う．-reporter=local は PR へ投稿しない．
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/reviewdog-markdownlint.sh downloaded-reports/markdownlint-report.txt \
+            -reporter=local -filter-mode=nofilter >reviewdog-parsed.txt
+          cat reviewdog-parsed.txt
+          grep -q 'MD012/no-multiple-blanks' reviewdog-parsed.txt
+          if grep -qE '(error|warning) MD[0-9]{3}/' reviewdog-parsed.txt; then
+            echo "::error::the severity word leaked into reviewdog messages"
+            exit 1
+          fi
 
   integration-session-url-check:
     name: Session URL check on this PR

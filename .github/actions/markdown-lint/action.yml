@@ -149,7 +149,7 @@ runs:
 
     - name: Generate runtime markdownlint config without outputFormatters
       # caller config の outputFormatters は既定 formatter を置き換える（併存しない）．
-      # 既定出力（`path:line[:col] RULE 説明`）には reviewdog への errorformat 入力と
+      # 既定出力（`path:line[:col] [severity] RULE 説明`）には reviewdog への errorformat 入力と
       # summary 集計（scripts/count-lint-findings.py）が依存しており，置き換えられると
       # lint が走って違反があっても inline・summary とも 0 件になる（Issue #122）．
       # キーがあるときだけ除去済み runtime config を生成し，::warning:: で caller に
@@ -216,7 +216,8 @@ runs:
       # 誤検出をそのまま PR へ inline 投稿していた．本ステップの結果テキストを
       # reviewdog への入力（次々ステップ）と summary 集計
       # （scripts/count-lint-findings.py）の両方で使う．
-      # 出力の各 finding 行は `path:line[:col] RULE/...` 形式である．
+      # 出力の各 finding 行は `path:line[:col] [severity] RULE/...` 形式である．
+      # severity（error / warning）は cli2 0.24 系から入った語である．
       # PR イベント限定にしない（textlint ステップと同じ扱い）．非 PR では
       # reviewdog が投稿先を持たないだけで，lint 実行自体はログとして有用．
       id: mdlint_report
@@ -264,12 +265,13 @@ runs:
 
     - name: Report markdownlint findings with reviewdog
       # markdownlint-report.txt を errorformat で reviewdog へ流し込み，PR の
-      # inline コメントとして投稿する．finding 行は `path:line[:col] RULE 説明`
-      # 形式のため，列ありと列なしの 2 つの -efm で受ける．banner・Summary 等の
-      # 非 finding 行はどちらにも一致せず無視される．
+      # inline コメントとして投稿する．finding 行は
+      # `path:line[:col] [severity] RULE 説明` 形式である．errorformat の定義は
+      # 自己テストと共有するため scripts/reviewdog-markdownlint.sh に置く．
       # -fail-on-error の使い方は後続の textlint ステップと揃える．
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github-token }}
         RD_LEVEL: ${{ inputs.level }}
         RD_FILTER_MODE: ${{ inputs.filter-mode }}
@@ -279,15 +281,12 @@ runs:
         # 実行ステップが失敗すれば job ごと止まるため通常ここへ到達するが，
         # 防御的にレポート欠如でも reviewdog 呼び出しを壊さないでおく．
         [ -f markdownlint-report.txt ] || : > markdownlint-report.txt
-        reviewdog \
-          -efm="%f:%l:%c %m" \
-          -efm="%f:%l %m" \
-          -name="markdownlint" \
+        bash "${ACTION_PATH}/../../../scripts/reviewdog-markdownlint.sh" \
+          markdownlint-report.txt \
           -reporter=github-pr-review \
           -level="${RD_LEVEL}" \
           -fail-on-error="${RD_FAIL_ON_ERROR}" \
-          -filter-mode="${RD_FILTER_MODE}" \
-          < markdownlint-report.txt
+          -filter-mode="${RD_FILTER_MODE}"
 
     - name: Run textlint with reviewdog
       shell: bash

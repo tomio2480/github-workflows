@@ -16,6 +16,8 @@ config:
   # MD036: 全角ピリオド ．を punctuation へ追加（templates 側と揃える．Issue #102）
   MD036:
     punctuation: ".,;:!?。，；：！？．"
+  # MD060: 表の区切り行の書き方に合わないため無効化（templates 側と揃える）
+  MD060: false
 
 globs:
   - "**/*.md"

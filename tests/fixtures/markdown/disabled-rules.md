@@ -10,3 +10,10 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ```
 
 上の 100 桁の行は無効化済みの MD013（line-length）を意図する．
+
+| 規則 | 意図 |
+|---|---|
+| MD060 | 見出し行と区切り行で書き方の違う表 |
+
+上の表は無効化済みの MD060（table-column-style）を意図する．
+`PowerShell` / `Bash` と並べた行は，無効化済みの ja-no-space-around-slash を意図する．
