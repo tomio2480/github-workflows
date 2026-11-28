@@ -174,16 +174,18 @@ jobs:
         # composite action と同じ errorformat（scripts/reviewdog-markdownlint.sh）で
         # レポートを読み，指摘を取りこぼさないことと，重大度の語が message へ
         # 混ざらないことを確かめる．reviewdog は前段の composite action が
-        # PATH へ入れたものを使う．-reporter=local は PR へ投稿しない．
+        # PATH へ入れたものを使う．-reporter=rdjsonl は PR へ投稿せず，解析後の
+        # message を JSON で出す（-reporter=local は元の行をそのまま出すため使えない）．
         shell: bash
         run: |
           set -euo pipefail
           bash scripts/reviewdog-markdownlint.sh downloaded-reports/markdownlint-report.txt \
-            -reporter=local -filter-mode=nofilter >reviewdog-parsed.txt
-          cat reviewdog-parsed.txt
-          grep -q 'MD012/no-multiple-blanks' reviewdog-parsed.txt
-          if grep -qE '(error|warning) MD[0-9]{3}/' reviewdog-parsed.txt; then
-            echo "::error::the severity word leaked into reviewdog messages"
+            -reporter=rdjsonl -filter-mode=nofilter >reviewdog-parsed.jsonl
+          jq -r '.message' reviewdog-parsed.jsonl >reviewdog-messages.txt
+          cat reviewdog-messages.txt
+          grep -q '^MD012/no-multiple-blanks ' reviewdog-messages.txt
+          if grep -qvE '^MD[0-9]{3}/' reviewdog-messages.txt; then
+            echo "::error::a reviewdog message does not start with the rule name"
             exit 1
           fi
 
