@@ -43,8 +43,10 @@ usage:
       ケースに備える
     - textlint XML が parse 不能のときは ValueError．こちらは「実行はしたが
       壊れたデータを掴んでいる」 状態なので早期失敗させる
-    - markdownlint テキストの finding 行は「path:line[:col] RULE/...」 を満たす
-      行で同定する．banner（"Finding:" "Linting:" "Summary:"）は除外される．
+    - markdownlint テキストの finding 行は「path:line[:col] [severity] RULE/...」
+      を満たす行で同定する．severity（error / warning）は cli2 0.24 系の既定
+      formatter が挟む語で，旧形式の行は持たない．どちらの形も受ける．
+      banner（"Finding:" "Linting:" "Summary:"）は除外される．
       path 部分は非貪欲（non-greedy）でマッチさせ，ファイル名にコロンを含む
       環境でも左端の `path:line` を正しく拾う
     - --ignore-glob は dogfooding（自リポジトリへの caller-style 適用）で
@@ -66,7 +68,8 @@ from typing import Collection, Iterable, Sequence
 
 
 _MARKDOWNLINT_LINE = re.compile(
-    r"^(?P<file>.+?):(?P<line>\d+)(?::\d+)?\s+(?P<rule>\S+/\S+)(?:\s+(?P<message>.*))?$"
+    r"^(?P<file>.+?):(?P<line>\d+)(?::\d+)?(?:\s+(?:error|warning))?"
+    r"\s+(?P<rule>\S+/\S+)(?:\s+(?P<message>.*))?$"
 )
 
 

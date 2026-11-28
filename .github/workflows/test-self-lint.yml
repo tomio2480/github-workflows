@@ -150,14 +150,68 @@ jobs:
       - name: Assert lint reports are retrievable
         # 内訳が取れることまで見る．fixture には意図的な違反があるため，
         # markdownlint のレポートは必ず 1 件以上の指摘行を含む．
+        # cli2 0.24 系の指摘行は位置と rule の間に重大度（error / warning）を挟む．
+        # 中央設定で止めた規則（MD060・ja-no-space-around-slash）は
+        # tests/fixtures/markdown/disabled-rules.md に違反を置いてあり，出たら失敗とする．
+        # markdownlint は root の設定で走る．templates との一致は
+        # tests/python/test_markdownlint_config_parity.py が確かめる．
+        # ja-no-space-around-slash は preset-ja-spacing 3 系の規則で，2 系の間は必ず通る．
         shell: bash
         run: |
           set -euo pipefail
           ls -l downloaded-reports
           test -s downloaded-reports/markdownlint-report.txt
           test -s downloaded-reports/textlint-report.xml
-          grep -qE ':[0-9]+ MD[0-9]{3}' downloaded-reports/markdownlint-report.txt
+          grep -qE ':[0-9]+(:[0-9]+)? (error|warning) MD[0-9]{3}/' downloaded-reports/markdownlint-report.txt
           grep -q '<checkstyle' downloaded-reports/textlint-report.xml
+          if grep -q ' MD060/' downloaded-reports/markdownlint-report.txt; then
+            echo "::error::MD060 is disabled in the central config but was reported"
+            exit 1
+          fi
+          if grep -q 'ja-no-space-around-slash' downloaded-reports/textlint-report.xml; then
+            echo "::error::ja-no-space-around-slash is disabled in the central config but was reported"
+            exit 1
+          fi
+
+      - name: Assert reviewdog parses markdownlint findings
+        # composite action と同じ errorformat（scripts/reviewdog-markdownlint.sh）で
+        # レポートを読み，次の 3 点を確かめる．
+        #   - 件数が summary 集計（count-lint-findings.py）と一致する（取りこぼしなし）
+        #   - message が rule 名で始まる（重大度の語が混ざらない）
+        #   - path に位置の数字が混ざらず，列つきの行は列まで読める
+        # 実レポートの指摘は列を持たないため，列つきの行と warning を含む fixture
+        # （with-severity.txt）も通す．reviewdog は前段の composite action が
+        # PATH へ入れたものを使う．-reporter=rdjsonl は PR へ投稿せず，解析後の
+        # 結果を JSON で出す（-reporter=local は元の行をそのまま出すため使えない）．
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() {
+            echo "::error::$1"
+            exit 1
+          }
+          for report in downloaded-reports/markdownlint-report.txt \
+            tests/fixtures/markdownlint-reports/with-severity.txt; do
+            bash scripts/reviewdog-markdownlint.sh "${report}" \
+              -reporter=rdjsonl -filter-mode=nofilter >reviewdog-parsed.jsonl
+            echo "::group::${report}"
+            cat reviewdog-parsed.jsonl
+            echo "::endgroup::"
+            parsed="$(jq -s 'length' reviewdog-parsed.jsonl)"
+            expected="$(python3 scripts/count-lint-findings.py missing-textlint.xml "${report}" |
+              jq '.markdownlint.total')"
+            [ "${parsed}" -eq "${expected}" ] ||
+              fail "${report}: reviewdog parsed ${parsed} findings, the summary counts ${expected}"
+            [ "${parsed}" -gt 0 ] || fail "${report}: reviewdog parsed no findings"
+            jq -e -s 'all(.[]; .message | test("^MD[0-9]{3}/"))' reviewdog-parsed.jsonl >/dev/null ||
+              fail "${report}: a reviewdog message does not start with the rule name"
+            jq -e -s 'all(.[]; .location.path | test(":") | not)' reviewdog-parsed.jsonl >/dev/null ||
+              fail "${report}: a position number leaked into the reviewdog path"
+          done
+          # 最後に通した fixture の 1 行目は `:1:1` の列つき行である
+          jq -e -s 'any(.[]; .location.range.start.line == 1 and .location.range.start.column == 1)' \
+            reviewdog-parsed.jsonl >/dev/null ||
+            fail "with-severity.txt: the column of the 1:1 finding was not parsed"
 
   integration-session-url-check:
     name: Session URL check on this PR

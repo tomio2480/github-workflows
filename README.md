@@ -243,6 +243,7 @@ github-workflows/
 │   ├── render-local-lint-report.py # ローカル lint の集計結果を端末向けに整形
 │   ├── lint-context.py            # 実行条件の記録と caller 宣言の照合
 │   ├── resolve-config-path.sh
+│   ├── reviewdog-markdownlint.sh  # markdownlint レポートを errorformat で reviewdog へ渡す
 │   └── watch-checks-record.py     # 監視の照会記録と要約の共通処理
 ├── bin/                           # 中央リポジトリ自身の運用スクリプト（配布物ではない）
 │   ├── analyze-powershell.ps1     # PSScriptAnalyzer 実行部（verify-shell.py から呼ぶ）

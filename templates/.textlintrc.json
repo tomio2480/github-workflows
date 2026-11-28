@@ -42,7 +42,8 @@
         "space": "always",
         "exceptPunctuation": true
       },
-      "ja-no-space-between-full-width": true
+      "ja-no-space-between-full-width": true,
+      "ja-no-space-around-slash": false
     },
     "prh": {
       "rulePaths": ["./prh.yml"]

@@ -1,0 +1,7 @@
+markdownlint-cli2 v0.24.2 (markdownlint v0.42.2)
+Finding: tests/fixtures/markdown/with-issues.md
+Linting: 1 file
+Summary: 3 issues in 1 file
+tests/fixtures/markdown/with-issues.md:1:1 error MD041/first-line-heading/first-line-h1 First line in a file should be a top-level heading
+tests/fixtures/markdown/with-issues.md:3 error MD012/no-multiple-blanks Multiple consecutive blank lines [Expected: 1; Actual: 2]
+tests/fixtures/markdown/with-issues.md:14 warning MD036/no-emphasis-as-heading Emphasis used instead of a heading [Context: "太字ラベル"]

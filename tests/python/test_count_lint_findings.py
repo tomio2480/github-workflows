@@ -9,7 +9,8 @@
       ・XML が parse 不能 → ValueError
     - markdownlint-cli2 の stderr 取り込みテキストを読み件数と findings 一覧を返す
       ・空文字／banner のみ → 0
-      ・finding 行（path:line[:col] RULE/... の形）の数と内容を返す
+      ・finding 行（path:line[:col] [severity] RULE/... の形）の数と内容を返す
+      ・severity（error / warning）は有無のどちらも受け，message へ混ぜない
       ・path が非貪欲（non-greedy）にマッチし，ファイル名にコロンが含まれる場合も
         左端のセグメントを正しく拾う
       ・存在しないファイル → 0
@@ -160,6 +161,36 @@ def test_count_markdownlint_with_issues_counts_findings_and_extracts_metadata():
     # 末尾の finding（column が無い形）：MD047
     assert findings[-1]["line"] == 7
     assert findings[-1]["rule"].startswith("MD047/")
+
+
+def test_count_markdownlint_reads_lines_with_severity():
+    # markdownlint-cli2 0.24 系の既定 formatter は位置と rule の間へ
+    # 重大度（error / warning）を挟む．読み落とすと件数が黙って 0 になる．
+    result = _MODULE.count_markdownlint(
+        _FIXTURES / "markdownlint-reports" / "with-severity.txt"
+    )
+    assert result["total"] == 3
+    findings = result["findings"]
+    assert [f["line"] for f in findings] == [1, 3, 14]
+    assert [f["rule"].split("/")[0] for f in findings] == ["MD041", "MD012", "MD036"]
+    assert findings[0]["file"] == "tests/fixtures/markdown/with-issues.md"
+    # 重大度の語は message へ混ぜない
+    assert findings[1]["message"].startswith("Multiple consecutive blank lines")
+    assert findings[2]["message"].startswith("Emphasis used instead of a heading")
+
+
+def test_count_markdownlint_severity_word_is_not_taken_as_path(tmp_path):
+    # ファイル名に重大度と同じ語やコロンが入っても，左端の path:line を拾う
+    txt = tmp_path / "severity-like-path.txt"
+    txt.write_text(
+        "docs/error:warning.md:12:5 warning MD012/no-multiple-blanks Multiple consecutive blank lines\n",
+        encoding="utf-8",
+    )
+    result = _MODULE.count_markdownlint(txt)
+    assert result["total"] == 1
+    assert result["findings"][0]["file"] == "docs/error:warning.md"
+    assert result["findings"][0]["line"] == 12
+    assert result["findings"][0]["rule"] == "MD012/no-multiple-blanks"
 
 
 def test_count_markdownlint_missing_file_returns_zero(tmp_path):
