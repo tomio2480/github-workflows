@@ -349,7 +349,7 @@ Issue #121 で floating semver の `npx` 実行から lockfile 管理へ移行�
 固定中のバージョンは
 [tools/markdown-lint/package.json](../tools/markdown-lint/package.json)
 を参照する．
-新しい rule（例 MD060）が最新版で追加されていることがある．
+lock より新しい版では，新しい rule が既定で有効になっていることがある．
 **新規エラーが自分の変更で発生したか既存 baseline かを切り分け**て扱う．
 迷ったら `git stash` で変更を退避して baseline を確認するとよい．
 

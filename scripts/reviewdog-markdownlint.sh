@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # markdownlint-cli2 のテキストレポートを errorformat で reviewdog へ渡す．
-# composite action の投稿ステップと自己テスト（-reporter=local で解析結果を
+# composite action の投稿ステップと自己テスト（-reporter=rdjsonl で解析結果を
 # 確かめる）の両方から呼び，errorformat の定義をここ 1 か所に保つ．
 #
 # 使い方:

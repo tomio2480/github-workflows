@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """markdownlint-cli2 config から outputFormatters を除去した runtime config を生成する．
 
-composite action は cli2 の既定 formatter 出力（`path:line[:col] RULE 説明`）に
+composite action は cli2 の既定 formatter 出力（`path:line[:col] [severity] RULE 説明`）に
 依存する（reviewdog への errorformat 入力と summary 集計の 2 箇所）．
 caller config が outputFormatters を定義すると既定 formatter は置き換えられ
 （併存しない），lint が走って違反があっても inline・summary とも 0 件になる

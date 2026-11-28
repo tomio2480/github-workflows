@@ -43,7 +43,7 @@ gh run list --workflow md-lint.yml --limit 5
 gh run download <run-id> --name lint-reports-lint --dir lint-reports
 ```
 
-`markdownlint-report.txt` は `<ファイル>:<行> <ルール ID> <メッセージ>` の形式である．`textlint-report.xml` は checkstyle 形式である．PR コメントの summary はリポジトリ全体の件数だけを出す．内訳はこの artifact から取る（[Issue #148](https://github.com/tomio2480/github-workflows/issues/148)）．
+`markdownlint-report.txt` は `<ファイル>:<行>[:<列>] <重大度> <ルール ID> <メッセージ>` の形式である．重大度には `error` か `warning` が入る．`textlint-report.xml` は checkstyle 形式である．PR コメントの summary はリポジトリ全体の件数だけを出す．内訳はこの artifact から取る（[Issue #148](https://github.com/tomio2480/github-workflows/issues/148)）．
 
 ### 方法 B: ローカルで再現する
 

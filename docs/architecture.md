@@ -162,7 +162,8 @@ PyYAML は `ubuntu-latest` runner に preinstall されている前提である�
 
 ### `markdownlint` 用 runtime config 生成（`outputFormatters` の除去）
 
-composite action は cli2 の既定 formatter 出力（`path:line[:col] RULE 説明`）に依存する．
+composite action は cli2 の既定 formatter が出す形式に依存する．
+形式は `path:line[:col] [severity] RULE 説明` である．
 依存箇所は reviewdog への errorformat 入力と summary 集計の 2 つである．
 caller config が `outputFormatters` を定義すると既定 formatter は置き換えられる（併存しない）．
 この場合，lint が走って違反があっても inline・summary とも 0 件になる（Issue #122）．

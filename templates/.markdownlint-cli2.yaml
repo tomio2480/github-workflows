@@ -32,7 +32,8 @@ config:
 
   # MD060: table-column-style
   # 見出し行を `| 列 |`，区切り行を `|---|` で書く表は，どの style にも当てはまらない．
-  # この書き方が caller 全体で定着しているため無効化する（docs/rule-rationale.md 参照）
+  # この書き方が caller 全体で定着しているため無効化する．根拠は次を参照
+  # https://github.com/tomio2480/github-workflows/blob/main/docs/rule-rationale.md
   MD060: false
 
 # lint 対象パターン
